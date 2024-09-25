@@ -56,7 +56,10 @@ class QuestionSetPublishConfig(override val config: Config) extends PublishConfi
 	// Out Tags
 	val questionPublishOutTag: OutputTag[PublishMetadata] = OutputTag[PublishMetadata]("question-publish")
 	val questionSetPublishOutTag: OutputTag[PublishMetadata] = OutputTag[PublishMetadata]("questionset-publish")
+	val postQuestonSetPublishedEvent: OutputTag[String] = OutputTag[String]("questionset-post-publish")
 
+	val kafkaPostQuestionSetPublishedTopic: String = config.getString("kafka.output.postquestionsetpublish.topic")
+	val questionSetPostPublishEventProducer = "questionset-postpublish-issue-event-producer"
 	// Service Urls
 	val printServiceBaseUrl: String = config.getString("print_service.base_url")
 
