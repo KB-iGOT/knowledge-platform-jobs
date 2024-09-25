@@ -35,6 +35,9 @@ class QuestionSetPublishStreamTask(config: QuestionSetPublishConfig, kafkaConnec
 
 		processStreamTask.getSideOutput(config.questionSetPublishOutTag).process(new QuestionSetPublishFunction(config, httpUtil))
 		  .name("questionset-publish-process").uid("questionset-publish-process").setParallelism(1)
+		processStreamTask.getSideOutput(config.postQuestonSetPublishedEvent)
+			.addSink(kafkaConnector.kafkaStringSink(config.kafkaPostQuestionSetPublishedTopic))
+			.name(config.questionSetPostPublishEventProducer).uid(config.questionSetPostPublishEventProducer)
 		env.execute(config.jobName)
 	}
 }
