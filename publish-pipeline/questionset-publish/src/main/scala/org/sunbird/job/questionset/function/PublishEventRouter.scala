@@ -40,6 +40,7 @@ class PublishEventRouter(config: QuestionSetPublishConfig) extends BaseProcessFu
 				case "QuestionSet" | "QuestionSetImage" => {
 					logger.info("PublishEventRouter :: Sending QuestionSet For Publish Having Identifier: " + event.objectId)
 					context.output(config.questionSetPublishOutTag, PublishMetadata(event.objectId, event.objectType, event.mimeType, event.pkgVersion, event.publishType))
+					context.output(config.postQuestonSetPublishedEvent, event.objectId)
 				}
 				case _ => {
 					metrics.incCounter(config.skippedEventCount)
