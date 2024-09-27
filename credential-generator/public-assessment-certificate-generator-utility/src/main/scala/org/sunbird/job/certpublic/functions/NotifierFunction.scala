@@ -72,6 +72,8 @@ class NotifierFunction(config: CertificateGeneratorConfig, httpUtil: HttpUtil, @
           config.coursePosterImage -> metaData.coursePosterImage,
           config.profileUpdateLink -> (config.webPortalUrl + config.profileUpdateUrl)
         )))
+        val requestJson = Json.stringify(Json.toJson(request))
+        logger.info("Request: {}", requestJson)
         val response = httpUtil.post(url, ScalaJsonUtil.serialize(request))
         if (response.status == 200) {
           metrics.incCounter(config.notifiedUserCount)
