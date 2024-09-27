@@ -183,4 +183,6 @@ class CertificateGeneratorConfig(override val config: Config) extends BaseJobCon
   val webPortalUrl: String = config.getString("web.portal.url")
 
   val enableUserNotification: Boolean = if(config.hasPath("enable.user.email.notification")) config.getBoolean("enable.user.email.notification") else true
+
+  val recipientEmails = "recipientEmails"
 }

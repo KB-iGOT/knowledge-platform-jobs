@@ -61,10 +61,10 @@ class NotifierFunction(config: CertificateGeneratorConfig, httpUtil: HttpUtil, @
         val notifyTemplate = getNotifyTemplateFromRes(certTemplate.get(metaData.templateId))
         val ratingUrl = config.domainUrl + config.ratingMidPoint + metaData.courseId + config.ratingEndPoint
         val request = mutable.Map[String, AnyRef]("request" -> (notifyTemplate ++ mutable.Map[String, AnyRef](
-          //config.firstName -> userResponse.getOrElse(config.firstName, "").asInstanceOf[String],
+          config.firstName -> metaData.username,
           config.trainingName -> metaData.courseName,
           config.heldDate -> dateFormatter.format(metaData.issuedOn),
-          config.recipientUserIds -> List[String](metaData.userId),
+          config.recipientEmails -> List[String](metaData.userId),
           config.ratingPageUrl -> ratingUrl,
           config.body -> "email body",
           config.courseName -> metaData.courseName,
