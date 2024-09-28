@@ -1,4 +1,4 @@
-package org.sunbird.job.certutil.functions
+package org.sunbird.job.certpublic.functions
 
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -8,7 +8,7 @@ import org.sunbird.incredible.pojos.ob.{Criteria, Issuer, SignatoryExtension}
 import org.sunbird.incredible.pojos.valuator.{ExpiryDateValuator, IssuedDateValuator}
 import org.sunbird.incredible.processor.CertModel
 import org.sunbird.incredible.{CertificateConfig, JsonKeys}
-import org.sunbird.job.certutil.domain.Event
+import org.sunbird.job.certpublic.domain.Event
 
 import scala.collection.JavaConverters._
 

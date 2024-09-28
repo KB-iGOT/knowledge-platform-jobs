@@ -1,4 +1,4 @@
-package org.sunbird.job.certutil.fixture
+package org.sunbird.job.certpublic.fixture
 
 object EventFixture {
 

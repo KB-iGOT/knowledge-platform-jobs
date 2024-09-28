@@ -156,6 +156,14 @@ common_certificate_generator_utility_enable_rc_certificate: true
 registry_sunbird_keyspace: "sunbird"
 cert_registry_table: "cert_registry"
 
+###  assessment_public_certificate_generator Job related Vars
+assessment_public_certificate_generator_consumer_parallelism: 1
+assessment_public_certificate_generator_parallelism: 1
+assessment_public_certificate_generator_enable_suppress_exception: false
+assessment_public_certificate_generator_enable_rc_certificate: true
+registry_sunbird_keyspace: "sunbird"
+cert_registry_table: "cert_registry"
+
 ### to be removed
 job_classname: ""
 
@@ -276,6 +284,14 @@ flink_job_names:
 
   common-certificate-generator-utility:
     job_class_name: 'org.sunbird.job.certutil.task.CommonCertificateGeneratorStreamTask'
+    replica: 1
+    jobmanager_memory: 1024m
+    taskmanager_memory: 1024m
+    taskslots: 1
+    cpu_requests: 0.3
+
+  assessment-public-certificate-generator:
+    job_class_name: 'org.sunbird.job.certpublic.task.AssessmentPublicCertificateGeneratorStreamTask'
     replica: 1
     jobmanager_memory: 1024m
     taskmanager_memory: 1024m

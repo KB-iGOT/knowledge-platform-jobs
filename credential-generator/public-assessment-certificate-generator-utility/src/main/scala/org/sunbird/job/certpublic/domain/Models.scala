@@ -1,4 +1,4 @@
-package org.sunbird.job.certutil.domain
+package org.sunbird.job.certpublic.domain
 
 import java.util
 import java.util.UUID

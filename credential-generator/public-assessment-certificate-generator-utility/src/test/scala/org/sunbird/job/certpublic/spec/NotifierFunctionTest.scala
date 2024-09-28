@@ -1,4 +1,4 @@
-package org.sunbird.job.certutil.spec
+package org.sunbird.job.certpublic.spec
 
 import java.util.Date
 import java.util.concurrent.ConcurrentHashMap
@@ -16,8 +16,8 @@ import org.sunbird.job.util.{CassandraUtil, HTTPResponse, HttpUtil}
 import org.sunbird.spec.{BaseMetricsReporter, BaseTestSpec}
 import org.mockito.ArgumentMatchers.{any, endsWith}
 import org.sunbird.job.Metrics
-import org.sunbird.job.certutil.functions.{NotificationMetaData, NotifierFunction}
-import org.sunbird.job.certutil.task.CertificateGeneratorConfig
+import org.sunbird.job.certpublic.functions.{NotificationMetaData, NotifierFunction}
+import org.sunbird.job.certpublic.task.CertificateGeneratorConfig
 
 
 class NotifierFunctionTest extends BaseTestSpec {
@@ -64,7 +64,7 @@ class NotifierFunctionTest extends BaseTestSpec {
 
   "NotifierFunction " should "should send notify user" in {
     implicit val notificationMetaTypeInfo: TypeInformation[NotificationMetaData] = TypeExtractor.getForClass(classOf[NotificationMetaData])
-    new NotifierFunction(notifierConfig, mockHttpUtil,cassandraUtil).processElement(NotificationMetaData("userId", "Course Name", new Date(), "do_11309999837886054415", "template_01_dev_001",0, 0,"", "",""), null, metrics)
+    new NotifierFunction(notifierConfig, mockHttpUtil,cassandraUtil).processElement(NotificationMetaData("userId", "Course Name", new Date(), "do_11309999837886054415", "template_01_dev_001",0, 0,"","",""), null, metrics)
     metrics.get(s"${notifierConfig.courseBatchdbReadCount}") should be(1)
     metrics.get(s"${notifierConfig.notifiedUserCount}") should be(1)
     metrics.get(s"${notifierConfig.skipNotifyUserCount}") should be(0)

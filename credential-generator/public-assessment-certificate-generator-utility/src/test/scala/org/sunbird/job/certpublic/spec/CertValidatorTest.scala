@@ -1,4 +1,4 @@
-package org.sunbird.job.certutil.spec
+package org.sunbird.job.certpublic.spec
 
 import com.typesafe.config.{Config, ConfigFactory}
 import org.cassandraunit.CQLDataLoader
@@ -6,11 +6,11 @@ import org.cassandraunit.dataset.cql.FileCQLDataSet
 import org.cassandraunit.utils.EmbeddedCassandraServerHelper
 import org.mockito.Mockito
 import org.sunbird.job.Metrics
-import org.sunbird.job.certutil.domain.Event
-import org.sunbird.job.certutil.exceptions.ValidationException
-import org.sunbird.job.certutil.fixture.EventFixture
-import org.sunbird.job.certutil.functions.CertValidator
-import org.sunbird.job.certutil.task.CertificateGeneratorConfig
+import org.sunbird.job.certpublic.domain.Event
+import org.sunbird.job.certpublic.exceptions.ValidationException
+import org.sunbird.job.certpublic.fixture.EventFixture
+import org.sunbird.job.certpublic.functions.CertValidator
+import org.sunbird.job.certpublic.task.CertificateGeneratorConfig
 import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil}
 import org.sunbird.spec.BaseTestSpec
 

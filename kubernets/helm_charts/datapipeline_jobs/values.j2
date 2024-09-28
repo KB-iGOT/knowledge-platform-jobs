@@ -982,3 +982,52 @@ common-certificate-generator-utility:
     parallelism.default: 1
     jobmanager.execution.failover-strategy: region
     taskmanager.memory.network.fraction: 0.1
+
+assessment-public-certificate-generator:
+  assessment-public-certificate-generator: |+
+    include file("/data/flink/conf/base-config.conf")
+    kafka {
+      input.topic = {{ env_name }}.assessment.public.certificate.request
+      output.audit.topic = {{ env_name }}.telemetry.raw
+      groupId = {{ env_name }}-assessment-public-certificate-generator-group
+      program.cert.output.topic= {{ env_name }}.issue.program.certificate.request
+    }
+    task {
+      restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
+      restart-strategy.delay = 240000 # in milli-seconds # on max restarts (3) within 4 min the job will fail.
+      consumer.parallelism = {{ assessment_public_certificate_generator_consumer_parallelism }}
+      parallelism = {{ assessment_public_certificate_generator_parallelism }}
+      notifier.parallelism = {{ assessment_public_certificate_generator_notifier_parallelism }}
+    }
+    lms-cassandra {
+      keyspace = "{{ middleware_course_keyspace }}"
+      user_enrolments.table = "public_user_assessment_data"
+      course_batch.table = "{{ middleware_course_batch_table }}"
+      sbkeyspace = "{{ registry_sunbird_keyspace }}"
+      certreg.table ="{{ cert_registry_table }}"
+      ext_config.table = "ext_config"
+    }
+    cert_domain_url = "{{ cert_domain_url }}"
+    web.portal.url = "{{ cert_domain_url }}"
+    cloud_storage_container="{{ cert_container_name }}"
+    cloud_storage_type="{{ cloud_service_provider }}"
+    cloud_storage_secret="{{ cloud_storage_secret | replace('\n', '\\n') }}"
+    cloud_storage_key="{{ cloud_storage_key }}"
+    cloud_storage_endpoint="{{ cloud_storage_endpoint }}"
+    service {
+      certreg.basePath = "{{ cert_reg_service_base_url }}"
+      learner.basePath = "{{ learner_service_base_url }}"
+      enc.basePath = "{{ enc_service_base_url }}"
+      rc.basePath = "{{ cert_rc_base_url }}"
+      rc.entity = "{{ cert_rc_entity }}"
+    }
+    enable.suppress.exception = {{ assessment_public_certificate_generator_enable_suppress_exception | lower }}
+    enable.rc.certificate = false
+
+  flink-conf: |+
+    jobmanager.memory.flink.size: {{ flink_job_names['assessment-public-certificate-generator'].jobmanager_memory }}
+    taskmanager.memory.flink.size: {{ flink_job_names['assessment-public-certificate-generator'].taskmanager_memory }}
+    taskmanager.numberOfTaskSlots: {{ flink_job_names['assessment-public-certificate-generator'].taskslots }}
+    parallelism.default: 1
+    jobmanager.execution.failover-strategy: region
+    taskmanager.memory.network.fraction: 0.1

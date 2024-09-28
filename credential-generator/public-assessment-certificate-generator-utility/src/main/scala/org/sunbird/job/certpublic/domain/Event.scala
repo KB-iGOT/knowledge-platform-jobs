@@ -1,4 +1,4 @@
-package org.sunbird.job.certutil.domain
+package org.sunbird.job.certpublic.domain
 
 import java.util
 
@@ -69,5 +69,7 @@ class Event(eventMap: java.util.Map[String, Any], partition: Int, offset: Long) 
   def coursePosterImage: String = readOrDefault[String]("edata.coursePosterImage", "")
 
   def recipientName: String = readOrDefault[String]("edata.recipientName", "")
+
+  def assessmentId: String = readOrDefault[String]("edata.assessmentId", "")
 
 }

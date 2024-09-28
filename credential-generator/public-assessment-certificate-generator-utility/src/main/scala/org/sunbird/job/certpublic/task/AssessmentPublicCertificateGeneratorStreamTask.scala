@@ -1,4 +1,4 @@
-package org.sunbird.job.certutil.task
+package org.sunbird.job.certpublic.task
 
 import java.io.File
 import java.util
@@ -11,8 +11,8 @@ import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
 import org.sunbird.incredible.StorageParams
 import org.sunbird.incredible.pojos.exceptions.ServerException
 import org.sunbird.incredible.processor.store.StorageService
-import org.sunbird.job.certutil.domain.Event
-import org.sunbird.job.certutil.functions.{CertificateGeneratorFunction, CreateUserFeedFunction, NotificationMetaData, NotifierFunction, UserFeedMetaData}
+import org.sunbird.job.certpublic.domain.Event
+import org.sunbird.job.certpublic.functions.{CertificateGeneratorFunction, CreateUserFeedFunction, NotificationMetaData, NotifierFunction, UserFeedMetaData}
 import org.sunbird.job.connector.FlinkKafkaConnector
 import org.sunbird.job.util.{FlinkUtil, HttpUtil}
 

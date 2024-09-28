@@ -1,4 +1,4 @@
-package org.sunbird.job.certutil.spec
+package org.sunbird.job.certpublic.spec
 
 import java.io.File
 import java.util
@@ -20,9 +20,9 @@ import org.mockito.Mockito
 import org.mockito.Mockito._
 import org.scalatest.DoNotDiscover
 import org.sunbird.incredible.processor.store.StorageService
-import org.sunbird.job.certutil.domain.Event
-import org.sunbird.job.certutil.fixture.EventFixture
-import org.sunbird.job.certutil.task.{CertificateGeneratorConfig, AssessmentPublicCertificateGeneratorStreamTask}
+import org.sunbird.job.certpublic.domain.Event
+import org.sunbird.job.certpublic.fixture.EventFixture
+import org.sunbird.job.certpublic.task.{CertificateGeneratorConfig, AssessmentPublicCertificateGeneratorStreamTask}
 import org.sunbird.job.connector.FlinkKafkaConnector
 import org.sunbird.job.util.{CassandraUtil, HTTPResponse, HttpUtil, JSONUtil}
 import org.sunbird.spec.{BaseMetricsReporter, BaseTestSpec}

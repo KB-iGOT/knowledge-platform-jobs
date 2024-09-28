@@ -1,4 +1,4 @@
-package org.sunbird.job.certutil.exceptions
+package org.sunbird.job.certpublic.exceptions
 
 case class ValidationException(errorCode: String, msg: String, ex: Exception = null) extends Exception(msg, ex)  {
 
