@@ -39,6 +39,8 @@ class CloudStorageUtil(config: BaseJobConfig) extends Serializable {
   }
 
   def copyObjectsByPrefix(sourcePrefix: String, destinationPrefix: String, isFolder: Boolean): Unit = {
+    logger.info(s"ExtractableMimeTypeHelper ::: copyExtractedContentPackage ::=============================================================================");
+    logger.info(s"CloudStorageUtil ::: copyObjectByPrefix :: sourcePrefix :: ${sourcePrefix}, destinationPrefix :: ${destinationPrefix}, isFolder::${isFolder}");
     getService.copyObjects(container, sourcePrefix, container, destinationPrefix, Option.apply(isFolder))
   }
 
