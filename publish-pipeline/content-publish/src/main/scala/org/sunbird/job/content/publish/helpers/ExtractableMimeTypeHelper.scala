@@ -42,6 +42,7 @@ object ExtractableMimeTypeHelper {
 
   def copyExtractedContentPackage(obj: ObjectData, contentConfig: ContentPublishConfig, extractionType: String, cloudStorageUtil: CloudStorageUtil): Unit = {
     if (!isExtractedSnapshotExist(obj)) throw new InvalidInputException("Error! Snapshot Type Extraction doesn't Exists.")
+    logger.info(s"ExtractableMimeTypeHelper ::: copyExtractedContentPackage :: objectData :: ${obj}, contentPublishConfig :: ${contentConfig}, extractionType::${extractionType}");
     val sourcePrefix = getExtractionPath(obj, contentConfig, "snapshot")
     val destinationPrefix = getExtractionPath(obj, contentConfig, extractionType)
     logger.info(s"ExtractableMimeTypeHelper ::: copyExtractedContentPackage :: sourcePrefix :: ${sourcePrefix}, destinationPrefix :: ${destinationPrefix}");
