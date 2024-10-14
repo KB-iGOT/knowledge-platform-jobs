@@ -17,6 +17,7 @@
     <module>program-cert-pre-processor</module>
     <module>common-certificate-generator-utility</module>
     <module>public-assessment-certificate-generator-utility</module>
+    <module>event-cert-generator</module>
 
   </modules>
 
