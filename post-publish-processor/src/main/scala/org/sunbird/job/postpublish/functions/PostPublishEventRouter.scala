@@ -57,6 +57,12 @@ class PostPublishEventRouter(config: PostPublishProcessorConfig, httpUtil: HttpU
       //Process Post Publish Relation Update
       context.output(config.postPublishRelationUpdateOutTag, identifier)
 
+    } if (event.validEventTypeResource()) {
+      val identifier = event.collectionId
+      val batchDetails = getEventBatchDetails(identifier)(neo4JUtil, cassandraUtil, config)
+      if (!batchDetails.isEmpty) {
+        context.output(config.eventBatchCreateOutTag, batchDetails)
+      }
     } else {
       metrics.incCounter(config.skippedEventCount)
       logger.info(s"Event not qualified for publishing for Identifier : ${event.collectionId}.")

@@ -34,6 +34,9 @@ class PostPublishProcessorStreamTask(config: PostPublishProcessorConfig, kafkaCo
     processStreamTask.getSideOutput(config.batchCreateOutTag).process(new BatchCreateFunction(config, httpUtil))
       .name("batch-create-process").uid("batch-create-process").setParallelism(config.batchCreateParallelism)
 
+    processStreamTask.getSideOutput(config.eventBatchCreateOutTag).process(new EventBatchCreateFunction(config, httpUtil))
+      .name("event-batch-create-process").uid("event-batch-create-process").setParallelism(config.batchCreateParallelism)
+
     val shallowCopyPublishStream = processStreamTask.getSideOutput(config.shallowContentPublishOutTag)
       .process(new ShallowCopyPublishFunction(config))
       .name("shallow-content-publish").uid("shallow-content-publish")

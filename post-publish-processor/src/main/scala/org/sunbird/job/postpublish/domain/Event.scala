@@ -14,6 +14,8 @@ class Event(eventMap: java.util.Map[String, Any], partition: Int, offset: Long) 
 
   def collectionId: String = readOrDefault[String]("edata.identifier", "")
 
+  def contentType: String = readOrDefault[String]("edata.contentType", "")
+
   def eData: Map[String, AnyRef] = readOrDefault("edata", new util.HashMap[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
 
   def validEvent(): Boolean = {
@@ -21,4 +23,7 @@ class Event(eventMap: java.util.Map[String, Any], partition: Int, offset: Long) 
       StringUtils.equals("application/vnd.ekstep.content-collection", mimeType)
   }
 
+  def validEventTypeResource(): Boolean {
+    StringUtils.equals("post-publish-process", action) && StringUtils.equals("Event", contentType)
+  }
 }

@@ -46,6 +46,9 @@ class PostPublishProcessorConfig(override val config: Config) extends BaseJobCon
   val postPublishRelationUpdateEventCount = "post-publish-relation-update-count"
   val postPublishRelationUpdateSuccessCount = "post-publish-relation-update-success-count"
   val postPublishRelationUpdateFailureCount = "post-publish-relation-update-failure-count"
+  val eventBatchCreationCount = "event-batch-creation-count"
+  val eventBatchCreationSuccessCount = "event-batch-creation-success-count"
+  val eventBatchCreationFailedCount = "event-batch-creation-failed-count"
 
   // Cassandra Configurations
   val dbHost: String = config.getString("lms-cassandra.host")
@@ -58,6 +61,8 @@ class PostPublishProcessorConfig(override val config: Config) extends BaseJobCon
   val hierarchyStoreKeySpace = config.getString("lms-cassandra.hierarchyStoreKeySpace")
   val dialcodeKeyspaceName = config.getString("dialcode-cassandra.keyspace")
   val dialcodeTableName = config.getString("dialcode-cassandra.imageTable")
+  val eventBatchTableName = config.getString("lms-cassandra.eventBatchTable")
+  val defaultEventCertTemplateId = config.getString("lms-cassandra.eventCertTemplateId")
 
   // Neo4J Configurations
   val graphRoutePath = config.getString("neo4j.routePath")
@@ -71,6 +76,7 @@ class PostPublishProcessorConfig(override val config: Config) extends BaseJobCon
   val publishEventOutTag: OutputTag[String] = OutputTag[String]("content-publish-request")
   val generateQRImageOutTag: OutputTag[String] = OutputTag[String]("qr-image-generator-request")
   val postPublishRelationUpdateOutTag:OutputTag[String]= OutputTag[String]("post-publish-relation-update")
+  val eventBatchCreateOutTag: OutputTag[java.util.Map[String, AnyRef]] = OutputTag[java.util.Map[String, AnyRef]]("event-batch-create")
 
   val searchBaseUrl = config.getString("service.search.basePath")
   val lmsBaseUrl = config.getString("service.lms.basePath")
@@ -79,9 +85,12 @@ class PostPublishProcessorConfig(override val config: Config) extends BaseJobCon
 
   // API URLs
   val batchCreateAPIPath = lmsBaseUrl + "/private/v1/course/batch/create"
+  val eventBatchCreateApuPath = lmsBaseUrl + "/v2/event/batch/create"
   val searchAPIPath = searchBaseUrl + "/v3/search"
   val reserveDialCodeAPIPath = learningBaseUrl + "/content/v3/dialcode/reserve"
   val batchAddCertTemplateAPIPath = lmsBaseUrl + "/private/v1/course/batch/cert/template/add"
+  val batchAddCertTemplateAPIPathForEvent = lmsBaseUrl + "/private/v1/event/batch/cert/template/add"
+
 
 
   // QR Image Generator
@@ -107,5 +116,5 @@ class PostPublishProcessorConfig(override val config: Config) extends BaseJobCon
 
   val contentCacheStore: Int = 0
 
-
+  val allowedResourceTypesForEventBatch = List[String]("Karmayogi Saptah")
 }
