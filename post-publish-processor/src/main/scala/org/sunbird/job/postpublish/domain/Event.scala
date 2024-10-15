@@ -23,7 +23,7 @@ class Event(eventMap: java.util.Map[String, Any], partition: Int, offset: Long) 
       StringUtils.equals("application/vnd.ekstep.content-collection", mimeType)
   }
 
-  def validEventTypeResource(): Boolean {
+  def validEventTypeResource(): Boolean = {
     StringUtils.equals("post-publish-process", action) && StringUtils.equals("Event", contentType)
   }
 }

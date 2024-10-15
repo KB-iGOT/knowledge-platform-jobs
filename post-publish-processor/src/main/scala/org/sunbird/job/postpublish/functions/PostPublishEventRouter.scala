@@ -57,7 +57,7 @@ class PostPublishEventRouter(config: PostPublishProcessorConfig, httpUtil: HttpU
       //Process Post Publish Relation Update
       context.output(config.postPublishRelationUpdateOutTag, identifier)
 
-    } if (event.validEventTypeResource()) {
+    } else if (event.validEventTypeResource()) {
       val identifier = event.collectionId
       val batchDetails = getEventBatchDetails(identifier)(neo4JUtil, cassandraUtil, config)
       if (!batchDetails.isEmpty) {

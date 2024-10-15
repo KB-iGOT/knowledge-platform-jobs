@@ -9,6 +9,8 @@ import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil, Neo4JUtil}
 
 import java.util
 import scala.collection.JavaConverters._
+import java.time.format.DateTimeFormatter
+import java.time.{LocalDate, ZonedDateTime, ZoneId}
 
 trait BatchCreation {
 
@@ -140,8 +142,8 @@ trait BatchCreation {
   def addCertTemplateToBatch(courseId: String, batchId: String, contextType: String)(implicit cassandraUtil: CassandraUtil, config: PostPublishProcessorConfig, httpUtil: HttpUtil) = {
     logger.info("Adding cert template to batch:" + batchId + ", courseId: " + courseId)
     val selectQuery = QueryBuilder.select().all().from(config.sunbirdKeyspaceName, config.sbSystemSettingsTableName)
-    val certTemplateId = config.defaultCertTemplateId
-    val certTemplateAddPath = config.batchAddCertTemplateAPIPath
+    var certTemplateId = config.defaultCertTemplateId
+    var certTemplateAddPath = config.batchAddCertTemplateAPIPath
 
     if ("Event".equalsIgnoreCase(contextType)) {
       certTemplateId = config.defaultEventCertTemplateId
@@ -228,13 +230,13 @@ trait BatchCreation {
     } else false
   }
 
-  def createEventBatch createEventBatch(eData: java.util.Map[String, AnyRef])(implicit config: PostPublishProcessorConfig, httpUtil: HttpUtil, cassandraUtil: CassandraUtil) = {
+  def createEventBatch(eData: java.util.Map[String, AnyRef])(implicit config: PostPublishProcessorConfig, httpUtil: HttpUtil, cassandraUtil: CassandraUtil) = {
     val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
-    val parsedStartDate = LocalDate.parse(eData.get("startDate"), formatter)
+    val parsedStartDate = LocalDate.parse(eData.get("startDate").asInstanceOf[String], formatter)
     val startDate = parsedStartDate.atStartOfDay(ZoneId.of("Asia/Kolkata"))
     val formattedStartDate = startDate.format(formatter)
 
-    val parsedEndDate = LocalDate.parse(eData.get("endDate"), formatter)
+    val parsedEndDate = LocalDate.parse(eData.get("endDate").asInstanceOf[String], formatter)
     val endDate = parsedEndDate.atStartOfDay(ZoneId.of("Asia/Kolkata"))
     val formattedEndDate = endDate.format(formatter)
 
