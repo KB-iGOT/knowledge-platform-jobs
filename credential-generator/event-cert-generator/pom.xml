@@ -8,6 +8,7 @@
     </parent>
 
     <artifactId>event-cert-generator</artifactId>
+    <version>1.0.0</version>
     <packaging>jar</packaging>
 
     <name>event-cert-generator</name>
