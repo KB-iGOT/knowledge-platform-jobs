@@ -11,7 +11,7 @@ import org.sunbird.job.util.{HTTPResponse, HttpUtil}
 
 import java.util.Date
 
-case class UserFeedMetaData(userId: String, courseName: String, issuedOn: Date, courseId: String, partition: Int, offset: Long)
+case class UserFeedMetaData(userId: String, courseName: String, issuedOn: Date, eventId: String, partition: Int, offset: Long)
 
 class CreateUserFeedFunction(config: EventCertificateGeneratorConfig, httpUtil: HttpUtil)(implicit val stringTypeInfo: TypeInformation[String])
   extends BaseProcessFunction[UserFeedMetaData, String](config) {
@@ -30,7 +30,7 @@ class CreateUserFeedFunction(config: EventCertificateGeneratorConfig, httpUtil: 
                               context: ProcessFunction[UserFeedMetaData, String]#Context,
                               metrics: Metrics): Unit = {
     val req =
-      s"""{"request":{"userId":"${metaData.userId}","category":"Notification","priority":1,"data":{"type":1,"actionData":{"actionType":"certificateUpdate","title":"${metaData.courseName}","description":"${config.userFeedMsg}","identifier":"${metaData.courseId}"}}}}"""
+      s"""{"request":{"userId":"${metaData.userId}","category":"Notification","priority":1,"data":{"type":1,"actionData":{"actionType":"certificateUpdate","title":"${metaData.courseName}","description":"${config.userFeedMsg}","identifier":"${metaData.eventId}"}}}}"""
     val url = config.learnerServiceBaseUrl + config.userFeedCreateEndPoint
     val response: HTTPResponse = httpUtil.post(url, req)
     if (response.status == 200) {

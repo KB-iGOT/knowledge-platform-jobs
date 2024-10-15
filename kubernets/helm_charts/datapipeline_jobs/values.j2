@@ -645,7 +645,7 @@ program-cert-pre-processor:
     parallelism.default: 1
     jobmanager.execution.failover-strategy: region
     taskmanager.memory.network.fraction: 0.1
-    
+
 collection-certificate-generator:
   collection-certificate-generator: |+
     include file("/data/flink/conf/base-config.conf")
@@ -696,6 +696,56 @@ collection-certificate-generator:
     jobmanager.execution.failover-strategy: region
     taskmanager.memory.network.fraction: 0.1
 
+event-cert-generator:
+  event-cert-generator: |+
+    include file("/data/flink/conf/base-config.conf")
+    kafka {
+      input.topic = {{ env_name }}.event.generate.certificate.request
+      output.audit.topic = {{ env_name }}.telemetry.raw
+      groupId = {{ env_name }}-event-certificate-generator-group
+      program.cert.output.topic= {{ env_name }}.event.generate.certificate.failed
+    }
+    task {
+      restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
+      restart-strategy.delay = 240000 # in milli-seconds # on max restarts (3) within 4 min the job will fail.
+      consumer.parallelism = {{ event_cert_generator_consumer_parallelism }}
+      parallelism = {{ event_cert_generator_parallelism }}
+      notifier.parallelism = {{ event_cert_generator_notifier_parallelism }}
+    }
+    lms-cassandra {
+      keyspace = "{{ middleware_course_keyspace }}"
+      user_enrolments.table = "user_event_enrolments"
+      course_batch.table = "{{ middleware_course_batch_table }}"
+      sbkeyspace = "{{ registry_sunbird_keyspace }}"
+      certreg.table ="{{ cert_registry_table }}"
+    }
+    cert_domain_url = "{{ cert_domain_url }}"
+    web.portal.url = "{{ cert_domain_url }}"
+    cloud_storage_type="{{ cloud_service_provider }}"
+    cloud_storage_key="{{ cloud_storage_key }}"
+    cloud_storage_secret="{{ cloud_storage_secret | replace('\n', '\\n') }}"
+    cloud_storage_container="{{ cert_container_name }}"
+    cloud_storage_endpoint="{{ cloud_storage_endpoint }}"
+
+    service {
+      certreg.basePath = "{{ cert_reg_service_base_url }}"
+      learner.basePath = "{{ learner_service_base_url }}"
+      enc.basePath = "{{ enc_service_base_url }}"
+      rc.basePath = "{{ cert_rc_base_url }}"
+      rc.entity = "{{ cert_rc_entity }}"
+    }
+    enable.suppress.exception = {{ event_cert_generator_enable_suppress_exception | lower }}
+    enable.rc.certificate = false
+
+
+  flink-conf: |+
+    jobmanager.memory.flink.size: {{ flink_job_names['event-cert-generator'].jobmanager_memory }}
+    taskmanager.memory.flink.size: {{ flink_job_names['event-cert-generator'].taskmanager_memory }}
+    taskmanager.numberOfTaskSlots: {{ flink_job_names['event-cert-generator'].taskslots }}
+    parallelism.default: 1
+    jobmanager.execution.failover-strategy: region
+    taskmanager.memory.network.fraction: 0.1
+
 karma-points-persist-processor:
   karma-points-persist-processor: |+
     include file("/data/flink/conf/base-config.conf")
@@ -712,7 +762,7 @@ karma-points-persist-processor:
       consumer.parallelism = {{ karma_points_persist_processor_consumer_parallelism }}
       generate_certificate.parallelism = {{ karma_points_persist_processor_generate_certificate_parallelism }}
     }
-    
+
       karmapoints {
       acbpQuotaKarmaPoints = 10
       courseCompletionQuotaKarmaPoints = 5
@@ -837,7 +887,7 @@ content-publish:
     cloud_storage_secret="{{ cloud_storage_secret | replace('\n', '\\n') }}"
     cloud_storage_container="{{ cloud_storage_content_bucketname }}"
     cloud_storage_endpoint="{{ cloud_storage_endpoint }}"
-    
+
     hierarchy {
       keyspace = "{{ hierarchy_keyspace_name }}"
       table = "content_hierarchy"
@@ -885,10 +935,10 @@ content-publish:
     compositesearch.index.name = "compositesearch"
     search.document.type = "cs"
     content.ecar.file.generation.enabled = false
-    
+
     Course="Program"
     Course="Mandatory Course Goal"
-    
+
 
     master.category.validation.enabled ="{{ master_category_validation_enabled }}"
     service {

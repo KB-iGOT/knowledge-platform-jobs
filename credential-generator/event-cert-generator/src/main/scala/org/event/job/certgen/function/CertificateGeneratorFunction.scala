@@ -69,7 +69,7 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
       val certValidator = new CertValidator()
       logger.info("Certificate generator | is rc integration enabled: " + config.enableRcCertificate)
       certValidator.validateGenerateCertRequest(event, config.enableSuppressException)
-      val eventCompletionPercentage = event.eventCompletionPercentage.asInstanceOf[Double]
+      val eventCompletionPercentage = event.eventCompletionPercentage
       logger.info("printing event completion percentage" +eventCompletionPercentage)
       if (certValidator.isNotIssued(event)(config, metrics, cassandraUtil)) {
          if (eventCompletionPercentage >= config.minCompletePercentageForCertificate) {

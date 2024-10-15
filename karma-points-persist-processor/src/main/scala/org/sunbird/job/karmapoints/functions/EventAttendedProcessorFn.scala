@@ -46,7 +46,7 @@ class EventAttendedProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: Htt
     val usrId = event.getMap().get(config.USER_UNDERSCORE_ID).asInstanceOf[String]
     val event_Id = event.getMap().get(config.EVENT_ID).asInstanceOf[String]
     val batch_Id = event.getMap().get(config.BATCH_ID).asInstanceOf[String]
-    val ets = event.getMap().get(config.ETS).asInstanceOf[Long]
+    val ets = event.getMap().get(config.ETS).toString.toLong
     val etsDate = new java.util.Date(ets)
         //  val res :util.List[Row] = fetchUserBatch(event_Id,batch_Id)(config, cassandraUtil)
        //  val endDate = res.get(0).getObject(config.DB_COLUMN_END_DATE).asInstanceOf[Date]

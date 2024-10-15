@@ -133,6 +133,11 @@ collection_certificate_generator_enable_rc_certificate: true
 registry_sunbird_keyspace: "sunbird"
 cert_registry_table: "cert_registry"
 
+###  event cert generator Job related Vars
+event_cert_generator_consumer_parallelism: 1
+event_cert_generator_parallelism: 1
+event_cert_generator_enable_suppress_exception: false
+event_cert_generator_enable_rc_certificate: true
 
 ### Program Cert Pre Processor
 program_cert_pre_processor_consumer_parallelism: 1
@@ -248,6 +253,13 @@ flink_job_names:
     cpu_requests: 0.3
   collection-certificate-generator:
     job_class_name: 'org.sunbird.job.certgen.task.CertificateGeneratorStreamTask'
+    replica: 1
+    jobmanager_memory: 1024m
+    taskmanager_memory: 1024m
+    taskslots: 1
+    cpu_requests: 0.3
+  event-cert-generator:
+    job_class_name: 'org.event.job.certgen.task.EventGeneratorStreamTask'
     replica: 1
     jobmanager_memory: 1024m
     taskmanager_memory: 1024m
