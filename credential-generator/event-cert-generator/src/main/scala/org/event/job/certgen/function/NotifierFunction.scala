@@ -21,7 +21,7 @@ import scala.collection.mutable
 
 import scala.collection.JavaConverters._
 
-case class NotificationMetaData(userId: String, courseName: String, issuedOn: Date, courseId: String, batchId: String, templateId: String, partition: Int, offset: Long, courseProvider: String, coursePosterImage:String)
+case class NotificationMetaData(userId: String, courseName: String, issuedOn: Date, eventId: String, batchId: String, templateId: String, partition: Int, offset: Long, courseProvider: String, coursePosterImage:String)
 
 class NotifierFunction(config: EventCertificateGeneratorConfig, httpUtil: HttpUtil, @transient var cassandraUtil: CassandraUtil = null)(implicit val stringTypeInfo: TypeInformation[String])
   extends BaseProcessFunction[NotificationMetaData, String](config) {
@@ -48,7 +48,7 @@ class NotifierFunction(config: EventCertificateGeneratorConfig, httpUtil: HttpUt
     try {
       val userResponse: Map[String, AnyRef] = getUserDetails(metaData.userId)(metrics) // call user Service
       if (null != userResponse && userResponse.nonEmpty) {
-        val primaryFields = Map(config.courseId.toLowerCase() -> metaData.courseId,
+        val primaryFields = Map(config.courseId.toLowerCase() -> metaData.eventId,
           config.batchId.toLowerCase -> metaData.batchId)
         val row = getNotificationTemplates(primaryFields, metrics)
         val certTemplate = row.getMap(config.cert_templates, com.google.common.reflect.TypeToken.of(classOf[String]),
@@ -61,7 +61,7 @@ class NotifierFunction(config: EventCertificateGeneratorConfig, httpUtil: HttpUt
             certTemplate.get(metaData.templateId).containsKey(config.notifyTemplate))
           logger.info("Sending notification email. URL: {}", url)
           val notifyTemplate = getNotifyTemplateFromRes(certTemplate.get(metaData.templateId))
-          val ratingUrl = config.domainUrl + config.ratingMidPoint + metaData.courseId + config.ratingEndPoint + metaData.batchId
+          val ratingUrl = config.domainUrl + config.ratingMidPoint + metaData.eventId + config.ratingEndPoint + metaData.batchId
           val request = mutable.Map[String, AnyRef]("request" -> (notifyTemplate ++ mutable.Map[String, AnyRef](
             config.firstName -> userResponse.getOrElse(config.firstName, "").asInstanceOf[String],
             config.trainingName -> metaData.courseName,
