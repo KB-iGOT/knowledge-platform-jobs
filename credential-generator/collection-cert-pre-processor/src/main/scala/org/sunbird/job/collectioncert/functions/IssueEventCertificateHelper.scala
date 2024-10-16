@@ -101,8 +101,7 @@ trait IssueEventCertificateHelper {
 
   def validateEventUser(userId: String, userCriteria: Map[String, AnyRef], additionalProps: Map[String, List[String]])(metrics: Metrics, config: CollectionCertPreProcessorConfig, httpUtil: HttpUtil) = {
     if (!userId.isEmpty) {
-//      val url = config.learnerBasePath + config.userReadApi + "/" + userId + "?organisations,roles,locations,declarations,externalIds"
-      val url = "https://portal.dev.karmayogibharat.net/api/user/v2/read"+ "/" + userId + "?organisations,roles,locations,declarations,externalIds"
+      val url = config.learnerBasePath + config.userReadApi + "/" + userId + "?organisations,roles,locations,declarations,externalIds"
       val result = fetchAPICall(url, "response")(config, httpUtil, metrics)
       if (userCriteria.isEmpty || userCriteria.size == userCriteria.filter(uc => uc._2 == result.getOrElse(uc._1, null)).size) {
         result
@@ -255,6 +254,7 @@ trait IssueEventCertificateHelper {
       "primaryCategory" -> courseInfo.getOrDefault("primaryCategory", "").asInstanceOf[String],
       "parentCollections" -> parentCollections,
       "coursePosterImage" -> courseInfo.getOrDefault("coursePosterImage", "").asInstanceOf[String],
+      "eventCompletionPercentage" -> event.eData.getOrElse("eventCompletionPercentage",0)
     )
     logger.info("Constructured eData from preProcessor : " + JSONUtil.serialize(eData))
     ScalaJsonUtil.serialize(BEJobRequestEvent(edata = eData, `object` = EventObject(id = event.userId)))
