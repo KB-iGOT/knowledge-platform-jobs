@@ -270,7 +270,7 @@ trait BatchCreation {
       }
     }
     val httpRequest = JSONUtil.serialize(request)
-    val httpResponse = httpUtil.post(config.eventBatchCreateApuPath, httpRequest)
+    val httpResponse = httpUtil.post(config.eventBatchCreateApiPath, httpRequest)
     if (httpResponse.status == 200) {
       var responseBody: java.util.Map[String, AnyRef] = JSONUtil.deserialize[java.util.Map[String, AnyRef]](httpResponse.body)
       val resultStr: String = JSONUtil.serialize(responseBody.get(("result")))

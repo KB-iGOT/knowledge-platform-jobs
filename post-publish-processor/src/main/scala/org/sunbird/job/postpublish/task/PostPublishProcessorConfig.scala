@@ -85,7 +85,7 @@ class PostPublishProcessorConfig(override val config: Config) extends BaseJobCon
 
   // API URLs
   val batchCreateAPIPath = lmsBaseUrl + "/private/v1/course/batch/create"
-  val eventBatchCreateApuPath = lmsBaseUrl + "/v2/event/batch/create"
+  val eventBatchCreateApiPath = lmsBaseUrl + "/private/v2/event/batch/create"
   val searchAPIPath = searchBaseUrl + "/v3/search"
   val reserveDialCodeAPIPath = learningBaseUrl + "/content/v3/dialcode/reserve"
   val batchAddCertTemplateAPIPath = lmsBaseUrl + "/private/v1/course/batch/cert/template/add"
