@@ -19,7 +19,7 @@ import scala.collection.JavaConverters._
 class CollectionCertPreProcessorFn(config: CollectionCertPreProcessorConfig, httpUtil: HttpUtil)
                                   (implicit val stringTypeInfo: TypeInformation[String],
                                    @transient var cassandraUtil: CassandraUtil = null)
-  extends BaseProcessKeyedFunction[String, Event, String](config) with IssueCertificateHelper {
+  extends BaseProcessKeyedFunction[String, Event, String](config) with IssueCertificateHelper with IssueEventCertificateHelper {
 
     private[this] val logger = LoggerFactory.getLogger(classOf[CollectionCertPreProcessorFn])
     private var cache: DataCache = _
@@ -69,6 +69,22 @@ class CollectionCertPreProcessorFn(config: CollectionCertPreProcessorConfig, htt
                 }
             } else if (event.isValidEventType()(config)) {
                 // Call necessary methods from new helper class
+                val certTemplates = fetchTemplatesForEvent(event)(metrics).filter(template => template._2.getOrElse("url", "").asInstanceOf[String].contains(".svg"))
+                if (!certTemplates.isEmpty) {
+                    certTemplates.map(template => {
+                        val certEvent = issueEventCertificate(event, template._2)(cassandraUtil, cache, contentCache, metrics, config, httpUtil)
+                        Option(certEvent).map(e => {
+                            context.output(config.generateEventCertificateOutputTag, certEvent)
+                            metrics.incCounter(config.successEventCount)
+                        }
+                        ).getOrElse({
+                            metrics.incCounter(config.skippedEventCount)
+                        })
+                    })
+                } else {
+                    logger.info(s"No certTemplates available for Event batchId :${event.batchId}")
+                    metrics.incCounter(config.skippedEventCount)
+                }
             } else {
                 logger.info(s"Invalid request : ${event}")
                 metrics.incCounter(config.skippedEventCount)
@@ -96,5 +112,17 @@ class CollectionCertPreProcessorFn(config: CollectionCertPreProcessorConfig, htt
         }
     }
 
+    def fetchTemplatesForEvent(event: Event)(implicit metrics: Metrics): Map[String, Map[String, String]] = {
+        val query = QueryBuilder.select(config.certTemplates).from(config.keyspace, config.eventTable)
+          .where(QueryBuilder.eq(config.dbEventId, event.eventId)).and(QueryBuilder.eq(config.dbBatchId, event.batchId))
+
+        val row: Row = cassandraUtil.findOne(query.toString)
+        if (null != row && !row.isNull(config.certTemplates)) {
+            val templates = row.getMap(config.certTemplates, TypeToken.of(classOf[String]), TypeTokens.mapOf(classOf[String], classOf[String]))
+            templates.asScala.map(template => (template._1 -> template._2.asScala.toMap)).toMap
+        } else {
+            Map[String, Map[String, String]]()
+        }
+    }
     
 }

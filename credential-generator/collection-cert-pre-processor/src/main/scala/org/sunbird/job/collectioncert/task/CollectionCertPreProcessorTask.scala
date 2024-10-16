@@ -15,6 +15,7 @@ import org.sunbird.job.util.{FlinkUtil, HttpUtil}
 class CollectionCertPreProcessorTask(config: CollectionCertPreProcessorConfig, kafkaConnector: FlinkKafkaConnector, httpUtil: HttpUtil) {
     def process(): Unit = {
         implicit val env: StreamExecutionEnvironment = FlinkUtil.getExecutionContext(config)
+//implicit val env: StreamExecutionEnvironment = StreamExecutionEnvironment.createLocalEnvironment()
         implicit val eventTypeInfo: TypeInformation[Event] = TypeExtractor.getForClass(classOf[Event])
         implicit val stringTypeInfo: TypeInformation[String] = TypeExtractor.getForClass(classOf[String])
         val source = kafkaConnector.kafkaJobRequestSource[Event](config.kafkaInputTopic)
