@@ -53,6 +53,8 @@ class EventCertificateGeneratorConfig(override val config: Config) extends BaseJ
   val active: String = "active"
   val issuedCertificates: String = "issued_certificates"
   val dbEventId = "eventid"
+  val dbContentId = "contentid"
+  val dbContextId = "contextid"
 
   // Metric List
   val totalEventsCount = "total-events-count"
