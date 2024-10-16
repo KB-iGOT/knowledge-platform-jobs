@@ -345,7 +345,8 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
   Update.Where = QueryBuilder.update(config.dbKeyspace, config.dbEnrollmentTable).where()
     .`with`(QueryBuilder.set(config.issued_certificates, updatedCerts))
     .where(QueryBuilder.eq(config.userId.toLowerCase, userId))
-    .and(QueryBuilder.eq(config.EVENT_ID.toLowerCase, eventId))
+    .and(QueryBuilder.eq(config.dbContentId.toLowerCase, eventId))
+    .and(QueryBuilder.eq(config.dbContextId.toLowerCase, eventId))
     .and(QueryBuilder.eq(config.batchId.toLowerCase, batchId))
 
 
