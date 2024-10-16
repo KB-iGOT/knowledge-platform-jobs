@@ -49,7 +49,9 @@ class CollectionCertPreProcessorConfig(override val config: Config) extends Base
     val dbBatchId = "batchid"
     val dbCourseId = "courseid"
     val dbUserId = "userid"
-    val dbEventId = "contextid"
+    val dbEventId = "eventid"
+    val dbContextid = "contextid"
+    val dbContentid = "contentid"
     
     //API URL
     val contentBasePath = config.getString("service.content.basePath")

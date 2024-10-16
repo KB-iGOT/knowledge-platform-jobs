@@ -56,8 +56,8 @@ trait IssueEventCertificateHelper {
   def validateEventEnrolmentCriteria(event: Event, enrollmentCriteria: Map[String, AnyRef], certName: String, additionalProps: Map[String, List[String]])(metrics: Metrics, cassandraUtil: CassandraUtil, config: CollectionCertPreProcessorConfig): EnrolledUser = {
     if (!enrollmentCriteria.isEmpty) {
       val query = QueryBuilder.select().from(config.keyspace, config.userEventEnrolmentsTable)
-        .where(QueryBuilder.eq(config.dbUserId, event.userId)).and(QueryBuilder.eq(config.dbEventId, event.courseId))
-        .and(QueryBuilder.eq(config.dbBatchId, event.batchId))
+        .where(QueryBuilder.eq(config.dbUserId, event.userId)).and(QueryBuilder.eq(config.dbContextid, event.eventId))
+        .and(QueryBuilder.eq(config.dbContentid, event.eventId)).and(QueryBuilder.eq(config.dbBatchId, event.batchId))
       val row = cassandraUtil.findOne(query.toString)
       metrics.incCounter(config.dbReadCount)
       val enrolmentAdditionProps = additionalProps.getOrElse(config.enrollment, List[String]())
@@ -223,8 +223,8 @@ trait IssueEventCertificateHelper {
     }
 
     val recipientName = nullStringCheck(firstName).concat(" ").concat(nullStringCheck(lastName)).trim
-    val courseInfo: java.util.Map[String, AnyRef] = getEventInfo(event.courseId)(metrics, config, cache, httpUtil)
-    val courseName = courseInfo.getOrDefault("name", "").asInstanceOf[String]
+    val courseInfo: java.util.Map[String, AnyRef] = getEventInfo(event.eventId)(metrics, config, cache, httpUtil)
+    val courseName = courseInfo.getOrDefault("courseName", "").asInstanceOf[String]
     val dateFormatter = new SimpleDateFormat("yyyy-MM-dd")
     val related = getRelatedDataForEvent(event, enrolledUser, assessedUser, userDetails, additionalProps, certName, courseName)(config)
     val parentCollections: List[String] = Option(courseInfo.get(config.parentCollections))
@@ -254,7 +254,7 @@ trait IssueEventCertificateHelper {
       "primaryCategory" -> courseInfo.getOrDefault("primaryCategory", "").asInstanceOf[String],
       "parentCollections" -> parentCollections,
       "coursePosterImage" -> courseInfo.getOrDefault("coursePosterImage", "").asInstanceOf[String],
-      "eventCompletionPercentage" -> event.eData.getOrElse("eventCompletionPercentage",0)
+      "eventCompletionPercentage" -> event.eData.getOrElse("eventCompletionPercentage",Integer.valueOf(0))
     )
     logger.info("Constructured eData from preProcessor : " + JSONUtil.serialize(eData))
     ScalaJsonUtil.serialize(BEJobRequestEvent(edata = eData, `object` = EventObject(id = event.userId)))
@@ -303,8 +303,14 @@ trait IssueEventCertificateHelper {
       val parentCollections = courseMetadata.getOrElse("parentcollections", new java.util.ArrayList()).asInstanceOf[java.util.ArrayList[String]]
       val posterImage: String = StringContext.processEscapes(courseMetadata.getOrElse("posterimage", "").asInstanceOf[String]).filter(_ >= ' ')
       val orgData = courseMetadata.get("organisation").toArray
-      val pm = orgData(0).toString
-      val providerName = pm.substring(1, pm.length - 1)
+//      val pm = orgData(0).toString
+//      val providerName = pm.substring(1, pm.length - 1)
+        val providerName = if (orgData.nonEmpty) {
+          val pm = orgData(0).toString
+          pm.substring(1, pm.length - 1)
+        } else {
+          ""
+        }
       val courseInfoMap: java.util.Map[String, AnyRef] = new java.util.HashMap[String, AnyRef]()
       courseInfoMap.put("courseId", courseId)
       courseInfoMap.put("courseName", courseName)
