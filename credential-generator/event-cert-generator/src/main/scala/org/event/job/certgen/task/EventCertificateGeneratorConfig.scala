@@ -120,6 +120,8 @@ class EventCertificateGeneratorConfig(override val config: Config) extends BaseJ
   val TEMPLATE_ID: String = "templateId"
   val USER_ID: String = "userId"
   val EVENT_ID: String = "eventId"
+  val CONTENT_ID: String = "contentid"
+  val CONTEXT_ID: String = "contextid"
 
 
   val courseId = "courseId"
