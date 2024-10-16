@@ -139,15 +139,17 @@ trait BatchCreation {
     }
   }
 
-  def addCertTemplateToBatch(courseId: String, batchId: String, contextType: String)(implicit cassandraUtil: CassandraUtil, config: PostPublishProcessorConfig, httpUtil: HttpUtil) = {
-    logger.info("Adding cert template to batch:" + batchId + ", courseId: " + courseId)
+  def addCertTemplateToBatch(contextId: String, batchId: String, contextType: String)(implicit cassandraUtil: CassandraUtil, config: PostPublishProcessorConfig, httpUtil: HttpUtil) = {
+    logger.info("Adding cert template to batch:" + batchId + ", contextId: " + contextId + ", contextType: " + contextType)
     val selectQuery = QueryBuilder.select().all().from(config.sunbirdKeyspaceName, config.sbSystemSettingsTableName)
     var certTemplateId = config.defaultCertTemplateId
     var certTemplateAddPath = config.batchAddCertTemplateAPIPath
+    var reqIdKey = "courseId"
 
     if ("Event".equalsIgnoreCase(contextType)) {
       certTemplateId = config.defaultEventCertTemplateId
       certTemplateAddPath = config.batchAddCertTemplateAPIPathForEvent
+      reqIdKey = "eventId"
     }
 
     selectQuery.where.and(QueryBuilder.eq("id", certTemplateId))
@@ -163,7 +165,7 @@ trait BatchCreation {
             {
               put("batch",  new java.util.HashMap[String, AnyRef](){
                 {
-                  put("courseId", courseId)
+                  put(reqIdKey, contextId)
                   put("batchId", batchId)
                   put("template", certTemplate)
                 }
@@ -179,7 +181,7 @@ trait BatchCreation {
         logger.info("Certificate added into Batch successfully")
       } else {
         logger.error("Failed to add cert into Batch. status : " + httpResponse.status + " :: " + httpResponse.body)
-        throw new Exception("Add cert into Batch failed for Id " + courseId + ", BatchId: " + batchId)
+        throw new Exception("Add cert into Batch failed for Type: " + contextType + ", Id: " + contextId + ", BatchId: " + batchId)
       }
     } else {
       logger.error("Failed to read default cert template with id : " + config.defaultCertTemplateId)
