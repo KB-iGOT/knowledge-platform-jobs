@@ -62,6 +62,6 @@ class Event(eventMap: java.util.Map[String, Any], partition: Int, offset: Long) 
 
   def eventId: String = related.getOrElse("eventId", "").asInstanceOf[String]
 
-  def eventCompletionPercentage: Int = readOrDefault[Int]("edata.eventCompletionPercentage", 0)
+  def eventCompletionPercentage: Double = readOrDefault[Double]("edata.eventCompletionPercentage", 0)
 }
 
