@@ -90,15 +90,14 @@ trait IssueEventCertificateHelper {
       val addProps = {
         if (assessmentAdditionProps.nonEmpty && assessmentAdditionProps.contains("score")) Map("score" -> scoreMap)
         else Map()
-      }
-      if (isValidEventAssessCriteria(assessmentCriteria, score)) {
-        AssessedUser(enrolledUser, {
-          if (addProps.nonEmpty) Map[String, Any](config.assessment -> addProps) else Map()
-        })
-      } else AssessedUser("")
-    } else AssessedUser(enrolledUser)
+     }
+      AssessedUser(enrolledUser, {
+        if (addProps.nonEmpty) Map[String, Any](config.assessment -> addProps) else Map()
+      })
+    } else {
+      AssessedUser(enrolledUser)
+    }
   }
-
   def validateEventUser(userId: String, userCriteria: Map[String, AnyRef], additionalProps: Map[String, List[String]])(metrics: Metrics, config: CollectionCertPreProcessorConfig, httpUtil: HttpUtil) = {
     if (!userId.isEmpty) {
       val url = config.learnerBasePath + config.userReadApi + "/" + userId + "?organisations,roles,locations,declarations,externalIds"
@@ -143,32 +142,6 @@ trait IssueEventCertificateHelper {
       // TODO: Here we have an assumption that, we will consider max percentage from all the available attempts of different assessment contents.
       if (filteredUserAssessments.nonEmpty) filteredUserAssessments else Map()
     } else Map()
-  }
-
-  def isValidEventAssessCriteria(assessmentCriteria: Map[String, AnyRef], score: Double): Boolean = {
-    if (assessmentCriteria.get("score").isInstanceOf[Number]) {
-      score == assessmentCriteria.get("score").asInstanceOf[Int].toDouble
-    } else {
-      val scoreCriteria = assessmentCriteria.getOrElse("score", Map[String, AnyRef]()).asInstanceOf[Map[String, Int]]
-      if (scoreCriteria.isEmpty) false
-      else {
-        val operation = scoreCriteria.head._1
-        val criteriaScore = scoreCriteria.head._2.toDouble
-        operation match {
-          case "EQ" => score == criteriaScore
-          case "eq" => score == criteriaScore
-          case "=" => score == criteriaScore
-          case ">" => score > criteriaScore
-          case "<" => score < criteriaScore
-          case ">=" => score >= criteriaScore
-          case "<=" => score <= criteriaScore
-          case "ne" => score != criteriaScore
-          case "!=" => score != criteriaScore
-          case _ => false
-        }
-      }
-
-    }
   }
 
   def fetchAPICall(url: String, responseParam: String)(config: CollectionCertPreProcessorConfig, httpUtil: HttpUtil, metrics: Metrics): Map[String, AnyRef] = {

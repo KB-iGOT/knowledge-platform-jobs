@@ -286,7 +286,7 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
 
   def updateUserEnrollmentTable(event: Event, certMetaData: UserEnrollmentData, context: KeyedProcessFunction[String, Event, String]#Context)(implicit metrics: Metrics): Unit = {
     logger.info("updating user event enrollment table {}", certMetaData)
-    val primaryFields = Map(config.userId.toLowerCase() -> certMetaData.userId, config.CONTENT_ID.toLowerCase -> certMetaData.eventId, config.CONTEXT_ID.toLowerCase() -> certMetaData.eventId,  config.batchId.toLowerCase -> certMetaData.batchId)
+    val primaryFields = Map(config.dbUserId -> certMetaData.userId, config.dbContentId -> certMetaData.eventId, config.dbContextId -> certMetaData.eventId,  config.dbBatchId -> certMetaData.batchId)
     val records = getIssuedCertificatesFromUserEnrollmentTable(primaryFields)
     if (records.nonEmpty) {
       records.foreach((row: Row) => {
