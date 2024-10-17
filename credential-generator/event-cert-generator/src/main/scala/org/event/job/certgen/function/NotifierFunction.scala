@@ -128,7 +128,7 @@ class NotifierFunction(config: EventCertificateGeneratorConfig, httpUtil: HttpUt
    */
   private def getNotificationTemplates(columns: Map[String, AnyRef], metrics: Metrics): Row = {
     val selectWhere: Select.Where = QueryBuilder.select().all()
-      .from(config.dbKeyspace, config.dbCourseBatchTable).
+      .from(config.dbKeyspace, config.dbEventBatchTable).
       where()
     columns.map(col => {
       col._2 match {
@@ -138,7 +138,7 @@ class NotifierFunction(config: EventCertificateGeneratorConfig, httpUtil: HttpUt
           selectWhere.and(QueryBuilder.eq(col._1, col._2))
       }
     })
-    metrics.incCounter(config.courseBatchdbReadCount)
+    metrics.incCounter(config.eventBatchdbReadCount)
     cassandraUtil.findOne(selectWhere.toString)
   }
 
@@ -159,6 +159,6 @@ class NotifierFunction(config: EventCertificateGeneratorConfig, httpUtil: HttpUt
   }
 
   override def metricsList(): List[String] = {
-    List(config.courseBatchdbReadCount, config.skipNotifyUserCount, config.failedNotifyUserCount, config.notifiedUserCount, config.failedEventCount)
+    List(config.eventBatchdbReadCount, config.skipNotifyUserCount, config.failedNotifyUserCount, config.notifiedUserCount, config.failedEventCount)
   }
 }

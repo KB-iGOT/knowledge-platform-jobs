@@ -46,7 +46,7 @@ class EventCertificateGeneratorConfig(override val config: Config) extends BaseJ
   val dbKeyspace: String = config.getString("lms-cassandra.keyspace")
   val dbHost: String = config.getString("lms-cassandra.host")
   val dbPort: Int = config.getInt("lms-cassandra.port")
-  val dbCourseBatchTable: String = config.getString("lms-cassandra.course_batch.table")
+  val dbEventBatchTable: String = config.getString("lms-cassandra.event_batch.table")
   val dbBatchId = "batchid"
   val dbCourseId = "courseid"
   val dbUserId = "userid"
@@ -66,7 +66,7 @@ class EventCertificateGeneratorConfig(override val config: Config) extends BaseJ
   val notifiedUserCount = "notified-user-count"
   val skipNotifyUserCount = "skipped-notify-user-count"
   val failedNotifyUserCount = "failed-notify-user-count"
-  val courseBatchdbReadCount = "db-course-batch-read-count"
+  val eventBatchdbReadCount = "db-event-batch-read-count"
 
   // Consumers
   val certificateGeneratorConsumer = "certificate"
