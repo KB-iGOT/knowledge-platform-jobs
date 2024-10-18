@@ -253,15 +253,13 @@ trait IssueEventCertificateHelper {
   def getEventInfo(courseId: String)(metrics: Metrics, config: CollectionCertPreProcessorConfig, cache: DataCache, httpUtil: HttpUtil): java.util.Map[String, AnyRef] = {
     val courseMetadata = cache.getWithRetry(courseId)
     if (null == courseMetadata || courseMetadata.isEmpty) {
-      val url = config.contentBasePath + config.eventReadApi + "/" + courseId + "?fields=name,parentCollections,primaryCategory,posterImage,organisation"
+      val url = config.contentBasePath + config.eventReadApi + "/" + courseId + "?fields=name,parentCollections,resourceType,appIcon,sourceName"
       val response = fetchAPICall(url, "event")(config, httpUtil, metrics)
       val courseName = StringContext.processEscapes(response.getOrElse(config.name, "").asInstanceOf[String]).filter(_ >= ' ')
-      val primaryCategory = StringContext.processEscapes(response.getOrElse(config.primaryCategory, "").asInstanceOf[String]).filter(_ >= ' ')
-      val posterImage: String = StringContext.processEscapes(response.getOrElse(config.posterImage, "").asInstanceOf[String]).filter(_ >= ' ')
+      val primaryCategory = StringContext.processEscapes(response.getOrElse(config.resourceType, "").asInstanceOf[String]).filter(_ >= ' ')
+      val posterImage: String = StringContext.processEscapes(response.getOrElse(config.appIcon, "").asInstanceOf[String]).filter(_ >= ' ')
       val parentCollections = response.getOrElse("parentCollections", List.empty[String]).asInstanceOf[List[String]]
-      val orgData = response.get("organisation").toArray
-      val pm = orgData(0).toString
-      val providerName = pm.substring(1, pm.length - 1)
+      val providerName = StringContext.processEscapes(response.getOrElse(config.sourceName, "").asInstanceOf[String]).filter(_ >= ' ')
       val courseInfoMap: java.util.Map[String, AnyRef] = new java.util.HashMap[String, AnyRef]()
       courseInfoMap.put("courseId", courseId)
       courseInfoMap.put("courseName", courseName)
@@ -272,18 +270,10 @@ trait IssueEventCertificateHelper {
       courseInfoMap
     } else {
       val courseName = StringContext.processEscapes(courseMetadata.getOrElse(config.name, "").asInstanceOf[String]).filter(_ >= ' ')
-      val primaryCategory = StringContext.processEscapes(courseMetadata.getOrElse("primarycategory", "").asInstanceOf[String]).filter(_ >= ' ')
+      val primaryCategory = StringContext.processEscapes(courseMetadata.getOrElse("resourcetype", "").asInstanceOf[String]).filter(_ >= ' ')
       val parentCollections = courseMetadata.getOrElse("parentcollections", new java.util.ArrayList()).asInstanceOf[java.util.ArrayList[String]]
-      val posterImage: String = StringContext.processEscapes(courseMetadata.getOrElse("posterimage", "").asInstanceOf[String]).filter(_ >= ' ')
-      val orgData = courseMetadata.get("organisation").toArray
-//      val pm = orgData(0).toString
-//      val providerName = pm.substring(1, pm.length - 1)
-        val providerName = if (orgData.nonEmpty) {
-          val pm = orgData(0).toString
-          pm.substring(1, pm.length - 1)
-        } else {
-          ""
-        }
+      val posterImage: String = StringContext.processEscapes(courseMetadata.getOrElse("appicon", "").asInstanceOf[String]).filter(_ >= ' ')
+      val providerName: String = StringContext.processEscapes(courseMetadata.getOrElse("sourcename", "").asInstanceOf[String]).filter(_ >= ' ')
       val courseInfoMap: java.util.Map[String, AnyRef] = new java.util.HashMap[String, AnyRef]()
       courseInfoMap.put("courseId", courseId)
       courseInfoMap.put("courseName", courseName)

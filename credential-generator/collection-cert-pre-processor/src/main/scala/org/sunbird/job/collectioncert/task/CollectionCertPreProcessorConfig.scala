@@ -97,5 +97,7 @@ class CollectionCertPreProcessorConfig(override val config: Config) extends Base
     val posterImage: String = "posterImage"
     val parentCollections: String = "parentCollections"
     val issueEventCertificate = "issue-event-certificate"
-
+    val appIcon: String = "appIcon"
+    val sourceName: String = "sourceName"
+    val resourceType: String = "resourceType"
 }
