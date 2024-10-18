@@ -9,18 +9,16 @@ class Event(eventMap: java.util.Map[String, Any], partition: Int, offset: Long) 
 
     def batchId: String = readOrDefault[String]("edata.batchId", "")
 
-    def courseId: String = readOrDefault[String]("edata.courseId", "")
+    def eventType: String = readOrDefault[String]("edata.type", "")
+
+    def typeId: String = readOrDefault[String]("edata.typeId", "")
 
     def userId: String = readOrDefault[String]("edata.userId", "")
 
-    def providerName: String = readOrDefault[String]("edata.providerName", "")
-
-    def primaryCategory: String = readOrDefault[String]("edata.primaryCategory", "")
-
-    def eData: Map[String, AnyRef] = readOrDefault[Map[String, AnyRef]]("edata", Map[String, AnyRef]())
+    def status: String = readOrDefault[String]("edata.status", "")
 
     def isValid()(config: UserActivityAnalysisUpdaterConfig): Boolean = {
-        config.programCertPreProcess.equalsIgnoreCase(action) && !batchId.isEmpty && !courseId.isEmpty &&
-          !userId.isEmpty
+        config.programCertPreProcess.equalsIgnoreCase(action) && !batchId.isEmpty && !typeId.isEmpty &&
+          !userId.isEmpty && !eventType.isEmpty && !status.isEmpty
     }
 }

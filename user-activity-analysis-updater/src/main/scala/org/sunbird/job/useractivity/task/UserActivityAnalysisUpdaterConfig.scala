@@ -12,7 +12,7 @@ class UserActivityAnalysisUpdaterConfig(override val config: Config) extends Bas
 
   //Redis config
   val collectionCacheStore: Int = 0
-  val relationCacheStore: Int = config.getInt("redis-meta.database.collectionIndex")
+
   val contentCacheStore: Int = 5
   val metaRedisHost: String = config.getString("redis-meta.host")
   val metaRedisPort: Int = config.getInt("redis-meta.port")
@@ -33,7 +33,7 @@ class UserActivityAnalysisUpdaterConfig(override val config: Config) extends Bas
   val dbHost: String = config.getString("lms-cassandra.host")
   val dbPort: Int = config.getInt("lms-cassandra.port")
   val keyspace: String = config.getString("lms-cassandra.keyspace")
-  val userEnrolmentsTable: String = config.getString("lms-cassandra.user_enrolments.table")
+  val userTable: String = config.getString("lms-cassandra.user.table")
   val dbBatchId = "batchId"
   val dbCourseId = "courseid"
   val dbUserId = "userid"
@@ -78,5 +78,13 @@ class UserActivityAnalysisUpdaterConfig(override val config: Config) extends Bas
   val allowedPrimaryCategoryForProgram = List[String]("Course")
   val childrenCourses: String = "childrenCourses"
   val leafNodesKey = "leafnodes"
+
+  //Postgres config
+  val postgresDbHost: String = config.getString("postgres.host")
+  val postgresDbPort: Int = config.getInt("postgres.port")
+  val postgresDbDatabase: String = config.getString("postgres.database")
+  val postgresDbUsername: String = config.getString("postgres.username")
+  val postgresDbPassword: String = config.getString("postgres.password")
+  val postgresDbTable: String = "user_activity"
 
 }

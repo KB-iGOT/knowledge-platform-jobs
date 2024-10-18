@@ -14,14 +14,21 @@ import org.sunbird.job.useractivity.functions.UserActivityAnalysisUpdaterFn
 import org.sunbird.job.util.{FlinkUtil, HttpUtil}
 
 class UserActivityAnalysisUpdaterTask(config: UserActivityAnalysisUpdaterConfig, kafkaConnector: FlinkKafkaConnector, httpUtil: HttpUtil) {
-    private[this] val logger = LoggerFactory.getLogger(classOf[UserActivityAnalysisUpdaterTask])
+  /*  private[this] val logger = LoggerFactory.getLogger(classOf[UserActivityAnalysisUpdaterTask])*/
+    @transient private[this] val logger = LoggerFactory.getLogger(classOf[UserActivityAnalysisUpdaterTask])
 
     def process(): Unit = {
+        // Create the Flink execution environment
         implicit val env: StreamExecutionEnvironment = FlinkUtil.getExecutionContext(config)
         implicit val eventTypeInfo: TypeInformation[Event] = TypeExtractor.getForClass(classOf[Event])
         implicit val stringTypeInfo: TypeInformation[String] = TypeExtractor.getForClass(classOf[String])
-        val source = kafkaConnector.kafkaJobRequestSource[Event](config.kafkaInputTopic)
+
+        // Source: Fetch data from Kafka
+        val source = kafkaConnector.kafkaJobRequestSource[Event]("user-dash-state")
         logger.info("This is under process for task")
+
+
+        // Process Stream: Process the events and handle side outputs for certificates
         val progressStream =
             env.addSource(source).name(config.certificatePreProcessorConsumer)
               .uid(config.certificatePreProcessorConsumer).setParallelism(config.kafkaConsumerParallelism)
@@ -51,5 +58,5 @@ object UserActivityAnalysisUpdaterTask {
 }
 
 class UserActivityAnalysisUpdaterKeySelector extends KeySelector[Event, String] {
-    override def getKey(event: Event): String = Set(event.userId, event.courseId, event.batchId).mkString("_")
+    override def getKey(event: Event): String = Set(event.userId, event.typeId, event.batchId,event.eventType,event.status).mkString("_")
 }

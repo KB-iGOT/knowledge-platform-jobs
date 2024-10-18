@@ -1,10 +1,7 @@
 package org.sunbird.job.useractivity.functions
 
-import com.datastax.driver.core.{Row, TypeTokens}
-import com.datastax.driver.core.querybuilder.{QueryBuilder, Select, Update}
-import com.google.common.reflect.TypeToken
-import org.apache.commons.collections.CollectionUtils
-import org.apache.commons.lang3.StringUtils
+import com.datastax.driver.core.Row
+import com.datastax.driver.core.querybuilder.QueryBuilder
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper
@@ -12,19 +9,20 @@ import org.apache.flink.streaming.api.functions.KeyedProcessFunction
 import org.slf4j.LoggerFactory
 import org.sunbird.job.cache.{DataCache, RedisConnect}
 import org.sunbird.job.exception.InvalidEventException
-import org.sunbird.job.useractivity.domain.Event
+import org.sunbird.job.useractivity.domain.{Event, UserDashState}
 import org.sunbird.job.useractivity.task.UserActivityAnalysisUpdaterConfig
-import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil}
+import org.sunbird.job.util.{CassandraUtil, HttpUtil, PostgresUtil}
 import org.sunbird.job.{BaseProcessKeyedFunction, Metrics}
 
-import java.util.{Date, UUID}
-import scala.collection.JavaConverters._
-import scala.collection.convert.ImplicitConversions.{`map AsScala`, `seq AsJavaList`}
-import scala.collection.mutable
+import java.sql.{Connection, DriverManager, PreparedStatement, ResultSet, Timestamp}
+import java.time.LocalDateTime
+import java.util.UUID
+
+
 
 class UserActivityAnalysisUpdaterFn(config: UserActivityAnalysisUpdaterConfig, httpUtil: HttpUtil)
                                (implicit val stringTypeInfo: TypeInformation[String],
-                                @transient var cassandraUtil: CassandraUtil = null)
+                                @transient var postgresUtil: PostgresUtil = null,@transient var cassandraUtil: CassandraUtil = null)
   extends BaseProcessKeyedFunction[String, Event, String](config) with IssueCertificateHelper {
 
   private[this] val logger = LoggerFactory.getLogger(classOf[UserActivityAnalysisUpdaterFn])
@@ -36,22 +34,15 @@ class UserActivityAnalysisUpdaterFn(config: UserActivityAnalysisUpdaterConfig, h
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
     cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
+    postgresUtil = new PostgresUtil(config.postgresDbHost, config.postgresDbPort, config.postgresDbDatabase, config.postgresDbUsername, config.postgresDbPassword)
     val redisConnect = new RedisConnect(config)
     cache = new DataCache(config, redisConnect, config.collectionCacheStore, List())
     cache.init()
-
-    // Using LP cache for leafnodes, ancestors cache for the collection.
-    val lpCacheConnect = new RedisConnect(config)
-    relationCache = new DataCache(config, lpCacheConnect, config.relationCacheStore, List())
-    relationCache.init()
-
-    val metaRedisConn = new RedisConnect(config, Option(config.metaRedisHost), Option(config.metaRedisPort))
-    contentCache = new DataCache(config, metaRedisConn, config.contentCacheStore, List())
-    contentCache.init()
   }
 
   override def close(): Unit = {
     cassandraUtil.close()
+    postgresUtil.close()
     cache.close()
     super.close()
   }
@@ -64,274 +55,239 @@ class UserActivityAnalysisUpdaterFn(config: UserActivityAnalysisUpdaterConfig, h
   override def processElement(event: Event,
                               context: KeyedProcessFunction[String, Event, String]#Context,
                               metrics: Metrics): Unit = {
+
+    val userId = event.userId
     try {
-      val courseParentId = event.courseId
-      if (courseParentId.nonEmpty) {
-        val enrolmentRecords = getAllEnrolments(event.userId)(metrics)
-        val programEnrollmentRow = getEnrollmentRecord(enrolmentRecords, courseParentId)
-        //if enrolled into program
-        if (programEnrollmentRow.isDefined && programEnrollmentRow.get.getList(config.issuedCertificates, TypeTokens.mapOf(classOf[String], classOf[String])).isEmpty) {
-          //programchildrenCourses write private method using readFromCache List<String>
-          val key = s"$courseParentId:$courseParentId:${config.childrenCourses}"
-          val programChildrenCourses = readFromRelationCache(key, metrics).distinct
-          logger.info("The programChildrenCollections from Redish:" + programChildrenCourses)
-          if (programChildrenCourses.nonEmpty) {
-            val batchId: String = programEnrollmentRow.get.getString(config.dbBatchId)
-            val leafNodeMap = mutable.Map[String, Int]()
-
-            var isProgramCertificateToBeGenerated: Boolean = true;
-            var lastCourseCompleteOn: Date = null
-            var programCompletedOn: Date = null
-            for (courseId <- programChildrenCourses) {
-              val courseMetadata: java.util.Map[String, AnyRef] = getCourseInfo(courseId)(metrics, config, cache, httpUtil)
-              val primaryCategory = courseMetadata.get(config.primaryCategory).asInstanceOf[String]
-              if (config.allowedPrimaryCategoryForProgram.contains(primaryCategory)) {
-                val userId: String = event.userId
-                val courseEnrollmentRow = getEnrollmentRecord(enrolmentRecords, courseId)
-                val isCertificateIssued = courseEnrollmentRow.isDefined && !courseEnrollmentRow.get.getList(config.issuedCertificates, TypeTokens.mapOf(classOf[String], classOf[String])).isEmpty
-                logger.info("Is Certificate Available for courseId: " + courseId + " userId:" + userId + " :" + isCertificateIssued)
-                var courseCompletedOn: Date = null;
-                if (isCertificateIssued) {
-                  courseCompletedOn = courseEnrollmentRow.get.getTimestamp("completedon")
-                  if (lastCourseCompleteOn == null) {
-                    lastCourseCompleteOn = courseCompletedOn
-                  } else if (lastCourseCompleteOn.before(courseCompletedOn)) {
-                    lastCourseCompleteOn = courseCompletedOn
-                  }
-                }
-                if (courseEnrollmentRow.isDefined) {
-                  val courseContentStatus = Option(courseEnrollmentRow.get.getMap(
-                    config.contentStatus, TypeToken.of(classOf[String]), TypeToken.of(classOf[Integer]))).head.asScala
-                  for ((key, value) <- courseContentStatus) {
-                    // Check if the key is present in leafNodeMap
-                    if (courseContentStatus.get(key) != null) {
-                      if (courseContentStatus.get(key).head.equals(2)) {
-                        val leafNodeKey: String = key
-                        // Update progress in contentStatus for the matching key
-                        leafNodeMap += (leafNodeKey -> value)
-                      }
-                      logger.info("Updated leafNodeMap: " + leafNodeMap + " courseid:" + courseId)
-                    }
-                  }
-                }
-                if (!isCertificateIssued && isProgramCertificateToBeGenerated) { //AtLeast one course doesn't have certificate
-                  isProgramCertificateToBeGenerated = false;
-                }
-              }
-            }
-            if (!leafNodeMap.isEmpty) {
-              val programContentStatus = Option(programEnrollmentRow.get.getMap(
-                config.contentStatus, TypeToken.of(classOf[String]), TypeToken.of(classOf[Integer]))).head
-              var progressCount: Integer = Option(programEnrollmentRow.get.getInt(config.progress)).head
-              val keyForLeafNodesForProgram = s"$courseParentId:$courseParentId:${config.leafNodesKey}"
-              val leafNodesForProgram = readFromRelationCache(keyForLeafNodesForProgram, metrics).distinct
-
-              logger.info("The keyForLeafNodesForProgram from Redish:" + leafNodesForProgram)
-              for ((key, value) <- leafNodeMap) {
-                // Check if the key is present in leafNodeMap
-                if (leafNodesForProgram.contains(key)) {
-                  // Update progress in contentStatus for the matching key
-                  programContentStatus.put(key, value)
-                } else {
-                  logger.info("The value is not present on the leafnode for program: " + key)
-                }
-              }
-              if (!programContentStatus.isEmpty) {
-                progressCount = programContentStatus.filter(_._2 == 2).size
-              }
-              var status: Int = 1
-              if (progressCount == leafNodesForProgram.size()) {
-                status = 2
-                programCompletedOn = lastCourseCompleteOn
-              } else {
-                isProgramCertificateToBeGenerated = false
-              }
-              updateEnrolment(event.userId, batchId, courseParentId, programContentStatus, status, progressCount, programCompletedOn)(metrics)
-            }
-
-            if (isProgramCertificateToBeGenerated) {
-              //Add kafka event to generate Certificate for Program
-              logger.info("Adding the kafka event for programId: " + courseParentId)
-              createIssueCertEventForProgram(courseParentId, event.userId, batchId, context)(metrics)
-            }
-          }
+      if (userId.nonEmpty) {
+        // Fetch rootOrgId
+        val rootOrgIdOpt = fetchRootOrgId(userId)(metrics)
+        rootOrgIdOpt match {
+          case Some(rootOrgId) =>
+            handleUserActivityInDB(userId, rootOrgId, event)(metrics)
+          case None =>
+            logger.warn(s"No rootOrgId found for userId: $userId. Skipping upsert.")
         }
+      } else {
+        logger.warn("Received empty userId. Skipping processing.")
       }
     } catch {
       case ex: Exception => {
+        logger.error("Error processing event", ex)
         throw new InvalidEventException(ex.getMessage, Map("partition" -> event.partition, "offset" -> event.offset), ex)
       }
     }
-    logger.info("Inside the Process ElementForProgram");
+    logger.info(s"Finished processing the event for userId: $userId")
   }
 
-  def getProgramChildren(programId: String)(metrics: Metrics, config: UserActivityAnalysisUpdaterConfig, cache: DataCache, httpUtil: HttpUtil): java.util.Map[String, AnyRef] = {
-    val query = QueryBuilder.select(config.Hierarchy).from(config.contentHierarchyKeySpace, config.contentHierarchyTable)
-      .where(QueryBuilder.eq(config.identifier, programId))
-    val row = cassandraUtil.find(query.toString)
-    if (CollectionUtils.isNotEmpty(row)) {
-      val hierarchy = row.asScala.head.getObject(config.Hierarchy).asInstanceOf[String]
-      if (StringUtils.isNotBlank(hierarchy))
-        mapper.readValue(hierarchy, classOf[java.util.Map[String, AnyRef]])
-      else new java.util.HashMap[String, AnyRef]()
-    }
-    else new java.util.HashMap[String, AnyRef]()
-  }
+  // Fetch rootOrgId from user table in Cassandra
+  def fetchRootOrgId(userId: String)(implicit metrics: Metrics): Option[String] = {
+    val selectQuery = QueryBuilder.select("rootorgid")
+      .from(config.keyspace, config.userTable) // Adjust userTable based on your config
+      .where(QueryBuilder.eq("userid", userId))
 
-  private def getCourseEnrollment(columns: Map[String, AnyRef])(implicit metrics: Metrics): Row = {
-    logger.info("primary columns {}", columns)
-    val selectWhere = QueryBuilder.select().all()
-      .from(config.keyspace, config.userEnrolmentsTable).
-      where()
-    columns.map(col => {
-      col._2 match {
-        case value: List[Any] =>
-          selectWhere.and(QueryBuilder.in(col._1, value.asJava))
-        case _ =>
-          selectWhere.and(QueryBuilder.eq(col._1, col._2))
-      }
-    })
-    logger.info("select query {}", selectWhere.toString)
-    var row: java.util.List[Row] = cassandraUtil.find(selectWhere.toString)
-    if (null != row) {
-      if (row.size() == 1) {
-        row.asScala.get(0)
-      } else {
-        logger.error("More than one certificate" + columns)
-        null
-      }
+    val row: Row = cassandraUtil.findOne(selectQuery.toString)
+    if (row != null) {
+      Some(row.getString("rootorgid"))
     } else {
-      logger.error("No Certificate Available" + columns)
-      null
-    }
-  }
-
-  def getEnrolment(userId: String, programId: String)(implicit metrics: Metrics): Row = {
-    val selectWhere: Select.Where = QueryBuilder.select().all()
-      .from(config.keyspace, config.userEnrolmentsTable).
-      where()
-    selectWhere.and(QueryBuilder.eq(config.dbUserId, userId))
-      .and(QueryBuilder.eq(config.dbCourseId, programId))
-    metrics.incCounter(config.dbReadCount)
-    var row: java.util.List[Row] = cassandraUtil.find(selectWhere.toString)
-    if (null != row) {
-      if (row.size() == 1) {
-        row.asScala.get(0)
-      } else {
-        logger.error("Enrollement is more than 1, for programId:" + programId + " userId:" + userId)
-        null
-      }
-    } else {
-      logger.error("No Enrollement found for programId: " + programId + " userId: " + userId)
-      null
-    }
-  }
-
-  def updateEnrolment(userId: String, batchId: String, programId: String, contentStatus: java.util.Map[String, Integer], status: Int, progress: Int, programCompletedOn: Date)(implicit metrics: Metrics): Unit = {
-    logger.info("Enrolment updated for userId: " + userId + " batchId: " + batchId)
-    val updateQuery = QueryBuilder.update(config.keyspace, config.userEnrolmentsTable)
-      .`with`(QueryBuilder.set("status", status))
-      .and(QueryBuilder.set("progress", progress))
-      .and(QueryBuilder.set("contentstatus", contentStatus))
-      .and(QueryBuilder.set("datetime", System.currentTimeMillis))
-    if (status == 2) {
-      updateQuery.and(QueryBuilder.set("completedon", programCompletedOn))
-    }
-    updateQuery.where(QueryBuilder.eq("userid", userId))
-      .and(QueryBuilder.eq("courseid", programId))
-      .and(QueryBuilder.eq("batchid", batchId))
-
-    val result = cassandraUtil.upsert(updateQuery.toString)
-    if (result) {
-      metrics.incCounter(config.dbUpdateCount)
-    } else {
-      val msg = "Database update has failed" + updateQuery.toString
-      logger.error(msg)
-      throw new Exception(msg)
-    }
-  }
-
-  def createIssueCertEventForProgram(programId: String, userId: String, batchId: String, context: KeyedProcessFunction[String, Event, String]#Context)(implicit metrics: Metrics): Unit = {
-    val ets = System.currentTimeMillis
-    val mid = s"""LP.${ets}.${UUID.randomUUID}"""
-    val event = s"""{"eid": "BE_JOB_REQUEST","ets": ${ets},"mid": "${mid}","actor": {"id": "Program Certificate Generator","type": "System"},"context": {"pdata": {"ver": "1.0","id": "org.sunbird.platform"}},"object": {"id": "${batchId}_${programId}","type": "ProgramCertificateGeneration"},"edata": {"userIds": ["${userId}"],"action": "issue-certificate","iteration": 1, "trigger": "auto-issue","batchId": "${batchId}","reIssue": false,"courseId": "${programId}"}}"""
-    logger.info("o/p event:  " + event)
-    context.output(config.generateCertificateOutputTag, event)
-    metrics.incCounter(config.programCertIssueEventsCount)
-  }
-
-  def getAllEnrolments(userId: String)(implicit metrics: Metrics): java.util.List[Row] = {
-    val selectWhere: Select.Where = QueryBuilder.select(config.dbUserId, config.dbCourseId, config.dbBatchId, config.contentStatus, config.progress, config.issuedCertificates, "completedon", "active")
-      .from(config.keyspace, config.userEnrolmentsTable).where()
-    selectWhere.and(QueryBuilder.eq(config.dbUserId, userId))
-    metrics.incCounter(config.dbReadCount)
-    cassandraUtil.find(selectWhere.toString)
-  }
-
-  def getEnrollmentRecord(enrollList: java.util.List[Row], courseId: String): Option[Row] = {
-    if (null != enrollList) {
-      enrollList.asScala.find { row =>
-        val courseid = row.getString("courseid")
-        val active = row.getBool("active")
-        (courseid == courseId) && active
-      }
-    } else {
+      logger.error(s"No rootOrgId found for userId: $userId")
       None
     }
   }
 
-  def readFromRelationCache(key: String, metrics: Metrics): List[String] = {
-    metrics.incCounter(config.cacheHitCount)
-    val list = relationCache.getKeyMembers(key)
-    if (CollectionUtils.isEmpty(list)) {
-      metrics.incCounter(config.cacheMissCount)
-      logger.info("Redis cache (smembers) not available for key: " + key)
-    }
-    list.asScala.toList
-  }
 
-  def getCourseInfo(courseId: String)(
-    metrics: Metrics,
-    config: UserActivityAnalysisUpdaterConfig,
-    cache: DataCache,
-    httpUtil: HttpUtil
-  ): java.util.Map[String, AnyRef] = {
-    val courseMetadata = cache.getWithRetry(courseId)
-    if (null == courseMetadata || courseMetadata.isEmpty) {
-      val url =
-        config.contentReadURL + courseId + "?fields=identifier,primaryCategory,leafNodes"
-      val response = getAPICall(url, "content")(config, httpUtil, metrics)
-      val primaryCategory = StringContext
-        .processEscapes(
-          response.getOrElse(config.primaryCategory, "").asInstanceOf[String]
-        )
-        .filter(_ >= ' ')
-      val leafNodes = response
-        .getOrElse(config.leafNodes, List.empty[String]).asInstanceOf[List[String]]
-      val courseInfoMap: java.util.Map[String, AnyRef] =
-        new java.util.HashMap[String, AnyRef]()
-      courseInfoMap.put("courseId", courseId)
-      courseInfoMap.put(config.primaryCategory, primaryCategory)
-      courseInfoMap.put(config.leafNodes, leafNodes.asJava)
-      courseInfoMap
+  /**
+   * Handles user activity by updating or inserting user dashboard state in the database.
+   *
+   * @param userId    Unique identifier for the user.
+   * @param rootOrgId Identifier for the root organization.
+   * @param event     Event containing the user activity information.
+   * @param metrics   Implicit metrics for tracking performance.
+   */
+  def handleUserActivityInDB(userId: String, rootOrgId: String, event: Event)(implicit metrics: Metrics): Unit = {
+    logger.info(s"Handling user activity for userId: $userId, event: ${event.status}")
+    if (event.status.equalsIgnoreCase("enrolled")) {
+      val userDashState = createUserDashState(event, rootOrgId, userId)
+      insertUserDashState(userDashState)
+      logger.info(s"Inserted new user dashboard state for userId: $userId")
     } else {
-      val primaryCategory = StringContext
-        .processEscapes(
-          courseMetadata
-            .getOrElse("primarycategory", "")
-            .asInstanceOf[String]
-        )
-        .filter(_ >= ' ')
-      val leafNodes = courseMetadata
-        .getOrElse("leafnodes", new java.util.ArrayList()).asInstanceOf[java.util.List[String]]
-      val courseInfoMap: java.util.Map[String, AnyRef] =
-        new java.util.HashMap[String, AnyRef]()
-      courseInfoMap.put("courseId", courseId)
-      courseInfoMap.put(config.primaryCategory, primaryCategory)
-      courseInfoMap.put(config.leafNodes, leafNodes)
-      courseInfoMap
+      logger.info(s"Querying existing records for userId: $userId with typeIdentifier: ${event.typeId}")
+      val existingRecordQuery = QueryBuilder.select("id", "org_id", "content_type", "type_identifier", "user_id", "status", "updated_date", "enrolled_date", "created_date", "completed_date", "certification_date")
+        .from(config.postgresDbTable)
+        .where(QueryBuilder.eq("user_id", userId))
+        .and(QueryBuilder.eq("type_identifier", event.typeId))
+      val existingRecord: Option[ResultSet] = postgresUtil.executeQuery(existingRecordQuery.toString)
+      if (existingRecord.isDefined) {
+        existingRecord match {
+          case Some(rs) =>
+            if (rs.next()) {
+              if (event.status.equalsIgnoreCase("complete")) {
+                val currentTimestamp: LocalDateTime = LocalDateTime.now()
+                val timestamp: Timestamp = Timestamp.valueOf(currentTimestamp)
+                val completedDate = timestamp
+                val typeIdentifier = rs.getString("type_identifier")
+                val certificateDate = timestamp;
+                val updatedDate = timestamp;
+                val updatedRecord = updateUserActivity(userId, event.status, completedDate, certificateDate, typeIdentifier, updatedDate)
+                if (updatedRecord == 1) {
+                  metrics.incCounter(config.dbUpdateCount)
+                  logger.info(s"Successfully updated user activity for userId: $userId with status: ${event.status}")
+                } else
+                  logger.warn(s"Failed to update user activity for userId: $userId with status: ${event.status}")
+              } else if (event.status.equalsIgnoreCase("certificate")) {
+                val currentTimestamp: LocalDateTime = LocalDateTime.now()
+                val timestamp: Timestamp = Timestamp.valueOf(currentTimestamp)
+                val completedDate = timestamp
+                val typeIdentifier = rs.getString("type_identifier")
+                val certificateDate = timestamp
+                val updatedDate = timestamp
+                val updatedRecord = updateUserActivity(userId, event.status, completedDate, certificateDate, typeIdentifier, updatedDate)
+                if (updatedRecord == 1) {
+                  metrics.incCounter(config.dbUpdateCount)
+                }
+              }
+            } else {
+              logger.warn(s"No record found for userId: $userId with typeIdentifier: ${event.typeId}")
+            }
+            rs.close()
+          case None =>
+            logger.error("Query execution failed, result set is None.")
+        }
+      }
+      else {
+        logger.warn(s"No existing records found for userId: $userId.")
+      }
     }
-
   }
 
+
+  /**
+   * Updates the user activity in the database based on the given parameters.
+   *
+   * @param userId          Unique identifier for the user.
+   * @param status          Current status of the user activity (e.g., "complete", "certificate").
+   * @param completedDate   Timestamp for when the activity was completed.
+   * @param certificateDate Timestamp for when the certificate was issued.
+   * @param typeIdentifier  Identifier for the type of user activity.
+   * @param updatedDate     Timestamp for when the record was last updated.
+   * @return Number of records updated (should be 1 if successful).
+   */
+  def updateUserActivity(
+                          userId: String,
+                          status: String,
+                          completedDate: Timestamp,
+                          certificateDate: Timestamp,
+                          typeIdentifier: String,
+                          updatedDate: Timestamp
+                        ): Int = {
+    var query = ""
+    if (status.equalsIgnoreCase("complete")) {
+      logger.info(s"Preparing query to update user activity for userId: $userId with status: $status")
+      query =
+        s"""
+           |UPDATE user_activity
+           |SET type_identifier = '$typeIdentifier',
+           |    status = '$status',
+           |    completed_date ='$completedDate',
+           |    updated_date ='$updatedDate'
+           |WHERE user_id= '$userId' and type_identifier = '$typeIdentifier'
+           |""".stripMargin.replaceAll("\n", " ")
+    } else if (status.equalsIgnoreCase("certificate")) {
+      logger.info(s"Preparing query to update user activity for userId: $userId with status: $status")
+      query =
+        s"""
+           |UPDATE user_activity
+           |SET type_identifier = '$typeIdentifier',
+           |    status = '$status',
+           |    updated_date ='$updatedDate',
+           |    certification_date ='$certificateDate'
+           |WHERE user_id= '$userId' and type_identifier = '$typeIdentifier'
+           |""".stripMargin.replaceAll("\n", " ")
+    }
+    else {
+      logger.warn(s"Unrecognized status: $status for userId: $userId. No update will be performed.")
+      return 0
+    }
+    logger.info(s"Executed update query for userId: $userId")
+    postgresUtil.updateQuery(query)
+  }
+
+  /**
+   * Creates a UserDashState object based on the provided event details.
+   *
+   * @param event     The event containing user activity information.
+   * @param rootOrgId Identifier for the root organization.
+   * @param userId    Unique identifier for the user.
+   * @return         A UserDashState instance populated with event data.
+   */
+  def createUserDashState(event: Event, rootOrgId: String, userId: String): UserDashState = {
+    val currentTimestamp: LocalDateTime = LocalDateTime.now()
+    val timestamp: Timestamp = Timestamp.valueOf(currentTimestamp)
+    val userDashState = UserDashState(
+      id = UUID.randomUUID().toString,
+      orgId = rootOrgId,
+      contentType = event.eventType,
+      typeIdentifier = event.typeId,
+      userId = userId,
+      status = event.status,
+      updatedDate = timestamp,
+      enrolledDate = timestamp,
+      createdDate = timestamp
+    )
+    logger.info(s"Created UserDashState: $userDashState")
+    userDashState
+  }
+
+
+  /**
+   * Inserts a UserDashState record into the database.
+   *
+   * @param userDashState The UserDashState object containing the details to be inserted.
+   */
+  def insertUserDashState(userDashState: UserDashState): Unit = {
+    val insertQuery =
+      """INSERT INTO user_activity (id, org_id, content_type, type_identifier, user_id,
+        |status, updated_date, enrolled_date, created_date)
+        |VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""".stripMargin
+    val params = Seq(
+      userDashState.id,
+      userDashState.orgId,
+      userDashState.contentType,
+      userDashState.typeIdentifier,
+      userDashState.userId,
+      userDashState.status,
+      userDashState.updatedDate,
+      userDashState.enrolledDate,
+      userDashState.createdDate
+    )
+    logger.info(s"Inserting UserDashState into the database: $userDashState")
+    executeInsert(insertQuery, params)
+    logger.info(s"Successfully inserted UserDashState with ID: ${userDashState.id}")
+  }
+
+  /**
+   * Executes an insert operation in the database using a prepared statement.
+   *
+   * @param query  The SQL query to execute.
+   * @param params The parameters to be set in the prepared statement.
+   */
+  def executeInsert(query: String, params: Seq[Any]): Unit = {
+    var connectionInsert: Option[Connection] = None
+    var preparedStatement: Option[PreparedStatement] = None
+    try {
+      val connection = DriverManager.getConnection(s"jdbc:postgresql://localhost:5432/sunbird", "postgres", "postgres")
+      preparedStatement = Some(connection.prepareStatement(query))
+      logger.info(s"Insert query statement created. $preparedStatement")
+      params.zipWithIndex.foreach { case (param, index) =>
+        preparedStatement.get.setObject(index + 1, param)
+      }
+      val rowsInserted = preparedStatement.get.executeUpdate()
+      logger.info(s"Insert successful: $rowsInserted rows inserted.")
+    } catch {
+      case ex: Exception =>
+        println(s"Error during insert: ${ex.getMessage}")
+    } finally {
+      preparedStatement.foreach(_.close())
+      connectionInsert.foreach(_.close())
+    }
+  }
 }
