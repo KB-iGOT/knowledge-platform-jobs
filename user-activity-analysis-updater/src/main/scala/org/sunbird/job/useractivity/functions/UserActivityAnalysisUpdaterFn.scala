@@ -169,7 +169,7 @@ class UserActivityAnalysisUpdaterFn(config: UserActivityAnalysisUpdaterConfig, h
             } else {
               logger.warn(s"No record found for userId: $userId with typeIdentifier: ${event.typeId}")
             }
-            rs.close()
+            if (rs != null) rs.close()
           case None =>
             logger.error("Query execution failed, result set is None.")
         }
