@@ -13,16 +13,14 @@ import org.sunbird.job.useractivity.domain.{Event, UserDashState}
 import org.sunbird.job.useractivity.task.UserActivityAnalysisUpdaterConfig
 import org.sunbird.job.util.{CassandraUtil, HttpUtil, PostgresUtil}
 import org.sunbird.job.{BaseProcessKeyedFunction, Metrics}
-
 import java.sql.{Connection, DriverManager, PreparedStatement, ResultSet, Timestamp}
 import java.time.LocalDateTime
 import java.util.UUID
 
 
-
 class UserActivityAnalysisUpdaterFn(config: UserActivityAnalysisUpdaterConfig, httpUtil: HttpUtil)
-                               (implicit val stringTypeInfo: TypeInformation[String],
-                                @transient var postgresUtil: PostgresUtil = null,@transient var cassandraUtil: CassandraUtil = null)
+                                   (implicit val stringTypeInfo: TypeInformation[String],
+                                    @transient var postgresUtil: PostgresUtil = null, @transient var cassandraUtil: CassandraUtil = null)
   extends BaseProcessKeyedFunction[String, Event, String](config) with IssueCertificateHelper {
 
   private[this] val logger = LoggerFactory.getLogger(classOf[UserActivityAnalysisUpdaterFn])
@@ -42,7 +40,7 @@ class UserActivityAnalysisUpdaterFn(config: UserActivityAnalysisUpdaterConfig, h
 
   override def close(): Unit = {
     cassandraUtil.close()
-    postgresUtil.close()
+//    postgresUtil.close()
     cache.close()
     super.close()
   }
@@ -106,15 +104,34 @@ class UserActivityAnalysisUpdaterFn(config: UserActivityAnalysisUpdaterConfig, h
   def handleUserActivityInDB(userId: String, rootOrgId: String, event: Event)(implicit metrics: Metrics): Unit = {
     logger.info(s"Handling user activity for userId: $userId, event: ${event.status}")
     if (event.status.equalsIgnoreCase("enrolled")) {
-      val userDashState = createUserDashState(event, rootOrgId, userId)
-      insertUserDashState(userDashState)
-      logger.info(s"Inserted new user dashboard state for userId: $userId")
-    } else {
-      logger.info(s"Querying existing records for userId: $userId with typeIdentifier: ${event.typeId}")
-      val existingRecordQuery = QueryBuilder.select("id", "org_id", "content_type", "type_identifier", "user_id", "status", "updated_date", "enrolled_date", "created_date", "completed_date", "certification_date")
+      // Query to check if the user is already enrolled
+      val existingRecordQuery = QueryBuilder
+        .select("id")
         .from(config.postgresDbTable)
         .where(QueryBuilder.eq("user_id", userId))
         .and(QueryBuilder.eq("type_identifier", event.typeId))
+        .and(QueryBuilder.eq("batch_id", event.batchId))
+        .and(QueryBuilder.eq("status", "enrolled"))
+        .toString()
+
+      // Use the findOne method to check if the record exists
+      val existingRecord = postgresUtil.findOne(existingRecordQuery)
+
+      existingRecord match {
+        case Some(_) =>
+          logger.info(s"User already enrolled: userId: $userId with typeIdentifier: ${event.typeId} and batchId: ${event.batchId}")
+
+        case None =>
+          val userDashState = createUserDashState(event, rootOrgId, userId)
+          insertUserDashState(userDashState)
+          logger.info(s"Inserted new user dashboard state for userId: $userId")
+      }
+    } else {
+      val existingRecordQuery = QueryBuilder.select("id", "org_id", "content_type", "type_identifier", "user_id", "batch_id", "status", "updated_date", "enrolled_date", "created_date", "completed_date", "certification_date")
+        .from(config.postgresDbTable)
+        .where(QueryBuilder.eq("user_id", userId))
+        .and(QueryBuilder.eq("type_identifier", event.typeId))
+        .and(QueryBuilder.eq("batch_id", event.batchId))
       val existingRecord: Option[ResultSet] = postgresUtil.executeQuery(existingRecordQuery.toString)
       if (existingRecord.isDefined) {
         existingRecord match {
@@ -125,9 +142,10 @@ class UserActivityAnalysisUpdaterFn(config: UserActivityAnalysisUpdaterConfig, h
                 val timestamp: Timestamp = Timestamp.valueOf(currentTimestamp)
                 val completedDate = timestamp
                 val typeIdentifier = rs.getString("type_identifier")
+                val batchId = rs.getString("batch_id")
                 val certificateDate = timestamp;
                 val updatedDate = timestamp;
-                val updatedRecord = updateUserActivity(userId, event.status, completedDate, certificateDate, typeIdentifier, updatedDate)
+                val updatedRecord = updateUserActivity(userId, event.status, completedDate, certificateDate, typeIdentifier, updatedDate, batchId)
                 if (updatedRecord == 1) {
                   metrics.incCounter(config.dbUpdateCount)
                   logger.info(s"Successfully updated user activity for userId: $userId with status: ${event.status}")
@@ -140,10 +158,13 @@ class UserActivityAnalysisUpdaterFn(config: UserActivityAnalysisUpdaterConfig, h
                 val typeIdentifier = rs.getString("type_identifier")
                 val certificateDate = timestamp
                 val updatedDate = timestamp
-                val updatedRecord = updateUserActivity(userId, event.status, completedDate, certificateDate, typeIdentifier, updatedDate)
+                val batchId = rs.getString("batch_id")
+                val updatedRecord = updateUserActivity(userId, event.status, completedDate, certificateDate, typeIdentifier, updatedDate, batchId)
                 if (updatedRecord == 1) {
                   metrics.incCounter(config.dbUpdateCount)
-                }
+                  logger.info(s"Successfully updated user activity for userId: $userId with status: ${event.status}")
+                } else
+                  logger.warn(s"Failed to update user activity for userId: $userId with status: ${event.status}")
               }
             } else {
               logger.warn(s"No record found for userId: $userId with typeIdentifier: ${event.typeId}")
@@ -177,8 +198,9 @@ class UserActivityAnalysisUpdaterFn(config: UserActivityAnalysisUpdaterConfig, h
                           completedDate: Timestamp,
                           certificateDate: Timestamp,
                           typeIdentifier: String,
-                          updatedDate: Timestamp
-                        ): Int = {
+                          updatedDate: Timestamp,
+                          batchId: String
+                        ): Unit = {
     var query = ""
     if (status.equalsIgnoreCase("complete")) {
       logger.info(s"Preparing query to update user activity for userId: $userId with status: $status")
@@ -189,7 +211,7 @@ class UserActivityAnalysisUpdaterFn(config: UserActivityAnalysisUpdaterConfig, h
            |    status = '$status',
            |    completed_date ='$completedDate',
            |    updated_date ='$updatedDate'
-           |WHERE user_id= '$userId' and type_identifier = '$typeIdentifier'
+           |WHERE user_id= '$userId' and type_identifier = '$typeIdentifier' and batch_id = '$batchId'
            |""".stripMargin.replaceAll("\n", " ")
     } else if (status.equalsIgnoreCase("certificate")) {
       logger.info(s"Preparing query to update user activity for userId: $userId with status: $status")
@@ -200,7 +222,7 @@ class UserActivityAnalysisUpdaterFn(config: UserActivityAnalysisUpdaterConfig, h
            |    status = '$status',
            |    updated_date ='$updatedDate',
            |    certification_date ='$certificateDate'
-           |WHERE user_id= '$userId' and type_identifier = '$typeIdentifier'
+           |WHERE user_id= '$userId' and type_identifier = '$typeIdentifier' and batch_id = '$batchId'
            |""".stripMargin.replaceAll("\n", " ")
     }
     else {
@@ -208,7 +230,7 @@ class UserActivityAnalysisUpdaterFn(config: UserActivityAnalysisUpdaterConfig, h
       return 0
     }
     logger.info(s"Executed update query for userId: $userId")
-    postgresUtil.updateQuery(query)
+    executeUpdate(query)
   }
 
   /**
@@ -217,7 +239,7 @@ class UserActivityAnalysisUpdaterFn(config: UserActivityAnalysisUpdaterConfig, h
    * @param event     The event containing user activity information.
    * @param rootOrgId Identifier for the root organization.
    * @param userId    Unique identifier for the user.
-   * @return         A UserDashState instance populated with event data.
+   * @return A UserDashState instance populated with event data.
    */
   def createUserDashState(event: Event, rootOrgId: String, userId: String): UserDashState = {
     val currentTimestamp: LocalDateTime = LocalDateTime.now()
@@ -227,6 +249,7 @@ class UserActivityAnalysisUpdaterFn(config: UserActivityAnalysisUpdaterConfig, h
       orgId = rootOrgId,
       contentType = event.eventType,
       typeIdentifier = event.typeId,
+      batchId = event.batchId,
       userId = userId,
       status = event.status,
       updatedDate = timestamp,
@@ -245,15 +268,15 @@ class UserActivityAnalysisUpdaterFn(config: UserActivityAnalysisUpdaterConfig, h
    */
   def insertUserDashState(userDashState: UserDashState): Unit = {
     val insertQuery =
-      """INSERT INTO user_activity (id, org_id, content_type, type_identifier, user_id,
-        |status, updated_date, enrolled_date, created_date)
-        |VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""".stripMargin
+      """INSERT INTO user_activity (id, org_id, content_type, type_identifier, user_id, batch_id, status, updated_date, enrolled_date, created_date)
+        |VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""".stripMargin
     val params = Seq(
       userDashState.id,
       userDashState.orgId,
       userDashState.contentType,
       userDashState.typeIdentifier,
       userDashState.userId,
+      userDashState.batchId,
       userDashState.status,
       userDashState.updatedDate,
       userDashState.enrolledDate,
@@ -274,7 +297,9 @@ class UserActivityAnalysisUpdaterFn(config: UserActivityAnalysisUpdaterConfig, h
     var connectionInsert: Option[Connection] = None
     var preparedStatement: Option[PreparedStatement] = None
     try {
-      val connection = DriverManager.getConnection(s"jdbc:postgresql://localhost:5432/sunbird", "postgres", "postgres")
+      val connectionUrl = s"jdbc:postgresql://${config.postgresDbHost}:${config.postgresDbPort}/${config.postgresDbDatabase}"
+      val connection = DriverManager.getConnection(connectionUrl, config.postgresDbUsername, config.postgresDbPassword)
+      connection.setAutoCommit(true)
       preparedStatement = Some(connection.prepareStatement(query))
       logger.info(s"Insert query statement created. $preparedStatement")
       params.zipWithIndex.foreach { case (param, index) =>
@@ -287,7 +312,27 @@ class UserActivityAnalysisUpdaterFn(config: UserActivityAnalysisUpdaterConfig, h
         println(s"Error during insert: ${ex.getMessage}")
     } finally {
       preparedStatement.foreach(_.close())
-      connectionInsert.foreach(_.close())
+//      connectionInsert.foreach(_.close())
+    }
+  }
+
+  def executeUpdate(query: String): Unit = {
+    var connectionInsert: Option[Connection] = None
+    var preparedStatement: Option[PreparedStatement] = None
+    try {
+      val connectionUrl = s"jdbc:postgresql://${config.postgresDbHost}:${config.postgresDbPort}/${config.postgresDbDatabase}"
+      val connection = DriverManager.getConnection(connectionUrl, config.postgresDbUsername, config.postgresDbPassword)
+      connection.setAutoCommit(true)
+      preparedStatement = Some(connection.prepareStatement(query))
+      logger.info(s"Insert query statement created. $preparedStatement")
+      val rowsInserted = preparedStatement.get.executeUpdate()
+      logger.info(s"Insert successful: $rowsInserted rows inserted.")
+    } catch {
+      case ex: Exception =>
+        println(s"Error during insert: ${ex.getMessage}")
+    } finally {
+      preparedStatement.foreach(_.close())
+//      connectionInsert.foreach(_.close())
     }
   }
 }

@@ -21,6 +21,7 @@ case class UserDashState(
                           contentType: String,
                           typeIdentifier: String,
                           userId: String,
+                          batchId: String,
                           status: String,
                           updatedDate: Timestamp,
                           enrolledDate: Timestamp,

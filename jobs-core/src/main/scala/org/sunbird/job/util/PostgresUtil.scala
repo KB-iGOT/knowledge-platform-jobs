@@ -13,9 +13,9 @@ class PostgresUtil  (
   private[this] val logger = LoggerFactory.getLogger("PostgresUtil")
 
   // Establish a connection lazily
-  private[this] lazy val connection: Connection = {
-    DriverManager.getConnection(s"jdbc:postgresql://$host:$port/$database", username, password)
-  }
+//  private[this] lazy val connection: Connection = {
+//    DriverManager.getConnection(s"jdbc:postgresql://$host:$port/$database", username, password)
+//  }
 
 
   /**
@@ -27,12 +27,14 @@ class PostgresUtil  (
 
   def updateQuery(query: String): Int = {
     var preparedStatement: PreparedStatement = null
-    var connectionUpdate=DriverManager.getConnection(s"jdbc:postgresql://$host:$port/$database", username, password)
+    val connectionUpdate=DriverManager.getConnection(s"jdbc:postgresql://$host:$port/$database", username, password)
+//    connectionUpdate.setAutoCommit(true)
     try {
       preparedStatement = connectionUpdate.prepareStatement(query)
       logger.info(s"Executing update query: $query")
       val rowsUpdated = preparedStatement.executeUpdate()
       logger.info(s"Update successful: $rowsUpdated rows updated.")
+
       rowsUpdated
     } catch {
       case e: SQLException =>
@@ -45,12 +47,13 @@ class PostgresUtil  (
       if (preparedStatement != null) {
         preparedStatement.close()
       }
-      connectionUpdate.close()
+//      connectionUpdate.close()
     }
   }
 
   // Find one record based on the query
   def findOne(query: String): Option[ResultSet] = {
+    val connection = DriverManager.getConnection(s"jdbc:postgresql://$host:$port/$database", username, password)
     val statement: PreparedStatement = connection.prepareStatement(query)
     val resultSet: ResultSet = statement.executeQuery()
 
@@ -62,10 +65,10 @@ class PostgresUtil  (
   }
 
   // Close the connection
-  def close(): Unit = {
-    connection.close()
-    logger.info("Postgres connection closed.")
-  }
+//  def close(): Unit = {
+//    connection.close()
+//    logger.info("Postgres connection closed.")
+//  }
 
   object PostgresUtil {
     def apply(host: String, port: Int, database: String, username: String, password: String): PostgresUtil = {
@@ -80,19 +83,25 @@ class PostgresUtil  (
    * @return An Option containing the ResultSet if successful, None if an error occurs.
    */
   def executeQuery(sqlQuery: String): Option[ResultSet] = {
+    val connection = DriverManager.getConnection(s"jdbc:postgresql://$host:$port/$database", username, password)
     var resultSet: ResultSet = null
+    var statement: Statement = null
     try {
-      val statement = connection.createStatement()
+      statement = connection.createStatement()
       logger.info(s"Executing query: $sqlQuery")
       resultSet = statement.executeQuery(sqlQuery)
       logger.info("Query executed successfully.")
       Some(resultSet)
+
     } catch {
       case e: SQLException =>
         logger.error(s"SQL error during query execution: ${e.getMessage}", e)
         None
     } finally {
-      if (connection != null) connection.close()
+      if (connection != null) {
+        connection.close()
+      }
+      statement.close()
     }
   }
 }

@@ -24,7 +24,7 @@ class UserActivityAnalysisUpdaterTask(config: UserActivityAnalysisUpdaterConfig,
         implicit val stringTypeInfo: TypeInformation[String] = TypeExtractor.getForClass(classOf[String])
 
         // Source: Fetch data from Kafka
-        val source = kafkaConnector.kafkaJobRequestSource[Event]("user-dash-state")
+        val source = kafkaConnector.kafkaJobRequestSource[Event](config.kafkaInputTopic)
         logger.info("This is under process for task")
 
 
