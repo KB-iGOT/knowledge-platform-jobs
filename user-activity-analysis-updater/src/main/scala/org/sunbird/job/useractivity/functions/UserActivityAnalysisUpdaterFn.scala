@@ -111,7 +111,6 @@ class UserActivityAnalysisUpdaterFn(config: UserActivityAnalysisUpdaterConfig, h
         .where(QueryBuilder.eq("user_id", userId))
         .and(QueryBuilder.eq("type_identifier", event.typeId))
         .and(QueryBuilder.eq("batch_id", event.batchId))
-        .and(QueryBuilder.eq("status", "enrolled"))
         .toString()
 
       // Use the findOne method to check if the record exists
