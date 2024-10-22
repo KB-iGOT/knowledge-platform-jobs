@@ -21,6 +21,8 @@ class EventCertificateGeneratorConfig(override val config: Config) extends BaseJ
   // Kafka Topics Configuration
   val kafkaInputTopic: String = config.getString("kafka.input.topic")
   val kafkaAuditEventTopic: String = config.getString("kafka.output.audit.topic")
+  val kafkaKarmaPointsEventTopic: String = config.getString("kafka.output.karma.point.topic")
+  val dashboardPointsEventTopic: String = config.getString("kafka.output.dashboard.topic")
 
   val enableSuppressException: Boolean = if (config.hasPath("enable.suppress.exception")) config.getBoolean("enable.suppress.exception") else false
   val enableRcCertificate: Boolean = if (config.hasPath("enable.rc.certificate")) config.getBoolean("enable.rc.certificate") else false
@@ -32,6 +34,8 @@ class EventCertificateGeneratorConfig(override val config: Config) extends BaseJ
   override val kafkaConsumerParallelism: Int = config.getInt("task.consumer.parallelism")
   val notifierParallelism: Int = if (config.hasPath("task.notifier.parallelism")) config.getInt("task.notifier.parallelism") else 1
   val userFeedParallelism: Int = if (config.hasPath("task.userfeed.parallelism")) config.getInt("task.userfeed.parallelism") else 1
+  val karmaPointsParallelism: Int = if (config.hasPath("task.karmapoints.parallelism")) config.getInt("task.karmapoints.parallelism") else 1
+  val dashboardParallelism: Int = if (config.hasPath("task.dashboard.parallelism")) config.getInt("task.dashboard.parallelism") else 1
 
   //ES configuration
   val esConnection: String = config.getString("es.basePath")
@@ -168,6 +172,8 @@ class EventCertificateGeneratorConfig(override val config: Config) extends BaseJ
   val auditEventOutputTag: OutputTag[String] = OutputTag[String](auditEventOutputTagName)
   val notifierOutputTag: OutputTag[NotificationMetaData] = OutputTag[NotificationMetaData]("notifier")
   val userFeedOutputTag: OutputTag[UserFeedMetaData] = OutputTag[UserFeedMetaData]("user-feed")
+  val karmaPointsOutputTag: OutputTag[String] = new OutputTag[String]("karma-points") {}
+  val dashboardOutputTag: OutputTag[String] = new OutputTag[String]("event-enrolment-alert") {}
 
   //UserFeed constants
   val priority: String = "priority"

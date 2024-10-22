@@ -60,6 +60,18 @@ class EventCertificateGeneratorTask(config: EventCertificateGeneratorConfig, kaf
         .uid("user-feed")
         .setParallelism(config.userFeedParallelism)
 
+      processStreamTask.getSideOutput(config.karmaPointsOutputTag)
+        .addSink(kafkaConnector.kafkaStringSink(config.kafkaKarmaPointsEventTopic))
+        .name("karma-point-sink")
+        .uid("karma-point-sink")
+        .setParallelism(config.karmaPointsParallelism)
+
+      processStreamTask.getSideOutput(config.dashboardOutputTag)
+        .addSink(kafkaConnector.kafkaStringSink(config.dashboardPointsEventTopic))
+        .name("event-enrolment-alert")
+        .uid("event-enrolment-alert")
+        .setParallelism(config.dashboardParallelism)
+
       env.execute(config.jobName)
     }
 

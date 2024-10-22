@@ -11,8 +11,9 @@ import org.sunbird.job.Metrics
 import org.sunbird.job.cache.DataCache
 import org.sunbird.job.collectioncert.domain.{AssessedUser, AssessmentUserAttempt, BEJobRequestEvent, EnrolledUser, Event, EventObject}
 import org.sunbird.job.collectioncert.task.CollectionCertPreProcessorConfig
-import org.sunbird.job.util.{CassandraUtil, HttpUtil, ScalaJsonUtil, JSONUtil}
+import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil, ScalaJsonUtil}
 
+import java.util.Date
 import scala.collection.JavaConverters._
 
 trait IssueEventCertificateHelper {
@@ -69,13 +70,21 @@ trait IssueEventCertificateHelper {
         val criteriaStatus = enrollmentCriteria.getOrElse(config.status, 2)
         val oldId = if (isCertIssued && event.reIssue) issuedCertificates.filter(cert => certName.equalsIgnoreCase(cert.getOrDefault(config.name, "").asInstanceOf[String]))
           .map(cert => cert.getOrDefault(config.identifier, "")).head else ""
-        val userId = if (active && (criteriaStatus == status) && (!isCertIssued || event.reIssue)) event.userId else ""
+        val userId = if (event.eventType.equalsIgnoreCase("offline")) {
+          event.userId
+        } else {
+          if (active && (criteriaStatus == status) && (!isCertIssued || event.reIssue)) {
+            event.userId
+          } else {
+            ""
+          }
+        }
         val issuedOn = row.getTimestamp(config.completedOn)
         val addProps = enrolmentAdditionProps.map(prop => (prop -> row.getObject(prop.toLowerCase))).toMap
         EnrolledUser(userId, oldId, issuedOn, {
           if (addProps.nonEmpty) Map[String, Any](config.enrollment -> addProps) else Map()
         })
-      } else EnrolledUser("", "")
+      } else EnrolledUser(event.userId, "")
     } else EnrolledUser(event.userId, "")
   }
 
@@ -206,9 +215,15 @@ trait IssueEventCertificateHelper {
           list.asInstanceOf[java.util.List[String]].asScala.toList
       }
       .getOrElse(List.empty)
-
+    val issuedDate: String = if (event.eventType.equalsIgnoreCase("offline")) {
+      Option(enrolledUser.issuedOn)
+        .map(dateFormatter.format)
+        .getOrElse(dateFormatter.format(new Date()))
+    } else {
+     dateFormatter.format(enrolledUser.issuedOn)
+    }
     val eData = Map[String, AnyRef](
-      "issuedDate" -> dateFormatter.format(enrolledUser.issuedOn),
+      "issuedDate" -> issuedDate,
       "data" -> List(Map[String, AnyRef]("recipientName" -> recipientName, "recipientId" -> event.userId)),
       "criteria" -> Map[String, String]("narrative" -> certName),
       "svgTemplate" -> template.getOrElse("url", ""),
@@ -227,7 +242,8 @@ trait IssueEventCertificateHelper {
       "primaryCategory" -> courseInfo.getOrDefault("primaryCategory", "").asInstanceOf[String],
       "parentCollections" -> parentCollections,
       "coursePosterImage" -> courseInfo.getOrDefault("coursePosterImage", "").asInstanceOf[String],
-      "eventCompletionPercentage" -> event.eData.getOrElse("eventCompletionPercentage",Integer.valueOf(0))
+      "eventCompletionPercentage" -> event.eData.getOrElse("eventCompletionPercentage",Integer.valueOf(0)),
+      "eventType" -> event.eventType
     )
     logger.info("Constructured eData from preProcessor : " + JSONUtil.serialize(eData))
     ScalaJsonUtil.serialize(BEJobRequestEvent(edata = eData, `object` = EventObject(id = event.userId)))

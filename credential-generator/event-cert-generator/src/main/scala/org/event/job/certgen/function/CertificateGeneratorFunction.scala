@@ -70,12 +70,16 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
       logger.info("Certificate generator | is rc integration enabled: " + config.enableRcCertificate)
       certValidator.validateGenerateCertRequest(event, config.enableSuppressException)
       val eventCompletionPercentage = event.eventCompletionPercentage
-      logger.info("printing event completion percentage" +eventCompletionPercentage)
+      logger.info("printing event completion percentage" + eventCompletionPercentage)
       if (certValidator.isNotIssued(event)(config, metrics, cassandraUtil)) {
-         if (eventCompletionPercentage >= config.minCompletePercentageForCertificate) {
-           if (config.enableRcCertificate) generateCertificateUsingRC(event, context)(metrics)
-           else generateCertificate(event, context)(metrics)
-         }
+        if (event.eventType.equalsIgnoreCase("offline") || eventCompletionPercentage >= config.minCompletePercentageForCertificate) {
+          if (config.enableRcCertificate) generateCertificateUsingRC(event, context)(metrics)
+          else generateCertificate(event, context)(metrics)
+        }
+        if (event.eventType.equalsIgnoreCase("offline")) {
+          emitKarmaPoints(event, context)
+        }
+        emitDashboardEvent(event, context)
       } else {
         metrics.incCounter(config.skippedEventCount)
         logger.info(s"Certificate already issued for: ${event.eData.getOrElse("userId", "")} ${event.related}")
@@ -91,7 +95,7 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
   @throws[Exception]
   def generateCertificate(event: Event, context: KeyedProcessFunction[String, Event, String]#Context)(implicit metrics: Metrics): Unit = {
     val certModelList: List[CertModel] = new CertMapper(certificateConfig).mapReqToCertModel(event)
-    println("generateCertificate "+event)
+    println("generateCertificate " + event)
     val certificateGenerator = new CertificateGenerator
     certModelList.foreach(certModel => {
       var uuid: String = null
@@ -286,7 +290,7 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
 
   def updateUserEnrollmentTable(event: Event, certMetaData: UserEnrollmentData, context: KeyedProcessFunction[String, Event, String]#Context)(implicit metrics: Metrics): Unit = {
     logger.info("updating user event enrollment table {}", certMetaData)
-    val primaryFields = Map(config.dbUserId -> certMetaData.userId, config.dbContentId -> certMetaData.eventId, config.dbContextId -> certMetaData.eventId,  config.dbBatchId -> certMetaData.batchId)
+    val primaryFields = Map(config.dbUserId -> certMetaData.userId, config.dbContentId -> certMetaData.eventId, config.dbContextId -> certMetaData.eventId, config.dbBatchId -> certMetaData.batchId)
     val records = getIssuedCertificatesFromUserEnrollmentTable(primaryFields)
     if (records.nonEmpty) {
       records.foreach((row: Row) => {
@@ -396,4 +400,46 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
     context.output(config.generateProgramCertificateOutputTag, event)
   }
   */
+
+  private def emitKarmaPoints(event: Event, context: KeyedProcessFunction[String, Event, String]#Context): Unit = {
+    val karmaPointsMessage = createKarmaPointsMessage(event)
+    context.output(config.karmaPointsOutputTag, karmaPointsMessage)
+  }
+
+  private def emitDashboardEvent(event: Event, context: KeyedProcessFunction[String, Event, String]#Context): Unit = {
+    val dashboardEventMessage = sendEventEnrolmentAlert(event)
+    context.output(config.dashboardOutputTag, dashboardEventMessage)
+  }
+
+  private def createKarmaPointsMessage(event: Event): String = {
+    val now = System.currentTimeMillis()
+    s"""{
+        "user_id": "${event.userId}",
+
+        "ets": $now,
+        "batch_id": "${event.batchId}",
+        "event_id": "${event.eventId}"
+      }"""
+  }
+
+  private def sendEventEnrolmentAlert(event: Event): String = {
+    logger.info("sendEventEnrolmentAlert function started")
+    val message = Map(
+      "actor" -> Map("id" -> "Event Enrolment Alert", "type" -> "System"),
+      "context" -> Map("pdata" -> Map("ver" -> "1.0", "id" -> "org.sunbird.learning.platform")),
+      "edata" -> Map(
+        "action" -> "event-enrolment-alert",
+        "batchId" -> event.batchId,
+        "type" -> "Event",
+        "typeId" -> event.eventId,
+        "userId" -> event.userId,
+        "status" -> "certificate"
+      ),
+      "eid" -> "BE_JOB_REQUEST",
+      "ets" -> System.currentTimeMillis(),
+      "mid" -> "LMS.Systems",
+      "object" -> Map("id" -> event.userId, "type" -> "EventEnrolmentAlert")
+    )
+    ScalaJsonUtil.serialize(message)
+  }
 }

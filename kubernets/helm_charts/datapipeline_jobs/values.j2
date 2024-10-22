@@ -712,6 +712,8 @@ event-cert-generator:
       output.audit.topic = {{ env_name }}.telemetry.raw
       groupId = {{ env_name }}-event-certificate-generator-group
       program.cert.output.topic= {{ env_name }}.event.generate.certificate.failed
+      kafka.output.karma.point.topic = "{{env_name}}.user.claim.event.karma.points"
+      kafka.output.dashboard.topic = "{{env_name}}.dashboard.user.state"
     }
     task {
       restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
@@ -719,6 +721,8 @@ event-cert-generator:
       consumer.parallelism = {{ event_cert_generator_consumer_parallelism }}
       parallelism = {{ event_cert_generator_parallelism }}
       notifier.parallelism = {{ event_cert_generator_notifier_parallelism }}
+      dashboard.parallelism = {{ event_cert_generator_dashboard_parallelism }}
+      karmapoints.parallelism = {{ event_cert_generator_karmapoints_parallelism }}
     }
     lms-cassandra {
       keyspace = "{{ middleware_course_keyspace }}"
@@ -752,6 +756,64 @@ event-cert-generator:
     jobmanager.memory.flink.size: {{ flink_job_names['event-cert-generator'].jobmanager_memory }}
     taskmanager.memory.flink.size: {{ flink_job_names['event-cert-generator'].taskmanager_memory }}
     taskmanager.numberOfTaskSlots: {{ flink_job_names['event-cert-generator'].taskslots }}
+    parallelism.default: 1
+    jobmanager.execution.failover-strategy: region
+    taskmanager.memory.network.fraction: 0.1
+
+user-activity-analysis-updater:
+  user-activity-analysis-updater: |+
+    include file("/data/flink/conf/base-config.conf")
+    kafka {
+      input.topic = {{ env_name }}.dashboard.user.state
+      output.topic = {{ env_name }}.generate.certificate.request
+      output.failed.topic = {{ env_name }}.issue.certificate.failed
+      groupId = {{ env_name }}-dashboard-user-state-activity-group
+    }
+    task {
+      restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
+      restart-strategy.delay = 240000 # in milli-seconds # on max restarts (3) within 4 min the job will fail.
+      parallelism = {{user_activity_analysis_updater_consumer_parallelism}}
+      consumer.parallelism = {{ user_activity_analysis_updater_consumer_parallelism }}
+      generate_certificate.parallelism = {{generate_certificate_parallelism}}
+      generate_event_certificate.parallelism = {{generate_event_certificate_parallelism}}
+    }
+    lms-cassandra {
+      keyspace = "sunbird"
+      user.table = "user"
+    }
+
+    postgres {
+      host = "{{igot_postgres_db_ip}}"
+      port = "5432"
+      database = "sunbird"
+      username = "{{postgresql_username_sunbird}}"
+      password = "{{postgresql_password_sunbird}}"
+    }
+
+    cert_domain_url = "{{ cert_domain_url }}"
+    user_read_api = "/private/user/v1/read"
+    content_read_api = "/content/v3/read"
+    event_read_api = "/event/v4/read"
+    service {
+      content.basePath = "{{ content_service_base_url }}"
+      learner.basePath = "{{ learner_service_base_url }}"
+    }
+
+    redis-meta {
+    {% if metadata2_redis_host is defined %}
+      host = {{ metadata2_redis_host }}
+    {% else %}
+      host = {{ redis_host }}
+    {% endif %}
+      port = 6379
+    }
+
+    assessment.metrics.supported.contenttype = ["SelfAssess"]
+
+  flink-conf: |+
+    jobmanager.memory.flink.size: {{ flink_job_names['user-activity-analysis-updater'].jobmanager_memory }}
+    taskmanager.memory.flink.size: {{ flink_job_names['user-activity-analysis-updater'].taskmanager_memory }}
+    taskmanager.numberOfTaskSlots: {{ flink_job_names['user-activity-analysis-updater'].taskslots }}
     parallelism.default: 1
     jobmanager.execution.failover-strategy: region
     taskmanager.memory.network.fraction: 0.1

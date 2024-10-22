@@ -31,4 +31,6 @@ class Event(eventMap: java.util.Map[String, Any], partition: Int, offset: Long) 
     def isValidEventType()(config: CollectionCertPreProcessorConfig): Boolean = { 
         config.issueEventCertificate.equalsIgnoreCase(action) && !batchId.isEmpty && !eventId.isEmpty && !userId.isEmpty
     }
+
+    def eventType: String = readOrDefault[String]("edata.eventType", "")
 }
