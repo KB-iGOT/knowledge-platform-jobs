@@ -70,8 +70,15 @@ trait IssueEventCertificateHelper {
         val criteriaStatus = enrollmentCriteria.getOrElse(config.status, 2)
         val oldId = if (isCertIssued && event.reIssue) issuedCertificates.filter(cert => certName.equalsIgnoreCase(cert.getOrDefault(config.name, "").asInstanceOf[String]))
           .map(cert => cert.getOrDefault(config.identifier, "")).head else ""
-//        val userId = if (active && (criteriaStatus == status) && (!isCertIssued || event.reIssue)) event.userId else ""
-        val userId = event.userId
+        val userId = if (event.eventType.equalsIgnoreCase("offline")) {
+          event.userId
+        } else {
+          if (active && (criteriaStatus == status) && (!isCertIssued || event.reIssue)) {
+            event.userId
+          } else {
+            ""
+          }
+        }
         val issuedOn = row.getTimestamp(config.completedOn)
         val addProps = enrolmentAdditionProps.map(prop => (prop -> row.getObject(prop.toLowerCase))).toMap
         EnrolledUser(userId, oldId, issuedOn, {
