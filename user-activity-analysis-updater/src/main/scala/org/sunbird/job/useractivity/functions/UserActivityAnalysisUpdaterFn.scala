@@ -81,8 +81,7 @@ class UserActivityAnalysisUpdaterFn(config: UserActivityAnalysisUpdaterConfig, h
   def fetchRootOrgId(userId: String)(implicit metrics: Metrics): Option[String] = {
     val selectQuery = QueryBuilder.select("rootorgid")
       .from(config.keyspace, config.userTable) // Adjust userTable based on your config
-      .where(QueryBuilder.eq("userid", userId))
-
+      .where(QueryBuilder.eq("id", userId))
     val row: Row = cassandraUtil.findOne(selectQuery.toString)
     if (row != null) {
       Some(row.getString("rootorgid"))
