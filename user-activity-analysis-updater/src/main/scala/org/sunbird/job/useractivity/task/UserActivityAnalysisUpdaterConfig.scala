@@ -19,7 +19,7 @@ class UserActivityAnalysisUpdaterConfig(override val config: Config) extends Bas
 
   //kafka config
   val kafkaInputTopic: String = config.getString("kafka.input.topic")
-  val kafkaOutputTopic: String = config.getString("kafka.output.topic")
+
   val certificatePreProcessorConsumer: String = "user-activity-analysis-updator-consumer"
   val generateCertificateProducer = "generate-certificate-sink"
   override val kafkaConsumerParallelism: Int = config.getInt("task.consumer.parallelism")
