@@ -14,42 +14,20 @@ class UserActivityAnalysisUpdaterConfig(override val config: Config) extends Bas
   val collectionCacheStore: Int = 0
 
   val contentCacheStore: Int = 5
-  val metaRedisHost: String = config.getString("redis-meta.host")
-  val metaRedisPort: Int = config.getInt("redis-meta.port")
+
 
   //kafka config
   val kafkaInputTopic: String = config.getString("kafka.input.topic")
 
   val certificatePreProcessorConsumer: String = "user-activity-analysis-updator-consumer"
-  val generateCertificateProducer = "generate-certificate-sink"
+
   override val kafkaConsumerParallelism: Int = config.getInt("task.consumer.parallelism")
-  val generateCertificateParallelism: Int = config.getInt("task.generate_certificate.parallelism")
 
-  //Tags
-  val generateCertificateOutputTagName = "generate-certificate-request"
-  val generateCertificateOutputTag: OutputTag[String] = OutputTag[String](generateCertificateOutputTagName)
-
-  //Cassandra config
+ //Cassandra config
   val dbHost: String = config.getString("lms-cassandra.host")
   val dbPort: Int = config.getInt("lms-cassandra.port")
   val keyspace: String = config.getString("lms-cassandra.keyspace")
   val userTable: String = config.getString("lms-cassandra.user.table")
-  val dbBatchId = "batchId"
-  val dbCourseId = "courseid"
-  val dbUserId = "userid"
-  val contentHierarchyTable: String = "content_hierarchy"
-  val contentHierarchyKeySpace: String = "dev_hierarchy_store"
-  val Hierarchy: String = "hierarchy"
-  val childrens: String = "children"
-  val batches: String = "batches"
-
-  //API URL
-  val contentBasePath = config.getString("service.content.basePath")
-  val learnerBasePath = config.getString("service.learner.basePath")
-  val userReadApi = config.getString("user_read_api")
-  val contentReadApi = "/content/v4/read"
-  val contentServiceBase: String = config.getString("service.content.basePath")
-  val contentReadURL = contentServiceBase + "/content/v3/read/"
 
   // Metric List
   val totalEventsCount = "total-events-count"
@@ -66,20 +44,9 @@ class UserActivityAnalysisUpdaterConfig(override val config: Config) extends Bas
   val status: String = "status"
   val name: String = "name"
   val defaultHeaders = Map[String, String]("Content-Type" -> "application/json")
-  val identifier: String = "identifier"
   val userAccBlockedErrCode = "UOS_USRRED0006"
-  val programCertPreProcess: String = "program_cert_pre_process"
-  val parentCollections: String = "parentCollections"
-  val issuedCertificates: String = "issued_certificates"
-  val primaryCategory: String = "primaryCategory"
-  val leafNodes: String = "leafNodes"
-  val contentStatus: String = "contentstatus"
-  val progress: String = "progress"
-  val allowedPrimaryCategoryForProgram = List[String]("Course")
-  val childrenCourses: String = "childrenCourses"
-  val leafNodesKey = "leafnodes"
 
-  //Postgres config
+ //Postgres config
   val postgresDbHost: String = config.getString("postgres.host")
   val postgresDbPort: Int = config.getInt("postgres.port")
   val postgresDbDatabase: String = config.getString("postgres.database")
