@@ -118,7 +118,7 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
             if (!event.oldId.isEmpty) Map[String, AnyRef](config.OLD_ID -> event.oldId) else Map[String, AnyRef]()
           }
         })
-        // addCertToRegistry(event, addReq, context)(metrics)
+        addCertToRegistry(event, addReq, context)(metrics)
         //cert-registry end
         val related = event.related
         val userEnrollmentData = UserEnrollmentData(related.getOrElse(config.BATCH_ID, "").asInstanceOf[String], certModel.identifier,
