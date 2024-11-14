@@ -21,7 +21,7 @@ import scala.collection.mutable
 
 import scala.collection.JavaConverters._
 
-case class NotificationMetaData(userId: String, courseName: String, issuedOn: Date, eventId: String, batchId: String, templateId: String, partition: Int, offset: Long, courseProvider: String, coursePosterImage:String)
+case class NotificationMetaData(userId: String, courseName: String, issuedOn: Date, eventId: String, batchId: String, templateId: String, partition: Int, offset: Long, courseProvider: String, coursePosterImage:String, publicPdfUrl: Option[String] = None)
 
 class NotifierFunction(config: EventCertificateGeneratorConfig, httpUtil: HttpUtil, @transient var cassandraUtil: CassandraUtil = null)(implicit val stringTypeInfo: TypeInformation[String])
   extends BaseProcessFunction[NotificationMetaData, String](config) {
@@ -46,6 +46,7 @@ class NotifierFunction(config: EventCertificateGeneratorConfig, httpUtil: HttpUt
                               context: ProcessFunction[NotificationMetaData, String]#Context,
                               metrics: Metrics): Unit = {
     try {
+      logger.info("m")
       val userResponse: Map[String, AnyRef] = getUserDetails(metaData.userId)(metrics) // call user Service
       if (null != userResponse && userResponse.nonEmpty) {
         val primaryFields = Map(config.dbEventId -> metaData.eventId,
@@ -72,8 +73,10 @@ class NotifierFunction(config: EventCertificateGeneratorConfig, httpUtil: HttpUt
             config.courseName -> metaData.courseName,
             config.courseProvider -> metaData.courseProvider,
             config.coursePosterImage -> metaData.coursePosterImage,
-            config.profileUpdateLink -> (config.webPortalUrl + config.profileUpdateUrl)
+            config.profileUpdateLink -> (config.webPortalUrl + config.profileUpdateUrl),
+            config.publicPdfUrl -> metaData.publicPdfUrl.getOrElse("")
           )))
+
           val response = httpUtil.post(url, ScalaJsonUtil.serialize(request))
           if (response.status == 200) {
             metrics.incCounter(config.notifiedUserCount)

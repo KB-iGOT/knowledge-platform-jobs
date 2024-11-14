@@ -243,7 +243,8 @@ trait IssueEventCertificateHelper {
       "parentCollections" -> parentCollections,
       "coursePosterImage" -> courseInfo.getOrDefault("coursePosterImage", "").asInstanceOf[String],
       "eventCompletionPercentage" -> event.eData.getOrElse("eventCompletionPercentage",Integer.valueOf(0)),
-      "eventType" -> event.eventType
+      "eventType" -> event.eventType,
+      "publicCert" -> (if (event.publicCert.isEmpty) java.lang.Boolean.FALSE else java.lang.Boolean.TRUE)
     )
     logger.info("Constructured eData from preProcessor : " + JSONUtil.serialize(eData))
     ScalaJsonUtil.serialize(BEJobRequestEvent(edata = eData, `object` = EventObject(id = event.userId)))

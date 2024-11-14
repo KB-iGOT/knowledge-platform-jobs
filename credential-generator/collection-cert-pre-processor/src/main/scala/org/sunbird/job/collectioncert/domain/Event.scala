@@ -33,4 +33,6 @@ class Event(eventMap: java.util.Map[String, Any], partition: Int, offset: Long) 
     }
 
     def eventType: String = readOrDefault[String]("edata.eventType", "")
+
+    def publicCert: String = readOrDefault[String]("edata.certStore", "")
 }

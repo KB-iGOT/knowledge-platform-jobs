@@ -64,6 +64,9 @@ class Event(eventMap: java.util.Map[String, Any], partition: Int, offset: Long) 
 
   def eventCompletionPercentage: Double = readOrDefault[Double]("edata.eventCompletionPercentage", 0)
 
- def eventType: String = readOrDefault[String]("edata.eventType", "")
+  def eventType: String = readOrDefault[String]("edata.eventType", "")
+
+  def publicCert: Boolean = readOrDefault[Boolean]("edata.publicCert", false)
+
 }
 

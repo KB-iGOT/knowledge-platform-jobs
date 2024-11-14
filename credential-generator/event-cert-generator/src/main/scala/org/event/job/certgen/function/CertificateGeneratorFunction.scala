@@ -28,6 +28,15 @@ import java.util.stream.Collectors
 import scala.collection.JavaConverters.mapAsJavaMap
 import org.event.job.certgen.domain.{Actor, BEJobRequestEvent, Certificate, CertificateAuditEvent, Event, EventContext, EventObject, EventObjectCourseCertificate, Issuer, Recipient, Training, UserEnrollmentData}
 import org.event.job.certgen.exception.ServerException
+import java.io.FileOutputStream
+import java.io.FileOutputStream
+import java.nio.file.{Files, Paths}
+import org.apache.http.client.methods.HttpPost
+import org.apache.http.entity.StringEntity
+import org.apache.http.impl.client.HttpClients
+import org.apache.http.util.EntityUtils
+import org.slf4j.LoggerFactory
+
 
 import scala.collection.JavaConverters._
 
@@ -39,6 +48,7 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
   val mapType: Type = new TypeToken[java.util.Map[String, AnyRef]]() {}.getType
   val directory: String = "certificates/"
   val formatter = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+  var publicPdfUrl: Option[String] = None
   implicit val certificateConfig: CertificateConfig = CertificateConfig(basePath = config.basePath, encryptionServiceUrl = config.encServiceUrl, contextUrl = config.CONTEXT, issuerUrl = config.ISSUER_URL,
     evidenceUrl = config.EVIDENCE_URL, signatoryExtension = config.SIGNATORY_EXTENSION)
   implicit var esUtil: ElasticSearchUtil = null
@@ -107,6 +117,27 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
         val encodedQrCode: String = encodeQrCode(qrMap.qrFile)
         val printUri = SvgGenerator.generate(certificateExtension, encodedQrCode, event.svgTemplate, storageService)
         certificateExtension.printUri = Option(printUri)
+        if (event.publicCert) {
+          logger.info(" Identified public event")
+          val pdfGeneratedUrl = config.pdfGeneratorServiceHost + config.pdfGeneratorSvgToPdfUrl
+          val outputFile = "/tmp/" + uuid + "_publicCertificate.pdf"
+          generatePdfFromSvg(printUri, "pdf", outputFile, pdfGeneratedUrl)
+          val pdfUrl: String = uploadJsonPublic(outputFile, event.tag.concat("/") + "/publicCert")
+          val file = new File(outputFile)
+          if (file.exists() && file.isFile) {
+            val deleted = file.delete()
+            if (deleted) {
+              logger.info(s"File $outputFile deleted successfully.")
+            } else {
+              logger.info(s"Failed to delete file $outputFile.")
+            }
+          } else {
+            logger.info(s"File $outputFile does not exist.")
+          }
+          publicPdfUrl = Some(pdfUrl)
+        } else {
+          publicPdfUrl = None
+        }
         val jsonUrl = uploadJson(certificateExtension, directory.concat(uuid).concat(".json"), event.tag.concat("/"))
         //adding certificate to registry
         val addReq = Map[String, AnyRef](JsonKeys.REQUEST -> {
@@ -211,6 +242,13 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
     logger.info("uploadJson: uploading json file started {}", fileName)
     val file = new File(fileName)
     ScalaModuleJsonUtils.writeToJsonFile(file, certificateExtension)
+    storageService.uploadFile(cloudPath, file)
+  }
+
+  @throws[IOException]
+  private def uploadJsonPublic(fileName: String, cloudPath: String): String = {
+    logger.info("uploadJson: uploading public json file started {}", fileName)
+    val file = new File(fileName)
     storageService.uploadFile(cloudPath, file)
   }
 
@@ -329,7 +367,7 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
           logger.info("pushAuditEvent: certificate audit event success {}", audit)
           if (config.enableUserNotification) {
             context.output(config.notifierOutputTag, NotificationMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.eventId,
-              certMetaData.batchId, certMetaData.templateId, event.partition, event.offset, event.providerName, event.coursePosterImage))
+              certMetaData.batchId, certMetaData.templateId, event.partition, event.offset, event.providerName, event.coursePosterImage, publicPdfUrl))
           }
           //context.output(config.userFeedOutputTag, UserFeedMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId, event.partition, event.offset))
         } else {
@@ -443,4 +481,43 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
     )
     ScalaJsonUtil.serialize(message)
   }
+
+  def generatePdfFromSvg(svgContent: String, outputFormat: String, outputPath: String, pdfServiceUrl: String): Unit = {
+    val logger = LoggerFactory.getLogger(this.getClass)
+    val client = HttpClients.createDefault()
+    try {
+      // Manually construct JSON payload as a string
+      val jsonPayload =
+        s"""
+           |{
+           |  "inputFormat": "svg",
+           |  "outputFormat": "$outputFormat",
+           |  "printUri": "$svgContent"
+           |}
+           |""".stripMargin
+      // Create and configure POST request
+      val post = new HttpPost(pdfServiceUrl)
+      post.setHeader("Content-type", "application/json")
+      post.setEntity(new StringEntity(jsonPayload))
+      // Execute request and process response
+      val response = client.execute(post)
+      val status = response.getStatusLine.getStatusCode
+      if (status == 200) {
+        val responseBody = EntityUtils.toByteArray(response.getEntity)
+        if (!Files.exists(Paths.get(outputPath))) Files.createFile(Paths.get(outputPath))
+        val fos = new FileOutputStream(outputPath, true) // Append to file
+        fos.write(responseBody)
+        fos.close()
+        logger.info("Bytes successfully added to the file.")
+      } else {
+        logger.error(s"Unexpected response status: $status")
+      }
+    } catch {
+      case ex: Exception =>
+        logger.error("Error generating PDF", ex)
+    } finally {
+      client.close()
+    }
+  }
+
 }

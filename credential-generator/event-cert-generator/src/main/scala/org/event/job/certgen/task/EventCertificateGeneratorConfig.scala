@@ -190,5 +190,8 @@ class EventCertificateGeneratorConfig(override val config: Config) extends BaseJ
   val webPortalUrl: String = config.getString("web.portal.url")
 
   val enableUserNotification: Boolean = if (config.hasPath("enable.user.email.notification")) config.getBoolean("enable.user.email.notification") else true
+  val pdfGeneratorServiceHost: String = config.getString("service.pdfGenerator.basePath")
+  val pdfGeneratorSvgToPdfUrl: String = config.getString("service.pdfGenerator.svgToPdfPath")
+  val publicPdfUrl: String = "publicPdfUrl"
 
 }
