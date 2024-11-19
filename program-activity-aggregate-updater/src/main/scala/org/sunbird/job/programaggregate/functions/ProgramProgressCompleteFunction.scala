@@ -1,9 +1,10 @@
 package org.sunbird.job.programaggregate.functions
 
 import java.util.UUID
-
 import com.datastax.driver.core.querybuilder.{QueryBuilder, Select, Update}
 import com.google.gson.Gson
+import org.apache.commons.collections.CollectionUtils
+import org.apache.commons.lang.StringUtils
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.streaming.api.functions.ProcessFunction
@@ -51,7 +52,14 @@ class ProgramProgressCompleteFunction(config: ProgramActivityAggregateUpdaterCon
     logger.info("enrolmentQueries => "+enrolmentQueries)
     updateDB(config.thresholdBatchWriteSize, enrolmentQueries)(metrics)
     pendingEnrolments.foreach(e => {
-      createIssueCertEvent(e, context)(metrics)
+      val courseId = e.courseId
+      val hierarchy = getCourseHierarchy(courseId)(metrics)
+      val courseCategory = hierarchy.getOrDefault(config.courseCategory, "").asInstanceOf[String]
+      if (config.caseStudy.replaceAll("\\s+", " ").equalsIgnoreCase(courseCategory.replaceAll("\\s+", " "))) {
+        logger.info(s"Certificate event not generated for courseId: $courseId because the courseCategory is 'Case Study'.")
+      } else {
+        createIssueCertEvent(e, context)(metrics)
+      }
       generateAuditEvent(e, context)(metrics)
     })
     logger.info("posting events completed")
@@ -138,4 +146,20 @@ class ProgramProgressCompleteFunction(config: ProgramActivityAggregateUpdaterCon
     context.output(config.certIssueOutputTag, event)
     metrics.incCounter(config.certIssueEventsCount)
   }
+
+  def getCourseHierarchy(programId: String)(metrics: Metrics): java.util.Map[String, AnyRef] = {
+    val query = QueryBuilder
+      .select(config.Hierarchy)
+      .from(config.hierarchyStoreKeySpace, config.contentHierarchyTable)
+      .where(QueryBuilder.eq(config.identifier, programId))
+    val row = cassandraUtil.find(query.toString)
+    if (CollectionUtils.isNotEmpty(row)) {
+      val hierarchy =
+        row.asScala.head.getObject(config.Hierarchy).asInstanceOf[String]
+      if (StringUtils.isNotBlank(hierarchy))
+        gson.fromJson(hierarchy, classOf[java.util.Map[String, AnyRef]])
+      else new java.util.HashMap[String, AnyRef]()
+    } else new java.util.HashMap[String, AnyRef]()
+  }
+
 }

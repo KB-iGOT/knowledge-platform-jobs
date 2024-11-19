@@ -128,7 +128,7 @@ class ProgramActivityAggregateUpdaterConfig(override val config: Config) extends
   val dedupEnabled: Boolean = config.getBoolean("activity.input.dedup.enabled")
   val statusCacheExpirySec: Int = config.getInt("activity.collection.status.cache.expiry")
   val filterCompletedEnrolments: Boolean =  if (config.hasPath("activity.filter.processed.enrolments")) config.getBoolean("activity.filter.processed.enrolments") else true
-
+  val hierarchyStoreKeySpace = config.getString("lms-cassandra.hierarchyStoreKeySpace")
   // Other services configuration
   val searchServiceBasePath: String = config.getString("service.search.basePath")
   val searchAPIURL = searchServiceBasePath + "/v3/search"
@@ -146,6 +146,10 @@ class ProgramActivityAggregateUpdaterConfig(override val config: Config) extends
   val userAccBlockedErrCode = "UOS_USRRED0006"
   val name: String = "name"
   val validProgramPrimaryCategory = List[String]("Program","Curated Program","Blended Program")
+  val Hierarchy: String = "hierarchy"
+  val contentHierarchyTable: String = "content_hierarchy"
+  val caseStudy = "Case Study"
+  val courseCategory = "courseCategory"
 
 
 }
