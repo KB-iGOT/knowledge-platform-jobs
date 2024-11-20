@@ -547,7 +547,7 @@ class ActivityAggregatesFunction(config: ActivityAggregateUpdaterConfig, httpUti
         .getOrElse("parentcollections", new java.util.ArrayList())
         .asInstanceOf[java.util.ArrayList[String]]
       val courseCateogry = StringContext
-        .processEscapes(courseMetadata.getOrElse(config.courseCategory, "").asInstanceOf[String]).filter(_ >= ' ')
+        .processEscapes(courseMetadata.getOrElse(config.coursecategory, "").asInstanceOf[String]).filter(_ >= ' ')
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
       courseInfoMap.put("courseId", courseId)
