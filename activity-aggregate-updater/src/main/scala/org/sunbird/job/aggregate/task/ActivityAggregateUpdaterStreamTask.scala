@@ -45,7 +45,7 @@ class ActivityAggregateUpdaterStreamTask(config: ActivityAggregateUpdaterConfig,
     // TODO: set separate parallelism for below task.
     progressStream.getSideOutput(config.collectionUpdateOutputTag).process(new CollectionProgressUpdateFunction(config))
       .name(config.collectionProgressUpdateFn).uid(config.collectionProgressUpdateFn).setParallelism(config.enrolmentCompleteParallelism)
-    val enrolmentCompleteStream = progressStream.getSideOutput(config.collectionCompleteOutputTag).process(new CollectionProgressCompleteFunction(config))
+    val enrolmentCompleteStream = progressStream.getSideOutput(config.collectionCompleteOutputTag).process(new CollectionProgressCompleteFunction(config, httpUtil))
       .name(config.collectionCompleteFn).uid(config.collectionCompleteFn).setParallelism(config.enrolmentCompleteParallelism)
 
     enrolmentCompleteStream.getSideOutput(config.certIssueOutputTag).addSink(kafkaConnector.kafkaStringSink(config.kafkaCertIssueTopic))
