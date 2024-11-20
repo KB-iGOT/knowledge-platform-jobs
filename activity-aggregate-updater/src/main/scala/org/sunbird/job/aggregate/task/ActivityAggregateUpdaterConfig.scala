@@ -143,5 +143,6 @@ class ActivityAggregateUpdaterConfig(override val config: Config) extends BaseJo
   val skippedEventCount = "skipped-events-count"
   val courseCategory = "courseCategory"
   val caseStudy = "Case Study"
+  val coursecategory = "coursecategory"
 
 }
