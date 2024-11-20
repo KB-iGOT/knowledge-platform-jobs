@@ -1,7 +1,6 @@
 package org.sunbird.job.aggregate.functions
 
 import java.util.UUID
-
 import com.datastax.driver.core.querybuilder.{QueryBuilder, Select, Update}
 import com.google.gson.Gson
 import org.apache.flink.api.common.typeinfo.TypeInformation
@@ -14,16 +13,17 @@ import org.sunbird.job.dedup.DeDupEngine
 import org.sunbird.job.{BaseProcessFunction, Metrics}
 import org.sunbird.job.aggregate.domain.{ActorObject, CollectionProgress, EventContext, EventData, EventObject, TelemetryEvent}
 import org.sunbird.job.aggregate.task.ActivityAggregateUpdaterConfig
-import org.sunbird.job.util.CassandraUtil
+import org.sunbird.job.util.{CassandraUtil, HttpUtil}
 
 import scala.collection.JavaConverters._
 
-class CollectionProgressCompleteFunction(config: ActivityAggregateUpdaterConfig)(implicit val enrolmentCompleteTypeInfo: TypeInformation[List[CollectionProgress]], val stringTypeInfo: TypeInformation[String], @transient var cassandraUtil: CassandraUtil = null)
+class CollectionProgressCompleteFunction(config: ActivityAggregateUpdaterConfig, httpUtil: HttpUtil)(implicit val enrolmentCompleteTypeInfo: TypeInformation[List[CollectionProgress]], val stringTypeInfo: TypeInformation[String], @transient var cassandraUtil: CassandraUtil = null)
   extends BaseProcessFunction[List[CollectionProgress], String](config) {
 
   private[this] val logger = LoggerFactory.getLogger(classOf[CollectionProgressCompleteFunction])
   lazy private val gson = new Gson()
   var deDupEngine: DeDupEngine = _
+  val activityAggregatesFunction = new ActivityAggregatesFunction(config, httpUtil, cassandraUtil)
 
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
@@ -51,7 +51,16 @@ class CollectionProgressCompleteFunction(config: ActivityAggregateUpdaterConfig)
     logger.info("enrolmentQueries => "+enrolmentQueries)
     updateDB(config.thresholdBatchWriteSize, enrolmentQueries)(metrics)
     pendingEnrolments.foreach(e => {
-      createIssueCertEvent(e, context)(metrics)
+      val courseId = e.courseId
+      val contentObj: java.util.Map[String, AnyRef] = activityAggregatesFunction.getCourseInfo(courseId)(metrics, config, null, httpUtil)
+      if (!contentObj.isEmpty) {
+        val courseCategory = contentObj.getOrDefault(config.courseCategory,"").asInstanceOf[String]
+        if (config.caseStudy.replaceAll("\\s+", " ").equalsIgnoreCase(courseCategory.replaceAll("\\s+", " "))) {
+          logger.info(s"Certificate event not generated for courseId: $courseId because the courseCategory is 'Case Study'.")
+        } else {
+          createIssueCertEvent(e, context)(metrics)
+        }
+      }
       generateAuditEvent(e, context)(metrics)
     })
     logger.info("posting events completed")
