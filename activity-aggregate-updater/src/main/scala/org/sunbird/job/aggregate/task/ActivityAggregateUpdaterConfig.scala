@@ -141,5 +141,8 @@ class ActivityAggregateUpdaterConfig(override val config: Config) extends BaseJo
   val defaultHeaders = Map[String, String] ("Content-Type" -> "application/json")
   val userAccBlockedErrCode = "UOS_USRRED0006"
   val skippedEventCount = "skipped-events-count"
+  val courseCategory = "courseCategory"
+  val caseStudy = "Case Study"
+  val coursecategory = "coursecategory"
 
 }
