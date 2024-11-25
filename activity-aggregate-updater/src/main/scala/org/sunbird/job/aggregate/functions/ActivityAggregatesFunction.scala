@@ -485,9 +485,11 @@ class ActivityAggregatesFunction(config: ActivityAggregateUpdaterConfig, httpUti
     contentCache: DataCache,
     httpUtil: HttpUtil
   ): java.util.Map[String, AnyRef] = {
-    logger.info(
-      s"Fetching course details from Redis for Id: ${courseId}, Configured Index: " + contentCache.getDBConfigIndex() + ", Current Index: " + contentCache.getDBIndex()
-    )
+    if (contentCache != null) {
+      logger.info(
+        s"Fetching course details from Redis for Id: ${courseId}, Configured Index: " + contentCache.getDBConfigIndex() + ", Current Index: " + contentCache.getDBIndex()
+      )
+    }
     val courseMetadata = Option(contentCache).flatMap(c => Option(c.getWithRetry(courseId))).getOrElse(null)
     if (null == courseMetadata || courseMetadata.isEmpty) {
       logger.error(
