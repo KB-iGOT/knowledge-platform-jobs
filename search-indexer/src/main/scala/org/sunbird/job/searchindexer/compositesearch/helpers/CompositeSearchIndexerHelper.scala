@@ -32,7 +32,6 @@ trait CompositeSearchIndexerHelper {
     if (transactionData.nonEmpty) {
       val addedProperties = transactionData.getOrElse("properties", Map[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
       addedProperties.foreach(property => {
-        logger.info(s"processing property -> $property")
         if (!definition.externalProperties.contains(property._1)) {
           val propertyNewValue: AnyRef = property._2.asInstanceOf[Map[String, AnyRef]].getOrElse("nv", null) match {
             case propVal: List[AnyRef] => if(propVal.isEmpty) null else propVal
@@ -107,7 +106,6 @@ trait CompositeSearchIndexerHelper {
       case "UPDATE" =>
         val indexDocument = getIndexDocument(message, true, definition, nestedFields, ignoredFields)(esUtil)
         val jsonIndexDocument = ScalaJsonUtil.serialize(indexDocument)
-        logger.info(s"Trying to upsert doc :: id-> $identifier , data -> $jsonIndexDocument ")
         upsertDocument(identifier, jsonIndexDocument)(esUtil)
       case "DELETE" =>
         val id = message.getOrElse("nodeUniqueId", "").asInstanceOf[String]
@@ -121,7 +119,6 @@ trait CompositeSearchIndexerHelper {
   }
 
   private def addMetadataToDocument(propertyName: String, propertyValue: AnyRef, nestedFields: List[String]): AnyRef = {
-    logger.info(s"addMetadataToDocument:: propertyName: $propertyName , propertyValue: $propertyValue , nestedFields: $nestedFields")
     val propertyNewValue = if (nestedFields.contains(propertyName)) ScalaJsonUtil.deserialize[AnyRef](propertyValue.asInstanceOf[String]) else propertyValue
     propertyNewValue
   }
