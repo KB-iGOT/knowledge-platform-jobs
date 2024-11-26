@@ -16,6 +16,7 @@ import org.apache.flink.streaming.api.scala.function.ProcessWindowFunction
 import org.apache.flink.streaming.api.windowing.windows.GlobalWindow
 import org.slf4j.LoggerFactory
 import org.sunbird.job.cache.{DataCache, RedisConnect}
+import org.sunbird.job.aggregate.common.ContentHelper
 import org.sunbird.job.aggregate.domain.{UserContentConsumption, _}
 import org.sunbird.job.aggregate.task.ActivityAggregateUpdaterConfig
 import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil, ScalaJsonUtil}
@@ -26,7 +27,8 @@ import scala.language.postfixOps
 
 class ActivityAggregatesFunction(config: ActivityAggregateUpdaterConfig, httpUtil: HttpUtil, @transient var cassandraUtil: CassandraUtil = null)
                                 (implicit val stringTypeInfo: TypeInformation[String])
-  extends WindowBaseProcessFunction[Map[String, AnyRef], String, Int](config) {
+  extends WindowBaseProcessFunction[Map[String, AnyRef], String, Int](config) 
+  with ContentHelper {
 
   val mapType: Type = new TypeToken[Map[String, AnyRef]]() {}.getType
   private[this] val logger = LoggerFactory.getLogger(classOf[ActivityAggregatesFunction])
@@ -62,8 +64,17 @@ class ActivityAggregatesFunction(config: ActivityAggregateUpdaterConfig, httpUti
               metrics: Metrics): Unit = {
 
     logger.info("Input Events : " + JSONUtil.serialize(events.toList))
+    var courseCategory = ""
     val inputUserConsumptionList: List[UserContentConsumption] = events
-        .filter(event=> verifyPrimaryCategory(event.getOrElse(config.courseId, "").asInstanceOf[String])(metrics, config, httpUtil, contentCache))
+        .filter {
+          //event=> verifyPrimaryCategory(event.getOrElse(config.courseId, "").asInstanceOf[String])(metrics, config, httpUtil, contentCache)
+          event =>
+            val (isValidProgramEvent, courseCategoryVal) = verifyPrimaryCategory(event.getOrElse(config.courseId, "").asInstanceOf[String])(metrics, config, httpUtil, contentCache)
+            courseCategory = courseCategoryVal
+            if (isValidProgramEvent)
+              logger.warn(s"Skipping event due to primaryCategory is Program.")
+            isValidProgramEvent
+        }
         .groupBy(key => (key.get(config.courseId), key.get(config.batchId), key.get(config.userId)))
         .values.map(value => {
         metrics.incCounter(config.processedEnrolmentCount)
@@ -93,7 +104,7 @@ class ActivityAggregatesFunction(config: ActivityAggregateUpdaterConfig, httpUti
     val courseAggregations = finalUserConsumptionList.flatMap(userConsumption => {
 
       // Course Level Agg using the merged data of ContentConsumption per user, course and batch.
-      val optCourseAgg = courseActivityAgg(userConsumption, context)(metrics)
+      val optCourseAgg = courseActivityAgg(userConsumption, courseCategory, context)(metrics)
       val courseAggs = if (optCourseAgg.nonEmpty) List(optCourseAgg.get) else List()
 
       // Identify the children of the course (only collections) for which aggregates computation required.
@@ -125,7 +136,7 @@ class ActivityAggregatesFunction(config: ActivityAggregateUpdaterConfig, httpUti
   /**
    * Course Level Agg using the merged data of ContentConsumption per user, course and batch.
    */
-  def courseActivityAgg(userConsumption: UserContentConsumption, context: ProcessWindowFunction[Map[String, AnyRef], String, Int, GlobalWindow]#Context)(implicit metrics: Metrics): Option[UserEnrolmentAgg] = {
+  def courseActivityAgg(userConsumption: UserContentConsumption, courseCategory: String, context: ProcessWindowFunction[Map[String, AnyRef], String, Int, GlobalWindow]#Context)(implicit metrics: Metrics): Option[UserEnrolmentAgg] = {
     val courseId = userConsumption.courseId
     val userId = userConsumption.userId
     val contextId = "cb:" + userConsumption.batchId
@@ -151,9 +162,9 @@ class ActivityAggregatesFunction(config: ActivityAggregateUpdaterConfig, httpUti
       val contentStatus = userConsumption.contents.map(cc => (cc._2.contentId, cc._2.status)).toMap
       val inputContents = userConsumption.contents.filter(cc => cc._2.fromInput).keys.toList
       val collectionProgress = if (completedCount >= leafNodes.size) {
-        Option(CollectionProgress(userId, userConsumption.batchId, courseId, completedCount, new java.util.Date(), contentStatus, inputContents, true))
+        Option(CollectionProgress(userId, userConsumption.batchId, courseId, completedCount, new java.util.Date(), contentStatus, inputContents, true, courseCategory))
       } else {
-        Option(CollectionProgress(userId, userConsumption.batchId, courseId, completedCount, null, contentStatus, inputContents))
+        Option(CollectionProgress(userId, userConsumption.batchId, courseId, completedCount, null, contentStatus, inputContents, false, courseCategory))
       }
       Option(UserEnrolmentAgg(UserActivityAgg("Course", userId, courseId, contextId, Map("completedCount" -> completedCount.toDouble), Map("completedCount" -> System.currentTimeMillis())), collectionProgress))
     }
@@ -455,16 +466,18 @@ class ActivityAggregatesFunction(config: ActivityAggregateUpdaterConfig, httpUti
     config: ActivityAggregateUpdaterConfig,
     httpUtil: HttpUtil,
     contentCache: DataCache
-  ): Boolean = {
+  ): (Boolean, String) = {
     logger.info(
       "Verify Program post-publish required for content: " + identifier
     )
     // Get the primary Categories for the courses here
     var isValidProgram = false
+    var courseCategory = ""
     val contentObj: java.util.Map[String, AnyRef] =
       getCourseInfo(identifier)(metrics, config, contentCache, httpUtil)
     if (!contentObj.isEmpty) {
       val primaryCategory = contentObj.get("primaryCategory")
+      courseCategory = contentObj.get("courseCategory").asInstanceOf[String]
       if (primaryCategory != null &&
         (primaryCategory != "Program"
           || primaryCategory != "Curated Program"
@@ -474,122 +487,9 @@ class ActivityAggregatesFunction(config: ActivityAggregateUpdaterConfig, httpUti
       logger.info("PrimaryCategory value is :" + primaryCategory + ", for Id: " + identifier)
     } else {
       logger.error("Failed to read content details for Id: " + identifier)
+      throw new Exception(s"Failed to read content for Id $identifier")
     }
     logger.info("is activity aggregator is skipping this event ? " + isValidProgram)
-    isValidProgram
-  }
-
-  def getCourseInfo(courseId: String)(
-    metrics: Metrics,
-    config: ActivityAggregateUpdaterConfig,
-    contentCache: DataCache,
-    httpUtil: HttpUtil
-  ): java.util.Map[String, AnyRef] = {
-    if (contentCache != null) {
-      logger.info(
-        s"Fetching course details from Redis for Id: ${courseId}, Configured Index: " + contentCache.getDBConfigIndex() + ", Current Index: " + contentCache.getDBIndex()
-      )
-    }
-    val courseMetadata = Option(contentCache).flatMap(c => Option(c.getWithRetry(courseId))).getOrElse(null)
-    if (null == courseMetadata || courseMetadata.isEmpty) {
-      logger.error(
-        s"Fetching course details from Content Service for Id: ${courseId}"
-      )
-      val url =
-        config.contentReadURL + "/" + courseId + "?fields=identifier,name,versionKey,parentCollections,primaryCategory,courseCategory"
-      val response = getAPICall(url, "content")(config, httpUtil, metrics)
-      val courseName = StringContext
-        .processEscapes(
-          response.getOrElse(config.name, "").asInstanceOf[String]
-        )
-        .filter(_ >= ' ')
-      val primaryCategory = StringContext
-        .processEscapes(
-          response.getOrElse(config.primaryCategory, "").asInstanceOf[String]
-        )
-        .filter(_ >= ' ')
-      val versionKey = StringContext
-        .processEscapes(
-          response.getOrElse(config.versionKey, "").asInstanceOf[String]
-        )
-        .filter(_ >= ' ')
-      val parentCollections = response
-        .getOrElse("parentCollections", List.empty[String])
-        .asInstanceOf[List[String]]
-      val courseCateogry = StringContext
-        .processEscapes(response.getOrElse(config.courseCategory, "").asInstanceOf[String]).filter(_ >= ' ')
-      val courseInfoMap: java.util.Map[String, AnyRef] =
-        new java.util.HashMap[String, AnyRef]()
-      courseInfoMap.put("courseId", courseId)
-      courseInfoMap.put("courseName", courseName)
-      courseInfoMap.put("parentCollections", parentCollections)
-      courseInfoMap.put("primaryCategory", primaryCategory)
-      courseInfoMap.put("versionKey", versionKey)
-      courseInfoMap.put(config.courseCategory, courseCateogry)
-      courseInfoMap
-    } else {
-      val courseName = StringContext
-        .processEscapes(
-          courseMetadata.getOrElse(config.name, "").asInstanceOf[String]
-        )
-        .filter(_ >= ' ')
-      val primaryCategory = StringContext
-        .processEscapes(
-          courseMetadata
-            .getOrElse("primarycategory", "")
-            .asInstanceOf[String]
-        )
-        .filter(_ >= ' ')
-      val versionKey = StringContext
-        .processEscapes(
-          courseMetadata.getOrElse("versionkey", "").asInstanceOf[String]
-        )
-        .filter(_ >= ' ')
-      val parentCollections = courseMetadata
-        .getOrElse("parentcollections", new java.util.ArrayList())
-        .asInstanceOf[java.util.ArrayList[String]]
-      val courseCateogry = StringContext
-        .processEscapes(courseMetadata.getOrElse(config.coursecategory, "").asInstanceOf[String]).filter(_ >= ' ')
-      val courseInfoMap: java.util.Map[String, AnyRef] =
-        new java.util.HashMap[String, AnyRef]()
-      courseInfoMap.put("courseId", courseId)
-      courseInfoMap.put("courseName", courseName)
-      courseInfoMap.put("parentCollections", parentCollections)
-      courseInfoMap.put("primaryCategory", primaryCategory)
-      courseInfoMap.put("versionKey", versionKey)
-      courseInfoMap.put(config.courseCategory, courseCateogry)
-      courseInfoMap
-    }
-
-  }
-
-  def getAPICall(url: String, responseParam: String)(
-    config: ActivityAggregateUpdaterConfig,
-    httpUtil: HttpUtil,
-    metrics: Metrics
-  ): Map[String, AnyRef] = {
-    val response = httpUtil.get(url, config.defaultHeaders)
-    if (200 == response.status) {
-      ScalaJsonUtil
-        .deserialize[Map[String, AnyRef]](response.body)
-        .getOrElse("result", Map[String, AnyRef]())
-        .asInstanceOf[Map[String, AnyRef]]
-        .getOrElse(responseParam, Map[String, AnyRef]())
-        .asInstanceOf[Map[String, AnyRef]]
-    } else if (
-      400 == response.status && response.body.contains(
-        config.userAccBlockedErrCode
-      )
-    ) {
-      metrics.incCounter(config.skippedEventCount)
-      logger.error(
-        s"Error while fetching user details for ${url}: " + response.status + " :: " + response.body
-      )
-      Map[String, AnyRef]()
-    } else {
-      throw new Exception(
-        s"Error from get API : ${url}, with response: ${response}"
-      )
-    }
+    (isValidProgram, courseCategory)
   }
 }

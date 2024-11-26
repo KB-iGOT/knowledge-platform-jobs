@@ -116,6 +116,6 @@ class PostPublishProcessorConfig(override val config: Config) extends BaseJobCon
 
   val contentCacheStore: Int = 0
 
-  val allowedResourceTypesForEventBatch = List[String]("Karmayogi Saptah")
+  val allowedResourceTypesForEventBatch: util.List[String] = if (config.hasPath("service.batchCreation.event.categories")) config.getStringList("service.batchCreation.event.categories") else util.Arrays.asList("Karmayogi Saptah")
   val minPercetageToCompleteEventResource: Int = 50
 }

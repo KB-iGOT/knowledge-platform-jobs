@@ -23,7 +23,6 @@ class CollectionProgressCompleteFunction(config: ActivityAggregateUpdaterConfig,
   private[this] val logger = LoggerFactory.getLogger(classOf[CollectionProgressCompleteFunction])
   lazy private val gson = new Gson()
   var deDupEngine: DeDupEngine = _
-  val activityAggregatesFunction = new ActivityAggregatesFunction(config, httpUtil, cassandraUtil)
 
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
@@ -52,14 +51,10 @@ class CollectionProgressCompleteFunction(config: ActivityAggregateUpdaterConfig,
     updateDB(config.thresholdBatchWriteSize, enrolmentQueries)(metrics)
     pendingEnrolments.foreach(e => {
       val courseId = e.courseId
-      val contentObj: java.util.Map[String, AnyRef] = activityAggregatesFunction.getCourseInfo(courseId)(metrics, config, null, httpUtil)
-      if (!contentObj.isEmpty) {
-        val courseCategory = contentObj.getOrDefault(config.courseCategory, "").asInstanceOf[String]
-        if (config.caseStudy.replaceAll("\\s+", " ").equalsIgnoreCase(courseCategory.replaceAll("\\s+", " "))) {
-          logger.info(s"Certificate event not generated for courseId: $courseId because the courseCategory is 'Case Study'.")
-        } else {
-          createIssueCertEvent(e, context)(metrics)
-        }
+      if (config.caseStudy.replaceAll("\\s+", " ").equalsIgnoreCase(e.courseCategory.replaceAll("\\s+", " "))) {
+        logger.info(s"Certificate event not generated for courseId: $courseId because the courseCategory is 'Case Study'.")
+      } else {
+        createIssueCertEvent(e, context)(metrics)
       }
       generateAuditEvent(e, context)(metrics)
     })

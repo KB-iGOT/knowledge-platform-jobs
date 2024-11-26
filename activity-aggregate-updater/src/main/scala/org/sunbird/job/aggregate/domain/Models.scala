@@ -46,7 +46,7 @@ case class UserActivityAgg(activity_type: String,
                            agg_last_updated: Map[String, Long]
                    )
 
-case class CollectionProgress(userId: String, batchId: String, courseId: String, progress: Int, completedOn: Date, contentStatus: Map[String, Int], inputContents: List[String], completed: Boolean = false)
+case class CollectionProgress(userId: String, batchId: String, courseId: String, progress: Int, completedOn: Date, contentStatus: Map[String, Int], inputContents: List[String], completed: Boolean = false, courseCategory: String = "")
 
 case class UserEnrolmentAgg(activityAgg: UserActivityAgg, collectionProgress: Option[CollectionProgress] = None)
 
