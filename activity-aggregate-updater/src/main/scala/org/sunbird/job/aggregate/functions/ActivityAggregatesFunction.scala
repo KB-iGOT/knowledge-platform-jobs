@@ -67,13 +67,12 @@ class ActivityAggregatesFunction(config: ActivityAggregateUpdaterConfig, httpUti
     var courseCategory = ""
     val inputUserConsumptionList: List[UserContentConsumption] = events
         .filter {
-          //event=> verifyPrimaryCategory(event.getOrElse(config.courseId, "").asInstanceOf[String])(metrics, config, httpUtil, contentCache)
           event =>
-            val (isValidProgramEvent, courseCategoryVal) = verifyPrimaryCategory(event.getOrElse(config.courseId, "").asInstanceOf[String])(metrics, config, httpUtil, contentCache)
+            val (isValidCourseEvent, courseCategoryVal) = verifyPrimaryCategory(event.getOrElse(config.courseId, "").asInstanceOf[String])(metrics, config, httpUtil, contentCache)
             courseCategory = courseCategoryVal
-            if (isValidProgramEvent)
+            if (!isValidCourseEvent)
               logger.warn(s"Skipping event due to primaryCategory is Program.")
-            isValidProgramEvent
+            isValidCourseEvent
         }
         .groupBy(key => (key.get(config.courseId), key.get(config.batchId), key.get(config.userId)))
         .values.map(value => {
@@ -471,7 +470,7 @@ class ActivityAggregatesFunction(config: ActivityAggregateUpdaterConfig, httpUti
       "Verify Program post-publish required for content: " + identifier
     )
     // Get the primary Categories for the courses here
-    var isValidProgram = false
+    var isValidCourse = false
     var courseCategory = ""
     val contentObj: java.util.Map[String, AnyRef] =
       getCourseInfo(identifier)(metrics, config, contentCache, httpUtil)
@@ -482,14 +481,14 @@ class ActivityAggregatesFunction(config: ActivityAggregateUpdaterConfig, httpUti
         (primaryCategory != "Program"
           || primaryCategory != "Curated Program"
           || primaryCategory != "Blended Program")) {
-        isValidProgram = true
+        isValidCourse = true
       }
-      logger.info("PrimaryCategory value is :" + primaryCategory + ", for Id: " + identifier)
+      logger.info("PrimaryCategory value is : " + primaryCategory + ", for Id: " + identifier)
     } else {
       logger.error("Failed to read content details for Id: " + identifier)
       throw new Exception(s"Failed to read content for Id $identifier")
     }
-    logger.info("is activity aggregator is skipping this event ? " + isValidProgram)
-    (isValidProgram, courseCategory)
+    logger.info("is activity aggregator is processing this event ? " + isValidCourse)
+    (isValidCourse, courseCategory)
   }
 }
