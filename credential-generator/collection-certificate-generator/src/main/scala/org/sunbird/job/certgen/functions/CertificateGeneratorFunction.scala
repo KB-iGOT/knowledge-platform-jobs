@@ -288,13 +288,33 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
         updatedCerts.add(mapAsJavaMap(Map[String, String](
           config.name -> certMetaData.certificate.name,
           config.identifier -> certMetaData.certificate.id,
-          config.token -> certMetaData.certificate.token,
-        ) ++ {if(!certMetaData.certificate.lastIssuedOn.isEmpty) Map[String, String](config.lastIssuedOn -> certMetaData.certificate.lastIssuedOn)
-        else Map[String, String]()}
-        ++ {if(config.enableRcCertificate) Map[String, String](config.templateUrl -> certMetaData.certificate.templateUrl, config.`type`->certMetaData.certificate.`type`)
-        else Map[String, String]()}
-        ))
-        
+          config.token -> certMetaData.certificate.token
+        ) ++ {
+          if (event.reIssueDate > 0) {
+            logger.info("Re-issue date is greater than 0, formatting and setting it as lastIssuedOn. Re-issue date: {}", event.reIssueDate)
+            val formattedReIssueDate = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ").format(new java.util.Date(event.reIssueDate))
+            logger.info("Formatted reIssueDate as lastIssuedOn: {}", formattedReIssueDate)
+            Map[String, String](config.lastIssuedOn -> formattedReIssueDate)
+          } else if (!certMetaData.certificate.lastIssuedOn.isEmpty) {
+            logger.info("Using certMetaData.certificate.lastIssuedOn as lastIssuedOn: {}", certMetaData.certificate.lastIssuedOn)
+            Map[String, String](config.lastIssuedOn -> certMetaData.certificate.lastIssuedOn)
+          } else {
+            logger.warn("Neither reIssueDate is valid nor certMetaData.certificate.lastIssuedOn is available. No lastIssuedOn will be set.")
+            Map[String, String]()
+          }
+        } ++ {
+          if (config.enableRcCertificate) {
+            logger.info("Adding templateUrl and type fields for RC Certificate.")
+            Map[String, String](
+              config.templateUrl -> certMetaData.certificate.templateUrl,
+              config.`type` -> certMetaData.certificate.`type`
+            )
+          } else {
+            logger.info("RC Certificate is not enabled. Skipping templateUrl and type fields.")
+            Map[String, String]()
+          }
+        }))
+
         val query = getUpdateIssuedCertQuery(updatedCerts, certMetaData.userId, certMetaData.courseId, certMetaData.batchId, config)
         logger.info("update query {}", query.toString)
         val result = cassandraUtil.update(query)
