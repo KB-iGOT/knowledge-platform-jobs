@@ -18,6 +18,8 @@ class Event(eventMap: java.util.Map[String, Any], partition: Int, offset: Long) 
     
     def reIssue: Boolean = readOrDefault[Boolean]("edata.reIssue", false)
 
+    def reIssueDate: Long = readOrDefault[Long]("edata.reIssueDate", 0L)
+
     def eData: Map[String, AnyRef] = readOrDefault[Map[String, AnyRef]]("edata", Map[String, AnyRef]())
 
 
