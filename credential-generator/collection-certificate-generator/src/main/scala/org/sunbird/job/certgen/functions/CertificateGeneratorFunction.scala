@@ -290,9 +290,9 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
           config.identifier -> certMetaData.certificate.id,
           config.token -> certMetaData.certificate.token
         ) ++ {
-          if (event.reIssueDate > 0) {
+          if (event.reIssueDate.longValue() > 0) {
             logger.info("Re-issue date is greater than 0, formatting and setting it as lastIssuedOn. Re-issue date: {}", event.reIssueDate)
-            val formattedReIssueDate = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ").format(new java.util.Date(event.reIssueDate))
+            val formattedReIssueDate = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ").format(new Date(event.reIssueDate.longValue()))
             logger.info("Formatted reIssueDate as lastIssuedOn: {}", formattedReIssueDate)
             Map[String, String](config.lastIssuedOn -> formattedReIssueDate)
           } else if (!certMetaData.certificate.lastIssuedOn.isEmpty) {
