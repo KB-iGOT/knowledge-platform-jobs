@@ -228,7 +228,7 @@ trait IssueCertificateHelper {
         val eData = Map[String, AnyRef] (
             "issuedDate" -> dateFormatter.format(enrolledUser.issuedOn),
             "data" -> List(Map[String, AnyRef]("recipientName" -> recipientName, "recipientId" -> event.userId)),
-            "reIssueDate" -> event.reIssueDate.asInstanceOf[Option[Long]],
+            "reIssueDate" -> event.reIssueDate.asInstanceOf[AnyRef],
             "criteria" -> Map[String, String]("narrative" -> certName),
             "svgTemplate" -> template.getOrElse("url", ""),
             "oldId" -> enrolledUser.oldId,
