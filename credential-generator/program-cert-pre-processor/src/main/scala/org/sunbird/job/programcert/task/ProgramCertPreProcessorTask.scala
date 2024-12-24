@@ -34,6 +34,10 @@ class ProgramCertPreProcessorTask(config: ProgramCertPreProcessorConfig, kafkaCo
         progressStream.getSideOutput(config.generateCertificateOutputTag).addSink(kafkaConnector.kafkaStringSink(config.kafkaOutputTopic))
           .name(config.generateCertificateProducer).uid(config.generateCertificateProducer).setParallelism(config.generateCertificateParallelism)
         env.execute(config.jobName)
+
+        progressStream.getSideOutput(config.generateCertificateFailedOutputTag).addSink(kafkaConnector.kafkaStringSink(config.kafkaOutputFailedTopic))
+          .name(config.generateCertificateFailedEventProducer).uid(config.generateCertificateFailedEventProducer).setParallelism(config.generateCertificateParallelism)
+        env.execute(config.jobName)
     }
 }
 

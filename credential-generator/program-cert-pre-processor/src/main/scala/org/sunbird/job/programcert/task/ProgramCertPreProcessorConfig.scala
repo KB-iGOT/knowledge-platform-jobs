@@ -20,14 +20,18 @@ class ProgramCertPreProcessorConfig(override val config: Config) extends BaseJob
   //kafka config
   val kafkaInputTopic: String = config.getString("kafka.input.topic")
   val kafkaOutputTopic: String = config.getString("kafka.output.topic")
+  val kafkaOutputFailedTopic: String = config.getString("kafka.output.failed.topic")
   val certificatePreProcessorConsumer: String = "program-cert-pre-processor-consumer"
   val generateCertificateProducer = "generate-certificate-sink"
+  val generateCertificateFailedEventProducer = "generate-certificate-failed-event-sink"
   override val kafkaConsumerParallelism: Int = config.getInt("task.consumer.parallelism")
   val generateCertificateParallelism: Int = config.getInt("task.generate_certificate.parallelism")
 
   //Tags
   val generateCertificateOutputTagName = "generate-certificate-request"
   val generateCertificateOutputTag: OutputTag[String] = OutputTag[String](generateCertificateOutputTagName)
+  val generateCertificateFailedOutputTagName = "generate-certificate-failed-request"
+  val generateCertificateFailedOutputTag: OutputTag[String] = OutputTag[String](generateCertificateFailedOutputTagName)
 
   //Cassandra config
   val dbHost: String = config.getString("lms-cassandra.host")

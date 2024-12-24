@@ -80,6 +80,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
             val leafNodeMap = mutable.Map[String, Int]()
 
             var isProgramCertificateToBeGenerated: Boolean = true;
+            var isSkippedEvent: Boolean = true;
             var lastCourseCompleteOn: Date = null
             var programCompletedOn: Date = null
             for (courseId <- programChildrenCourses) {
@@ -89,6 +90,8 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
                 val userId: String = event.userId
                 val courseEnrollmentRow = getEnrollmentRecord(enrolmentRecords, courseId)
                 val isCertificateIssued = courseEnrollmentRow.isDefined && !courseEnrollmentRow.get.getList(config.issuedCertificates, TypeTokens.mapOf(classOf[String], classOf[String])).isEmpty
+                val isCompleted = courseEnrollmentRow.isDefined && courseEnrollmentRow.get.getInt(config.status).equals(2)
+                logger.info("Is Course completed for courseId: " + courseId + " userId:" + userId + " :" + isCompleted)
                 logger.info("Is Certificate Available for courseId: " + courseId + " userId:" + userId + " :" + isCertificateIssued)
                 var courseCompletedOn: Date = null;
                 if (isCertificateIssued) {
@@ -116,6 +119,9 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
                 }
                 if (!isCertificateIssued && isProgramCertificateToBeGenerated) { //AtLeast one course doesn't have certificate
                   isProgramCertificateToBeGenerated = false;
+                }
+                if (!isCertificateIssued && isProgramCertificateToBeGenerated && isCompleted) { //child course is completed but certificate not issued
+                  isSkippedEvent = false;
                 }
               }
             }
@@ -153,6 +159,12 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
               //Add kafka event to generate Certificate for Program
               logger.info("Adding the kafka event for programId: " + courseParentId)
               createIssueCertEventForProgram(courseParentId, event.userId, batchId, context)(metrics)
+            }
+            if (!isSkippedEvent) {
+              //Add kafka event to failed to generate Certificate for Program
+              logger.info("Adding failed kafka event for programId: " + courseParentId)
+              context.output(config.generateCertificateFailedOutputTag, event)
+              metrics.incCounter(config.programCertIssueEventsCount)
             }
           }
         }
