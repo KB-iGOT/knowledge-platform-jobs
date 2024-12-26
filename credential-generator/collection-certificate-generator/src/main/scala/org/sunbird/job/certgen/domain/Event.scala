@@ -66,5 +66,14 @@ class Event(eventMap: java.util.Map[String, Any], partition: Int, offset: Long) 
 
   def coursePosterImage: String = readOrDefault[String]("edata.coursePosterImage", "")
 
-  def reIssueDate: Long = readOrDefault[Long]("edata.reIssueDate", 0L)
+  def reIssueDate: Long = {
+    val value: AnyRef = readOrDefault[AnyRef]("edata.reIssueDate", 0L.asInstanceOf[AnyRef])
+    value match {
+      case l: java.lang.Long => l.longValue()
+      case i: java.lang.Integer => i.longValue()
+      case s: String => s.toLong
+      case null => 0L
+      case _ => throw new IllegalArgumentException("Unsupported type for edata.reIssueDate")
+    }
+  }
 }

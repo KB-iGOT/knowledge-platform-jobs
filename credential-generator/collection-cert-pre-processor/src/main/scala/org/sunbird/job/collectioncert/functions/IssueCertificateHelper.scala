@@ -224,11 +224,11 @@ trait IssueCertificateHelper {
                 list.asInstanceOf[java.util.List[String]].asScala.toList
             }
             .getOrElse(List.empty)
-        
+
         val eData = Map[String, AnyRef] (
             "issuedDate" -> dateFormatter.format(enrolledUser.issuedOn),
             "data" -> List(Map[String, AnyRef]("recipientName" -> recipientName, "recipientId" -> event.userId)),
-            "reIssueDate" -> event.reIssueDate.longValue().asInstanceOf[AnyRef],
+            "reIssueDate" -> java.lang.Long.valueOf(event.reIssueDate),
             "criteria" -> Map[String, String]("narrative" -> certName),
             "svgTemplate" -> template.getOrElse("url", ""),
             "oldId" -> enrolledUser.oldId,
