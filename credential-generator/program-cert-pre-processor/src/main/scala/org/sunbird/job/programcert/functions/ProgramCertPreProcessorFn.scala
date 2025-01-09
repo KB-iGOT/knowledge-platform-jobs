@@ -117,12 +117,13 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
                     }
                   }
                 }
-                if (!isCertificateIssued && isProgramCertificateToBeGenerated) { //AtLeast one course doesn't have certificate
-                  isProgramCertificateToBeGenerated = false;
-                }
                 if (!isCertificateIssued && isProgramCertificateToBeGenerated && isCompleted) { //child course is completed but certificate not issued
                   isFailedEvent = true;
                 }
+                if (!isCertificateIssued && isProgramCertificateToBeGenerated) { //AtLeast one course doesn't have certificate
+                  isProgramCertificateToBeGenerated = false;
+                }
+
               }
             }
             if (!leafNodeMap.isEmpty) {
@@ -156,16 +157,15 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
             }
 
             if (isProgramCertificateToBeGenerated) {
-              if (isFailedEvent) {
-                //Add kafka event to failed to generate Certificate for Program
-                logger.info("Program cert validation failed for event : " + event.toString)
-                context.output(config.generateCertificateFailedOutputTag, event.toString)
-                metrics.incCounter(config.programCertIssueEventsCount)
-              } else {
                 //Add kafka event to generate Certificate for Program
                 logger.info("Adding the kafka event for programId: " + courseParentId)
                 createIssueCertEventForProgram(courseParentId, event.userId, batchId, context)(metrics)
-              }
+            }
+            if (isFailedEvent) {
+              //Add kafka event to failed to generate Certificate for Program
+              logger.info("Program cert validation failed for event : " + event.toString)
+              context.output(config.generateCertificateFailedOutputTag, event.toString)
+              metrics.incCounter(config.programCertIssueEventsCount)
             }
           }
         }
