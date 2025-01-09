@@ -158,8 +158,8 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
             if (isProgramCertificateToBeGenerated) {
               if (isFailedEvent) {
                 //Add kafka event to failed to generate Certificate for Program
-                logger.info("Program cert validation failed for event : " + event)
-                context.output(config.generateCertificateFailedOutputTag, event)
+                logger.info("Program cert validation failed for event : " + event.toString)
+                context.output(config.generateCertificateFailedOutputTag, event.toString)
                 metrics.incCounter(config.programCertIssueEventsCount)
               } else {
                 //Add kafka event to generate Certificate for Program
