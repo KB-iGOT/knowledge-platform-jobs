@@ -21,6 +21,8 @@ import java.util.{Date, UUID}
 import scala.collection.JavaConverters._
 import scala.collection.convert.ImplicitConversions.{`map AsScala`, `seq AsJavaList`}
 import scala.collection.mutable
+import scala.util.parsing.json.JSONObject
+import scala.util.parsing.json.JSON
 
 class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil: HttpUtil)
                                (implicit val stringTypeInfo: TypeInformation[String],
@@ -162,9 +164,14 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
                 createIssueCertEventForProgram(courseParentId, event.userId, batchId, context)(metrics)
             }
             if (isFailedEvent) {
-              //Add kafka event to failed to generate Certificate for Program
-              logger.info("Program cert validation failed for event : " + event.toString)
-              context.output(config.generateCertificateFailedOutputTag, event.toString)
+              val eventJson: String = event match {
+                case m: Map[_, _] =>
+                  JSONObject(m.asInstanceOf[Map[String, Any]]).toString()
+                case _ =>
+                  event.toString
+              }
+              logger.info(s"Program cert validation failed for event: $eventJson")
+              context.output(config.generateCertificateFailedOutputTag, eventJson)
               metrics.incCounter(config.programCertIssueEventsCount)
             }
           }
