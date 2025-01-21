@@ -190,4 +190,6 @@ class CertificateGeneratorConfig(override val config: Config) extends BaseJobCon
 
   val recipientEmails = "recipientEmails"
   val encryptionKey: String = config.getString("encryption.key")
+  val eventIssueName = "eventIssueName"
+  val specialEventCertificateName: String = if(config.hasPath("specialEventCertificateName")) config.getString("specialEventCertificateName") else ""
 }

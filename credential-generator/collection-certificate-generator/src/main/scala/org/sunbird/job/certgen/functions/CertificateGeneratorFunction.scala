@@ -320,7 +320,7 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
               config.eventIssueName -> config.specialEventCertificateName,
             )
           } else {
-            logger.info("Normal Certificate")
+            logger.info("No Special Certificate")
             Map[String, String]()
           }
         }))

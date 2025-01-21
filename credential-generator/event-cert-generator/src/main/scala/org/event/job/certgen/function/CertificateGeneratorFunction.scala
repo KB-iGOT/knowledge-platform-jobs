@@ -312,6 +312,16 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
           ++ {
           if (config.enableRcCertificate) Map[String, String](config.templateUrl -> certMetaData.certificate.templateUrl, config.`type` -> certMetaData.certificate.`type`)
           else Map[String, String]()
+        } ++ {
+          if (StringUtils.isNotBlank(config.specialEventCertificateName)) {
+            logger.info("The special Certificate event name is : {}", config.specialEventCertificateName)
+            Map[String, String](
+              config.eventIssueName -> config.specialEventCertificateName,
+            )
+          } else {
+            logger.info("No Special Certificate")
+            Map[String, String]()
+          }
         }
         ))
 

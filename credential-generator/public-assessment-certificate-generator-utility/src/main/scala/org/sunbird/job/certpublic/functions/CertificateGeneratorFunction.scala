@@ -298,7 +298,17 @@ class CertificateGeneratorFunction(config: CertificateGeneratorConfig, httpUtil:
         ) ++ {if(!certMetaData.certificate.lastIssuedOn.isEmpty) Map[String, String](config.lastIssuedOn -> certMetaData.certificate.lastIssuedOn)
         else Map[String, String]()}
         ++ {if(config.enableRcCertificate) Map[String, String](config.templateUrl -> certMetaData.certificate.templateUrl, config.`type`->certMetaData.certificate.`type`)
-        else Map[String, String]()}
+        else Map[String, String]()} ++ {
+          if (StringUtils.isNotBlank(config.specialEventCertificateName)) {
+            logger.info("The special Certificate event name is : {}", config.specialEventCertificateName)
+            Map[String, String](
+              config.eventIssueName -> config.specialEventCertificateName,
+            )
+          } else {
+            logger.info("No Special Certificate")
+            Map[String, String]()
+          }
+        }
         ))
         
         val query = getUpdateIssuedCertQuery(updatedCerts, EncryptionService.getInstance(config.encryptionKey).encryptData(certMetaData.userId)
