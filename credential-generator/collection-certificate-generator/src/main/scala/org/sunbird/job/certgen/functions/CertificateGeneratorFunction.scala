@@ -314,29 +314,13 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
             Map[String, String]()
           }
         } ++ {
-          val dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
-          val simpleDateFormat = new SimpleDateFormat("dd/MM/yyyy")
-
-          // Parse completed date
-          val completedDate = dateFormat.parse(new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ").format(issuedOn))
-
-          val specialEventStartDate = simpleDateFormat.parse(config.specialEventStartDate)
-          val specialEventEndDate = simpleDateFormat.parse(config.specialEventEndDate)
-
-          logger.info("Using specialEventStartDate: {}", specialEventStartDate)
-          logger.info("Using specialEventEndDate: {}", specialEventEndDate)
-          // Check if completedDate lies between the start and end dates
-          val isWithinRange = !completedDate.before(specialEventStartDate) && !completedDate.after(specialEventEndDate)
-
-          logger.info("Using isWithinRange: {}", isWithinRange)
-          logger.info("The completedOn date is: {}", completedDate)
-          if (isWithinRange) {
-            logger.info("The completed date lies within the special event dates.")
+          if (StringUtils.isNotBlank(config.specialEventCertificateName)) {
+            logger.info("The special Certificate event name is : {}", config.specialEventCertificateName)
             Map[String, String](
               config.eventIssueName -> config.specialEventCertificateName,
             )
           } else {
-            logger.info("The completed date does not lie within the special event dates.")
+            logger.info("Normal Certificate")
             Map[String, String]()
           }
         }))

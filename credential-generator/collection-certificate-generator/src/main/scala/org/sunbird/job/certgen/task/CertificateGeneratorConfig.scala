@@ -177,8 +177,6 @@ class CertificateGeneratorConfig(override val config: Config) extends BaseJobCon
   val webPortalUrl: String = config.getString("web.portal.url")
 
   val enableUserNotification: Boolean = if(config.hasPath("enable.user.email.notification")) config.getBoolean("enable.user.email.notification") else true
-  val specialEventStartDate: String = config.getString("specialEventStartDate")
-  val specialEventEndDate: String = config.getString("specialEventEndDate")
-  val specialEventCertificateName: String = config.getString("specialEventCertificateName")
+  val specialEventCertificateName: String = if(config.hasPath("specialEventCertificateName")) config.getString("specialEventCertificateName") else ""
   val eventIssueName = "eventIssueName"
 }
