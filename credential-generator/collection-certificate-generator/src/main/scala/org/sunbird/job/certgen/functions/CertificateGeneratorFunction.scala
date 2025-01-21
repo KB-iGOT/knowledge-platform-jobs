@@ -313,6 +313,32 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
             logger.info("RC Certificate is not enabled. Skipping templateUrl and type fields.")
             Map[String, String]()
           }
+        } ++ {
+          val dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+          val simpleDateFormat = new SimpleDateFormat("dd/MM/yyyy")
+
+          // Parse completed date
+          val completedDate = dateFormat.parse(new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ").format(issuedOn))
+
+          val specialEventStartDate = simpleDateFormat.parse(config.specialEventStartDate)
+          val specialEventEndDate = simpleDateFormat.parse(config.specialEventEndDate)
+
+          logger.info("Using specialEventStartDate: {}", specialEventStartDate)
+          logger.info("Using specialEventEndDate: {}", specialEventEndDate)
+          // Check if completedDate lies between the start and end dates
+          val isWithinRange = !completedDate.before(specialEventStartDate) && !completedDate.after(specialEventEndDate)
+
+          logger.info("Using isWithinRange: {}", isWithinRange)
+          logger.info("The completedOn date is: {}", completedDate)
+          if (isWithinRange) {
+            logger.info("The completed date lies within the special event dates.")
+            Map[String, String](
+              config.eventIssueName -> config.specialEventCertificateName,
+            )
+          } else {
+            logger.info("The completed date does not lie within the special event dates.")
+            Map[String, String]()
+          }
         }))
 
         val query = getUpdateIssuedCertQuery(updatedCerts, certMetaData.userId, certMetaData.courseId, certMetaData.batchId, config)
