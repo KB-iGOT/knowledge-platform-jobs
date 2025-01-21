@@ -107,7 +107,18 @@ class CertificateGeneratorFunction(config: CertificateGeneratorConfig, httpUtil:
           JsonKeys.JSON_DATA -> certificateExtension, JsonKeys.ACCESS_CODE -> qrMap.accessCode,
           JsonKeys.RECIPIENT_NAME -> certModel.recipientName, JsonKeys.RECIPIENT_ID -> certModel.identifier,
           config.RELATED -> event.related
-        ) ++ {if (!event.oldId.isEmpty) Map[String, AnyRef](config.OLD_ID -> event.oldId) else Map[String, AnyRef]()}})
+        ) ++ {if (!event.oldId.isEmpty) Map[String, AnyRef](config.OLD_ID -> event.oldId) else Map[String, AnyRef]()} ++
+          {
+            if (StringUtils.isNotBlank(config.specialEventCertificateName)) {
+              logger.info("The special Certificate event name is : {}", config.specialEventCertificateName)
+              Map[String, String](
+                config.eventIssueName -> config.specialEventCertificateName,
+              )
+            } else {
+              logger.info("No Special Certificate")
+              Map[String, String]()
+            }
+          }})
         addCertToRegistry(event, addReq, context)(metrics)
         //cert-registry end
         val related = event.related
