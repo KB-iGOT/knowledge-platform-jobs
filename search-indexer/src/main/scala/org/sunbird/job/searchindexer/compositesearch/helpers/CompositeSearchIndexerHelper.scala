@@ -19,6 +19,7 @@ trait CompositeSearchIndexerHelper {
   }
 
   private def getIndexDocument(identifier: String)(esUtil: ElasticSearchUtil): scala.collection.mutable.Map[String, AnyRef] = {
+    logger.info("Adding data to index the identifier: " + identifier)
     val documentJson: String = esUtil.getDocumentAsString(identifier)
     val indexDocument = if (documentJson != null && documentJson.nonEmpty) ScalaJsonUtil.deserialize[scala.collection.mutable.Map[String, AnyRef]](documentJson) else scala.collection.mutable.Map[String, AnyRef]()
     indexDocument
@@ -100,10 +101,12 @@ trait CompositeSearchIndexerHelper {
     val operationType = message.getOrElse("operationType", "").asInstanceOf[String]
     operationType match {
       case "CREATE" =>
+        logger.info(s"Create Operation Type : $operationType for the identifier: $identifier.")
         val indexDocument = getIndexDocument(message, false, definition, nestedFields, ignoredFields)(esUtil)
         val jsonIndexDocument = ScalaJsonUtil.serialize(indexDocument)
         upsertDocument(identifier, jsonIndexDocument)(esUtil)
       case "UPDATE" =>
+        logger.info(s"Update Operation Type : $operationType for the identifier: $identifier.")
         val indexDocument = getIndexDocument(message, true, definition, nestedFields, ignoredFields)(esUtil)
         val jsonIndexDocument = ScalaJsonUtil.serialize(indexDocument)
         upsertDocument(identifier, jsonIndexDocument)(esUtil)

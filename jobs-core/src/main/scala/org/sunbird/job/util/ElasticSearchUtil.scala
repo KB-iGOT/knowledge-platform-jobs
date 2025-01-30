@@ -127,8 +127,16 @@ class ElasticSearchUtil(connectionInfo: String, indexName: String, indexType: St
   }
 
   def getDocumentAsString(identifier: String): String = {
-    val response = esClient.get(new GetRequest(indexName, indexType, identifier))
-    response.getSourceAsString
+    try {
+      logger.error("ElasticSearchUtil:: inside while updating document to index : " + indexName + " for identifier: " + identifier)
+      val response = esClient.get(new GetRequest(indexName, indexType, identifier))
+      response.getSourceAsString
+    } catch {
+      case e: Exception =>
+        logger.error(s"ElasticSearchUtil:: Error while updating document to index : $indexName", e)
+        e.printStackTrace()
+        null
+    }
   }
 
   def close(): Unit = {
