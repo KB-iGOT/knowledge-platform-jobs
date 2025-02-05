@@ -42,6 +42,8 @@ class ElasticSearchUtil(connectionInfo: String, indexName: String, indexType: St
     val builder: RestClientBuilder = RestClient.builder(httpHosts: _*).setRequestConfigCallback(new RestClientBuilder.RequestConfigCallback() {
       override def customizeRequestConfig(requestConfigBuilder: RequestConfig.Builder): RequestConfig.Builder = {
         requestConfigBuilder.setConnectionRequestTimeout(-1)
+        requestConfigBuilder.setSocketTimeout(180000)
+        requestConfigBuilder.setConnectTimeout(10000)
       }
     })
     new RestHighLevelClient(builder)
@@ -128,12 +130,12 @@ class ElasticSearchUtil(connectionInfo: String, indexName: String, indexType: St
 
   def getDocumentAsString(identifier: String): String = {
     try {
-      logger.error("ElasticSearchUtil:: inside while updating document to index : " + indexName + " for identifier: " + identifier)
+      logger.info("ElasticSearchUtil:: inside while updating document to index : " + indexName + " for identifier: " + identifier)
       val response = esClient.get(new GetRequest(indexName, indexType, identifier))
       response.getSourceAsString
     } catch {
       case e: Exception =>
-        logger.error(s"ElasticSearchUtil:: Error while updating document to index : $indexName", e)
+        logger.error(s"ElasticSearchUtil:: Error while updating document to index : $indexName + the identifier name is: $identifier ", e)
         e.printStackTrace()
         null
     }
