@@ -1,5 +1,6 @@
 package org.sunbird.job.searchindexer.compositesearch.helpers
 
+import org.apache.commons.collections.MapUtils
 import org.apache.commons.lang3.StringUtils
 import org.slf4j.LoggerFactory
 import org.sunbird.job.domain.`object`.{DefinitionCache, ObjectDefinition}
@@ -20,11 +21,12 @@ trait CompositeSearchIndexerHelper {
 
   private def getIndexDocument(identifier: String)(esUtil: ElasticSearchUtil): scala.collection.mutable.Map[String, AnyRef] = {
     logger.info("Adding data to index the identifier: " + identifier)
-    val documentJson: String = esUtil.getDocumentAsString(identifier)
-    if (documentJson != null && documentJson.nonEmpty) {
-      logger.info("The document length is: " + documentJson.length)
+    //val documentJson: String = esUtil.getDocumentAsString(identifier)
+    val documentJson: java.util.Map[String, AnyRef] = esUtil.getDocumentAsMap(identifier)
+    if (documentJson != null && MapUtils.isNotEmpty(documentJson)) {
+      logger.info("The document length is: " + documentJson.size())
     }
-    val indexDocument = if (documentJson != null && documentJson.nonEmpty) ScalaJsonUtil.deserialize[scala.collection.mutable.Map[String, AnyRef]](documentJson) else scala.collection.mutable.Map[String, AnyRef]()
+    val indexDocument = if (documentJson != null && MapUtils.isNotEmpty(documentJson)) documentJson.asScala else scala.collection.mutable.Map[String, AnyRef]()
     indexDocument
   }
 
