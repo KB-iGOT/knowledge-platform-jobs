@@ -135,11 +135,7 @@ class ElasticSearchUtil(connectionInfo: String, indexName: String, indexType: St
   }
 
   def getDocumentAsMap(identifier: String): util.Map[String, AnyRef] = {
-    logger.info("ElasticSearchUtil:: inside while updating document to index : " + indexName + " for identifier: " + identifier)
     val response = esClient.get(new GetRequest(indexName, indexType, identifier))
-    if (response != null) {
-      logger.info("ElasticSearchUtil:: inside get DocumentAsMap : " + indexName + " for identifier: " + identifier + " is source Empty: " + response.isSourceEmpty)
-    }
     response.getSourceAsMap
   }
 

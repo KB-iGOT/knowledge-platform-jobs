@@ -25,9 +25,6 @@ trait CompositeSearchIndexerHelper {
     logger.info("Adding data to index the identifier: " + identifier)
     //val documentJson: String = esUtil.getDocumentAsString(identifier)
     val documentJson: java.util.Map[String, AnyRef] = esUtil.getDocumentAsMap(identifier)
-    if (documentJson != null && MapUtils.isNotEmpty(documentJson)) {
-      logger.info("The document length is: " + documentJson.size())
-    }
     val indexDocument = if (documentJson != null && MapUtils.isNotEmpty(documentJson)) deepConvertUsingJackson(documentJson) else scala.collection.mutable.Map[String, AnyRef]()
     indexDocument
   }
@@ -105,7 +102,7 @@ trait CompositeSearchIndexerHelper {
 
 
   private def upsertDocument(identifier: String, message: Map[String, Any], definition: ObjectDefinition, nestedFields: List[String], ignoredFields: List[String])(esUtil: ElasticSearchUtil): Unit = {
-    logger.info("The message is" + ScalaJsonUtil.serialize(message))
+    logger.debug("The message is: " + ScalaJsonUtil.serialize(message))
     val operationType = message.getOrElse("operationType", "").asInstanceOf[String]
     operationType match {
       case "CREATE" =>
