@@ -140,7 +140,7 @@ class ElasticSearchUtil(connectionInfo: String, indexName: String, indexType: St
     if (response != null) {
       logger.info("ElasticSearchUtil:: inside get DocumentAsMap : " + indexName + " for identifier: " + identifier + " is source Empty: " + response.isSourceEmpty)
     }
-    response.getSource
+    response.getSourceAsMap
   }
 
   def close(): Unit = {
