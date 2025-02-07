@@ -1,5 +1,7 @@
 package org.sunbird.job.searchindexer.compositesearch.helpers
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.scala.{DefaultScalaModule, ScalaObjectMapper}
 import org.apache.commons.collections.MapUtils
 import org.apache.commons.lang3.StringUtils
 import org.slf4j.LoggerFactory
@@ -12,6 +14,8 @@ import scala.collection.JavaConverters._
 trait CompositeSearchIndexerHelper {
 
   private[this] val logger = LoggerFactory.getLogger(classOf[CompositeSearchIndexerHelper])
+  val mapper = new ObjectMapper() with ScalaObjectMapper
+  mapper.registerModule(DefaultScalaModule)
 
   def createCompositeSearchIndex()(esUtil: ElasticSearchUtil): Boolean = {
     val settings = """{"max_ngram_diff":"29","mapping":{"total_fields":{"limit":"1500"}},"analysis":{"filter":{"mynGram":{"token_chars":["letter","digit","whitespace","punctuation","symbol"],"min_gram":"1","type":"nGram","max_gram":"30"}},"analyzer":{"cs_index_analyzer":{"filter":["lowercase","mynGram"],"type":"custom","tokenizer":"standard"},"keylower":{"filter":"lowercase","tokenizer":"keyword"},"cs_search_analyzer":{"filter":["standard","lowercase"],"type":"custom","tokenizer":"standard"}}}}"""
@@ -26,7 +30,7 @@ trait CompositeSearchIndexerHelper {
     if (documentJson != null && MapUtils.isNotEmpty(documentJson)) {
       logger.info("The document length is: " + documentJson.size())
     }
-    val indexDocument = if (documentJson != null && MapUtils.isNotEmpty(documentJson)) documentJson.asScala else scala.collection.mutable.Map[String, AnyRef]()
+    val indexDocument = if (documentJson != null && MapUtils.isNotEmpty(documentJson)) deepConvertUsingJackson(documentJson) else scala.collection.mutable.Map[String, AnyRef]()
     indexDocument
   }
 
@@ -130,6 +134,10 @@ trait CompositeSearchIndexerHelper {
   private def addMetadataToDocument(propertyName: String, propertyValue: AnyRef, nestedFields: List[String]): AnyRef = {
     val propertyNewValue = if (nestedFields.contains(propertyName)) ScalaJsonUtil.deserialize[AnyRef](propertyValue.asInstanceOf[String]) else propertyValue
     propertyNewValue
+  }
+
+  def deepConvertUsingJackson(javaMap: java.util.Map[String, AnyRef]): scala.collection.mutable.Map[String, AnyRef] = {
+    mapper.convertValue(javaMap, classOf[scala.collection.mutable.Map[String, AnyRef]])
   }
 
 }
