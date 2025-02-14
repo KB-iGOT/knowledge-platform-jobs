@@ -1,20 +1,20 @@
-package org.sunbird.job.searchindexer.functions
+package org.sunbird.job.framework.functions
 
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.streaming.api.functions.ProcessFunction
 import org.slf4j.LoggerFactory
 import org.sunbird.job.domain.`object`.DefinitionCache
 import org.sunbird.job.exception.InvalidEventException
+import org.sunbird.job.framework.compositesearch.domain.Event
+import org.sunbird.job.framework.compositesearch.helpers.CompositeSearchIndexerHelper
+import org.sunbird.job.framework.models.CompositeIndexer
+import org.sunbird.job.framework.task.FrameworkSearchIndexerConfig
 import org.sunbird.job.helper.FailedEventHelper
-import org.sunbird.job.searchindexer.compositesearch.domain.Event
-import org.sunbird.job.searchindexer.compositesearch.helpers.CompositeSearchIndexerHelper
-import org.sunbird.job.searchindexer.models.CompositeIndexer
-import org.sunbird.job.searchindexer.task.SearchIndexerConfig
 import org.sunbird.job.util.ElasticSearchUtil
 import org.sunbird.job.{BaseProcessFunction, Metrics}
 
 
-class CompositeSearchIndexerFunction(config: SearchIndexerConfig,
+class CompositeSearchIndexerFunction(config: FrameworkSearchIndexerConfig,
                                      @transient var elasticUtil: ElasticSearchUtil = null)
   extends BaseProcessFunction[Event, String](config) with CompositeSearchIndexerHelper with FailedEventHelper {
 
@@ -34,24 +34,18 @@ class CompositeSearchIndexerFunction(config: SearchIndexerConfig,
 
   @throws(classOf[InvalidEventException])
   override def processElement(event: Event, context: ProcessFunction[Event, String]#Context, metrics: Metrics): Unit = {
-    if (event.objectType.equalsIgnoreCase("Term")) {
-      logger.info(s"Event is skipped for identifier : ${event.id}. Partition: ${event.partition} and Offset: ${event.offset}.")
-      metrics.incCounter(config.skipCompositeSearchEventCount)
-      context.output(config.skippedEventOutTag, event)
-    } else {
-      metrics.incCounter(config.compositeSearchEventCount)
-      try {
-        val compositeObject = getCompositeIndexerObject(event)
-        processESMessage(compositeObject)(elasticUtil, defCache)
-        metrics.incCounter(config.successCompositeSearchEventCount)
-      } catch {
-        case ex: Throwable =>
-          logger.error(s"Error while processing message for identifier : ${event.id}. Partition: ${event.partition} and Offset: ${event.offset}. Error : ", ex)
-          metrics.incCounter(config.failedCompositeSearchEventCount)
-          val failedEvent = getFailedEvent(event.jobName, event.getMap(), ex)
-          context.output(config.failedEventOutTag, failedEvent)
-          throw new InvalidEventException(ex.getMessage, Map("partition" -> event.partition, "offset" -> event.offset), ex)
-      }
+    metrics.incCounter(config.compositeSearchEventCount)
+    try {
+      val compositeObject = getCompositeIndexerObject(event)
+      processESMessage(compositeObject)(elasticUtil, defCache)
+      metrics.incCounter(config.successCompositeSearchEventCount)
+    } catch {
+      case ex: Throwable =>
+        logger.error(s"Error while processing message for identifier : ${event.id}. Partition: ${event.partition} and Offset: ${event.offset}. Error : ", ex)
+        metrics.incCounter(config.failedCompositeSearchEventCount)
+        val failedEvent = getFailedEvent(event.jobName, event.getMap(), ex)
+        context.output(config.failedEventOutTag, failedEvent)
+        throw new InvalidEventException(ex.getMessage, Map("partition" -> event.partition, "offset" -> event.offset), ex)
     }
   }
 

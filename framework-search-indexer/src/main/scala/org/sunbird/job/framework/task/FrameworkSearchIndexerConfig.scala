@@ -1,16 +1,16 @@
-package org.sunbird.job.searchindexer.task
+package org.sunbird.job.framework.task
 
 import com.typesafe.config.Config
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.typeutils.TypeExtractor
 import org.apache.flink.streaming.api.scala.OutputTag
 import org.sunbird.job.BaseJobConfig
-import org.sunbird.job.searchindexer.compositesearch.domain.Event
+import org.sunbird.job.framework.compositesearch.domain.Event
 
 import java.util
 import scala.collection.JavaConverters._
 
-class SearchIndexerConfig(override val config: Config) extends BaseJobConfig(config, "search-indexer") {
+class FrameworkSearchIndexerConfig(override val config: Config) extends BaseJobConfig(config, "search-indexer") {
 
   implicit val mapTypeInfo: TypeInformation[util.Map[String, AnyRef]] = TypeExtractor.getForClass(classOf[util.Map[String, AnyRef]])
   implicit val eventTypeInfo: TypeInformation[Event] = TypeExtractor.getForClass(classOf[Event])
@@ -21,7 +21,6 @@ class SearchIndexerConfig(override val config: Config) extends BaseJobConfig(con
   // Kafka Topics Configuration
   val kafkaInputTopic: String = config.getString("kafka.input.topic")
   val kafkaErrorTopic: String = config.getString("kafka.error.topic")
-  val kafkaSkippedTopic: String = config.getString("kafka.skipped.topic")
 
   // Parallelism
   val eventRouterParallelism: Int = config.getInt("task.router.parallelism")
@@ -45,14 +44,12 @@ class SearchIndexerConfig(override val config: Config) extends BaseJobConfig(con
   val dialcodeExternalEventCount = "dialcode-external-event-count"
   val successDialcodeExternalEventCount = "dialcode-external-event-success-count"
   val failedDialcodeExternalEventCount = "dialcode-external-event-failed-count"
-  val skipCompositeSearchEventCount = "composite-search-event-skip-count"
 
   // Tags
   val compositeSearchDataOutTag: OutputTag[Event] = OutputTag[Event]("composite-search-data")
   val dialCodeExternalOutTag: OutputTag[Event] = OutputTag[Event]("dialcode-external")
   val dialCodeMetricOutTag: OutputTag[Event] = OutputTag[Event]("dialcode-metric")
   val failedEventOutTag: OutputTag[String] = OutputTag[String]("failed-event")
-  val skippedEventOutTag: OutputTag[String] = OutputTag[String]("skipped-event")
 
   // ES Configs
   val esConnectionInfo = config.getString("es.basePath")

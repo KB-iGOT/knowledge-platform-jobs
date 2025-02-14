@@ -1,4 +1,4 @@
-package org.sunbird.job.searchindexer.task
+package org.sunbird.job.framework.task
 
 import com.typesafe.config.ConfigFactory
 import org.apache.flink.api.common.typeinfo.TypeInformation
@@ -7,14 +7,14 @@ import org.apache.flink.api.java.typeutils.TypeExtractor
 import org.apache.flink.api.java.utils.ParameterTool
 import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
 import org.sunbird.job.connector.FlinkKafkaConnector
-import org.sunbird.job.searchindexer.compositesearch.domain.Event
-import org.sunbird.job.searchindexer.functions.{CompositeSearchIndexerFunction, DIALCodeIndexerFunction, DIALCodeMetricsIndexerFunction, TransactionEventRouter}
+import org.sunbird.job.framework.compositesearch.domain.Event
+import org.sunbird.job.framework.functions.{CompositeSearchIndexerFunction, DIALCodeIndexerFunction, DIALCodeMetricsIndexerFunction, TransactionEventRouter}
 import org.sunbird.job.util.FlinkUtil
 
 import java.io.File
 import java.util
 
-class SearchIndexerStreamTask(config: SearchIndexerConfig, kafkaConnector: FlinkKafkaConnector) {
+class SearchIndexerStreamTask(config: FrameworkSearchIndexerConfig, kafkaConnector: FlinkKafkaConnector) {
 
   def process(): Unit = {
     implicit val env: StreamExecutionEnvironment = FlinkUtil.getExecutionContext(config)
@@ -38,7 +38,6 @@ class SearchIndexerStreamTask(config: SearchIndexerConfig, kafkaConnector: Flink
     val dialcodeMetricStream = processStreamTask.getSideOutput(config.dialCodeMetricOutTag).process(new DIALCodeMetricsIndexerFunction(config))
       .name("dialcode-metric-indexer").uid("dialcode-metric-indexer").setParallelism(config.dialCodeMetricIndexerParallelism)
 
-    compositeSearchStream.getSideOutput(config.skippedEventOutTag).addSink(kafkaConnector.kafkaStringSink(config.kafkaErrorTopic))
     compositeSearchStream.getSideOutput(config.failedEventOutTag).addSink(kafkaConnector.kafkaStringSink(config.kafkaErrorTopic))
     dialcodeExternalStream.getSideOutput(config.failedEventOutTag).addSink(kafkaConnector.kafkaStringSink(config.kafkaErrorTopic))
     dialcodeMetricStream.getSideOutput(config.failedEventOutTag).addSink(kafkaConnector.kafkaStringSink(config.kafkaErrorTopic))
@@ -54,8 +53,8 @@ object SearchIndexerStreamTask {
     val configFilePath = Option(ParameterTool.fromArgs(args).get("config.file.path"))
     val config = configFilePath.map {
       path => ConfigFactory.parseFile(new File(path)).resolve()
-    }.getOrElse(ConfigFactory.load("search-indexer.conf").withFallback(ConfigFactory.systemEnvironment()))
-    val searchIndexerConfig = new SearchIndexerConfig(config)
+    }.getOrElse(ConfigFactory.load("framework-search-indexer.conf").withFallback(ConfigFactory.systemEnvironment()))
+    val searchIndexerConfig = new FrameworkSearchIndexerConfig(config)
     val kafkaUtil = new FlinkKafkaConnector(searchIndexerConfig)
     val task = new SearchIndexerStreamTask(searchIndexerConfig, kafkaUtil)
     task.process()
