@@ -37,7 +37,7 @@ class CompositeSearchIndexerFunction(config: SearchIndexerConfig,
     if (event.objectType.equalsIgnoreCase("Term")) {
       logger.info(s"Event is skipped for identifier : ${event.id}. Partition: ${event.partition} and Offset: ${event.offset}.")
       metrics.incCounter(config.skipCompositeSearchEventCount)
-      context.output(config.skippedEventOutTag, event)
+      context.output(config.skippedEventOutTag, event.getJson())
     } else {
       metrics.incCounter(config.compositeSearchEventCount)
       try {
