@@ -34,7 +34,7 @@ class CompositeSearchIndexerFunction(config: SearchIndexerConfig,
 
   @throws(classOf[InvalidEventException])
   override def processElement(event: Event, context: ProcessFunction[Event, String]#Context, metrics: Metrics): Unit = {
-    if (event.objectType.equalsIgnoreCase("Term")) {
+    if (event.objectType.equalsIgnoreCase("Term") || event.objectType.equalsIgnoreCase("CategoryInstance")) {
       logger.info(s"Event is skipped for identifier : ${event.id}. Partition: ${event.partition} and Offset: ${event.offset}.")
       //metrics.incCounter(config.skipCompositeSearchEventCount)
       context.output(config.skippedEventOutTag, event.getJson())
