@@ -29,7 +29,7 @@ class FrameworkSearchIndexerConfig(override val config: Config) extends BaseJobC
   val dialCodeMetricIndexerParallelism: Int = config.getInt("task.dialcodemetricsIndexer.parallelism")
 
   // Consumers
-  val searchIndexerConsumer = "search-indexer-consumer"
+  val frameworkSearchIndexerConsumer = "framework-search-indexer-consumer"
   val transactionEventRouter = "transaction-event-router"
 
   // Metric List
