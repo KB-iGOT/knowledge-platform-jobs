@@ -362,7 +362,6 @@ search-indexer:
     kafka {
       input.topic = "{{ env_name }}.learning.graph.events"
       error.topic = "{{ env_name }}.learning.events.failed"
-      skipped.topic = "{{ env_name }}.framework.learning.graph.events"
       groupId = "{{ env_name }}-search-indexer-group"
     }
     task {
@@ -378,7 +377,7 @@ search-indexer:
     restrict.metadata.objectTypes = []
     nested.fields = ["badgeAssertions", "targets", "badgeAssociations", "plugins", "me_totalTimeSpent", "me_totalPlaySessionCount", "me_totalTimeSpentInSec", "batches", "trackable", "credentials", "discussionForum", "provider", "osMetadata", "actions", "transcripts", "accessibility", "taxonomyPaths_v2", "competencies_v3", "test_competencies_v2", "competencies_v2", "secureSettings", "test_competencies_v4", "competencies_v5", "test_secureSettings", "competencies_v6", "referenceNodes"]
     schema.definition_cache.expiry = {{ schema_definition_cache_expiry_in_sec }}
-    restrict.objectTypes = ["EventSet", "Questionnaire", "Misconception", "FrameworkType", "EventSetImage", "EventImage"]
+    restrict.objectTypes = ["EventSet", "Questionnaire", "Misconception", "FrameworkType", "EventSetImage", "EventImage", "Term", "CategoryInstance"]
     ignored.fields={{ search_indexer_ignored_fields | to_json }}
     cloud_storage_type="{{ cloud_service_provider }}"
     cloud_storage_key="{{ cloud_storage_key }}"
@@ -417,6 +416,7 @@ framework-search-indexer:
     schema.definition_cache.expiry = {{ schema_definition_cache_expiry_in_sec }}
     restrict.objectTypes = ["EventSet", "Questionnaire", "Misconception", "FrameworkType", "EventSetImage", "EventImage"]
     ignored.fields={{ framework_search_indexer_ignored_fields | to_json }}
+    allowed.objectTypes=["Term", "CategoryInstance"]
     cloud_storage_type="{{ cloud_service_provider }}"
     cloud_storage_key="{{ cloud_storage_key }}"
     cloud_storage_secret="{{ cloud_storage_secret | replace('\n', '\\n') }}"
