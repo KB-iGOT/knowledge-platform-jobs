@@ -34,24 +34,18 @@ class CompositeSearchIndexerFunction(config: SearchIndexerConfig,
 
   @throws(classOf[InvalidEventException])
   override def processElement(event: Event, context: ProcessFunction[Event, String]#Context, metrics: Metrics): Unit = {
-    if (event.objectType.equalsIgnoreCase("Term") || event.objectType.equalsIgnoreCase("CategoryInstance")) {
-      logger.info(s"Event is skipped for identifier : ${event.id}. Partition: ${event.partition} and Offset: ${event.offset}.")
-      //metrics.incCounter(config.skipCompositeSearchEventCount)
-      context.output(config.skippedEventOutTag, event.getJson())
-    } else {
-      metrics.incCounter(config.compositeSearchEventCount)
-      try {
-        val compositeObject = getCompositeIndexerObject(event)
-        processESMessage(compositeObject)(elasticUtil, defCache)
-        metrics.incCounter(config.successCompositeSearchEventCount)
-      } catch {
-        case ex: Throwable =>
-          logger.error(s"Error while processing message for identifier : ${event.id}. Partition: ${event.partition} and Offset: ${event.offset}. Error : ", ex)
-          metrics.incCounter(config.failedCompositeSearchEventCount)
-          val failedEvent = getFailedEvent(event.jobName, event.getMap(), ex)
-          context.output(config.failedEventOutTag, failedEvent)
-          throw new InvalidEventException(ex.getMessage, Map("partition" -> event.partition, "offset" -> event.offset), ex)
-      }
+    metrics.incCounter(config.compositeSearchEventCount)
+    try {
+      val compositeObject = getCompositeIndexerObject(event)
+      processESMessage(compositeObject)(elasticUtil, defCache)
+      metrics.incCounter(config.successCompositeSearchEventCount)
+    } catch {
+      case ex: Throwable =>
+        logger.error(s"Error while processing message for identifier : ${event.id}. Partition: ${event.partition} and Offset: ${event.offset}. Error : ", ex)
+        metrics.incCounter(config.failedCompositeSearchEventCount)
+        val failedEvent = getFailedEvent(event.jobName, event.getMap(), ex)
+        context.output(config.failedEventOutTag, failedEvent)
+        throw new InvalidEventException(ex.getMessage, Map("partition" -> event.partition, "offset" -> event.offset), ex)
     }
   }
 

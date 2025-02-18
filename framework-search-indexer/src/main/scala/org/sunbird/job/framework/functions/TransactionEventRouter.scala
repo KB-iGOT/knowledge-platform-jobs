@@ -26,7 +26,7 @@ class TransactionEventRouter(config: FrameworkSearchIndexerConfig)
 
   override def processElement(event: Event, context: KeyedProcessFunction[String, Event, String]#Context, metrics: Metrics): Unit = {
     metrics.incCounter(config.totalEventsCount)
-    if (event.validEvent(config.restrictObjectTypes)) {
+    if (event.validEvent(config.allowedObjectTypes)) {
       event.nodeType match {
         case "SET" | "DATA_NODE" => context.output(config.compositeSearchDataOutTag, event)
         case "EXTERNAL" => context.output(config.dialCodeExternalOutTag, event)
@@ -38,7 +38,7 @@ class TransactionEventRouter(config: FrameworkSearchIndexerConfig)
       }
     } else {
       metrics.incCounter(config.skippedEventCount)
-      logger.info(s"Event not qualified for indexing for Identifier : ${event.id}.")
+      logger.info(s"Event not qualified for indexing by framework search indexer for Identifier : ${event.id}.")
     }
   }
 

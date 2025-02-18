@@ -27,8 +27,8 @@ class Event(eventMap: java.util.Map[String, Any], partition: Int, offset: Long) 
 
   def objectType: String = readOrDefault("objectType", "")
 
-  def validEvent(restrictObjectTypes: util.List[String]): Boolean = {
-    (operationType != null) && index && (!restrictObjectTypes.contains(objectType))
+  def validEvent(allowedObjectTypes: util.List[String]): Boolean = {
+    (operationType != null) && index && (allowedObjectTypes.contains(objectType))
   }
 
 }

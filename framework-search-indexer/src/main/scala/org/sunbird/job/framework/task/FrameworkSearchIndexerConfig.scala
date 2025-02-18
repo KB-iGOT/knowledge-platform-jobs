@@ -46,10 +46,10 @@ class FrameworkSearchIndexerConfig(override val config: Config) extends BaseJobC
   val failedDialcodeExternalEventCount = "dialcode-external-event-failed-count"
 
   // Tags
-  val compositeSearchDataOutTag: OutputTag[Event] = OutputTag[Event]("composite-search-data")
-  val dialCodeExternalOutTag: OutputTag[Event] = OutputTag[Event]("dialcode-external")
-  val dialCodeMetricOutTag: OutputTag[Event] = OutputTag[Event]("dialcode-metric")
-  val failedEventOutTag: OutputTag[String] = OutputTag[String]("failed-event")
+  val compositeSearchDataOutTag: OutputTag[Event] = OutputTag[Event]("framework-composite-search-data")
+  val dialCodeExternalOutTag: OutputTag[Event] = OutputTag[Event]("framework-dialcode-external")
+  val dialCodeMetricOutTag: OutputTag[Event] = OutputTag[Event]("framework-dialcode-metric")
+  val failedEventOutTag: OutputTag[String] = OutputTag[String]("framework-failed-event")
 
   // ES Configs
   val esConnectionInfo = config.getString("es.basePath")
@@ -70,4 +70,5 @@ class FrameworkSearchIndexerConfig(override val config: Config) extends BaseJobC
   val definitionCacheExpiry: Int = if (config.hasPath("schema.definition_cache.expiry")) config.getInt("schema.definition_cache.expiry") else 14400
   val restrictObjectTypes: util.List[String] = if(config.hasPath("restrict.objectTypes")) config.getStringList("restrict.objectTypes") else new util.ArrayList[String]
   val ignoredFields: List[String] = if (config.hasPath("ignored.fields")) config.getStringList("ignored.fields").asScala.toList else List("responseDeclaration", "body")
+  val allowedObjectTypes: util.List[String] = if(config.hasPath("allowed.objectTypes")) config.getStringList("allowed.objectTypes") else new util.ArrayList[String]
 }

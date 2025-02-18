@@ -45,14 +45,12 @@ class SearchIndexerConfig(override val config: Config) extends BaseJobConfig(con
   val dialcodeExternalEventCount = "dialcode-external-event-count"
   val successDialcodeExternalEventCount = "dialcode-external-event-success-count"
   val failedDialcodeExternalEventCount = "dialcode-external-event-failed-count"
-  val skipCompositeSearchEventCount = "composite-search-event-skip-count"
 
   // Tags
   val compositeSearchDataOutTag: OutputTag[Event] = OutputTag[Event]("composite-search-data")
   val dialCodeExternalOutTag: OutputTag[Event] = OutputTag[Event]("dialcode-external")
   val dialCodeMetricOutTag: OutputTag[Event] = OutputTag[Event]("dialcode-metric")
   val failedEventOutTag: OutputTag[String] = OutputTag[String]("failed-event")
-  val skippedEventOutTag: OutputTag[String] = OutputTag[String]("skipped-event")
 
   // ES Configs
   val esConnectionInfo = config.getString("es.basePath")
