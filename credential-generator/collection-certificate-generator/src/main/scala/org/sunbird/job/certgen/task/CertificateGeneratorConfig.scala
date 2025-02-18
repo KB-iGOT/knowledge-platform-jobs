@@ -51,6 +51,7 @@ class CertificateGeneratorConfig(override val config: Config) extends BaseJobCon
   val dbUserId = "userid"
   val active: String = "active"
   val issuedCertificates: String = "issued_certificates"
+  val numberOfCertGeneration: String = "numberOfCertGeneration"
 
   // Metric List
   val totalEventsCount = "total-events-count"
