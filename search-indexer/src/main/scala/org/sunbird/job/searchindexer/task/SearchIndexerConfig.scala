@@ -21,7 +21,6 @@ class SearchIndexerConfig(override val config: Config) extends BaseJobConfig(con
   // Kafka Topics Configuration
   val kafkaInputTopic: String = config.getString("kafka.input.topic")
   val kafkaErrorTopic: String = config.getString("kafka.error.topic")
-  val kafkaSkippedTopic: String = config.getString("kafka.skipped.topic")
 
   // Parallelism
   val eventRouterParallelism: Int = config.getInt("task.router.parallelism")
