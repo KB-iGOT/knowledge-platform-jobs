@@ -102,7 +102,7 @@ trait CompositeSearchIndexerHelper {
 
   private def upsertDocument(identifier: String, message: Map[String, Any], definition: ObjectDefinition, nestedFields: List[String], ignoredFields: List[String])(esUtil: ElasticSearchUtil): Unit = {
     val operationType = message.getOrElse("operationType", "").asInstanceOf[String]
-    logger.info("The message is from framework search: " + ScalaJsonUtil.serialize(message))
+    logger.debug("The message is from framework search: " + ScalaJsonUtil.serialize(message))
     operationType match {
       case "CREATE" =>
         val indexDocument = getIndexDocument(message, false, definition, nestedFields, ignoredFields)(esUtil)
