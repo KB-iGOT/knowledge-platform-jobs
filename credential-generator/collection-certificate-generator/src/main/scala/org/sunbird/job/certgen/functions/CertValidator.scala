@@ -188,7 +188,8 @@ class CertValidator() {
       val issuedCertificates = row
         .getList(config.issuedCertificates, TypeTokens.mapOf(classOf[String], classOf[String])).asScala.toList
       val isCertIssued = !issuedCertificates.isEmpty && !issuedCertificates
-        .filter(cert => event.name.equalsIgnoreCase(cert.getOrDefault(config.name, "").asInstanceOf[String])).isEmpty
+        .filter(cert => Option(cert.get(config.numberOfCertGeneration)).map(_.asInstanceOf[String].toInt).getOrElse(1)==1
+        ).isEmpty
       ((null != event.oldId && !event.oldId.isEmpty) || !isCertIssued)
     } else false
   }
