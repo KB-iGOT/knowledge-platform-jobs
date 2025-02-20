@@ -1,4 +1,4 @@
-package org.sunbird.job.searchindexer.task
+package org.sunbird.job.framework.task
 
 import com.typesafe.config.ConfigFactory
 import org.apache.flink.api.common.typeinfo.TypeInformation
@@ -7,14 +7,14 @@ import org.apache.flink.api.java.typeutils.TypeExtractor
 import org.apache.flink.api.java.utils.ParameterTool
 import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
 import org.sunbird.job.connector.FlinkKafkaConnector
-import org.sunbird.job.searchindexer.compositesearch.domain.Event
-import org.sunbird.job.searchindexer.functions.{CompositeSearchIndexerFunction, DIALCodeIndexerFunction, DIALCodeMetricsIndexerFunction, TransactionEventRouter}
+import org.sunbird.job.framework.compositesearch.domain.Event
+import org.sunbird.job.framework.functions.{CompositeSearchIndexerFunction, DIALCodeIndexerFunction, DIALCodeMetricsIndexerFunction, TransactionEventRouter}
 import org.sunbird.job.util.FlinkUtil
 
 import java.io.File
 import java.util
 
-class SearchIndexerStreamTask(config: SearchIndexerConfig, kafkaConnector: FlinkKafkaConnector) {
+class FrameworkSearchIndexerStreamTask(config: FrameworkSearchIndexerConfig, kafkaConnector: FlinkKafkaConnector) {
 
   def process(): Unit = {
     implicit val env: StreamExecutionEnvironment = FlinkUtil.getExecutionContext(config)
@@ -23,39 +23,40 @@ class SearchIndexerStreamTask(config: SearchIndexerConfig, kafkaConnector: Flink
     implicit val stringTypeInfo: TypeInformation[String] = TypeExtractor.getForClass(classOf[String])
 
     val source = kafkaConnector.kafkaJobRequestSource[Event](config.kafkaInputTopic)
-    val processStreamTask = env.addSource(source).name(config.searchIndexerConsumer)
-      .uid(config.searchIndexerConsumer).setParallelism(config.kafkaConsumerParallelism)
+    val processStreamTask = env.addSource(source).name(config.frameworkSearchIndexerConsumer)
+      .uid(config.frameworkSearchIndexerConsumer).setParallelism(config.kafkaConsumerParallelism)
       .rebalance
-      .keyBy(new SearchIndexerKeySelector())
+      .keyBy(new FrameworkSearchIndexerKeySelector())
       .process(new TransactionEventRouter(config))
       .name(config.transactionEventRouter).uid(config.transactionEventRouter)
       .setParallelism(config.eventRouterParallelism)
 
     val compositeSearchStream = processStreamTask.getSideOutput(config.compositeSearchDataOutTag).process(new CompositeSearchIndexerFunction(config))
-      .name("composite-search-indexer").uid("composite-search-indexer").setParallelism(config.compositeSearchIndexerParallelism)
+      .name("framework-composite-search-indexer").uid("framework-composite-search-indexer").setParallelism(config.compositeSearchIndexerParallelism)
     val dialcodeExternalStream = processStreamTask.getSideOutput(config.dialCodeExternalOutTag).process(new DIALCodeIndexerFunction(config))
-      .name("dialcode-external-indexer").uid("dialcode-external-indexer").setParallelism(config.dialCodeExternalIndexerParallelism)
+      .name("framework-dialcode-external-indexer").uid("framework-dialcode-external-indexer").setParallelism(config.dialCodeExternalIndexerParallelism)
     val dialcodeMetricStream = processStreamTask.getSideOutput(config.dialCodeMetricOutTag).process(new DIALCodeMetricsIndexerFunction(config))
-      .name("dialcode-metric-indexer").uid("dialcode-metric-indexer").setParallelism(config.dialCodeMetricIndexerParallelism)
+      .name("framework-dialcode-metric-indexer").uid("framework-dialcode-metric-indexer").setParallelism(config.dialCodeMetricIndexerParallelism)
 
     compositeSearchStream.getSideOutput(config.failedEventOutTag).addSink(kafkaConnector.kafkaStringSink(config.kafkaErrorTopic))
     dialcodeExternalStream.getSideOutput(config.failedEventOutTag).addSink(kafkaConnector.kafkaStringSink(config.kafkaErrorTopic))
     dialcodeMetricStream.getSideOutput(config.failedEventOutTag).addSink(kafkaConnector.kafkaStringSink(config.kafkaErrorTopic))
+
     env.execute(config.jobName)
   }
 }
 
 // $COVERAGE-OFF$ Disabling scoverage as the below code can only be invoked within flink cluster
-object SearchIndexerStreamTask {
+object FrameworkSearchIndexerStreamTask {
 
   def main(args: Array[String]): Unit = {
     val configFilePath = Option(ParameterTool.fromArgs(args).get("config.file.path"))
     val config = configFilePath.map {
       path => ConfigFactory.parseFile(new File(path)).resolve()
-    }.getOrElse(ConfigFactory.load("search-indexer.conf").withFallback(ConfigFactory.systemEnvironment()))
-    val searchIndexerConfig = new SearchIndexerConfig(config)
+    }.getOrElse(ConfigFactory.load("framework-search-indexer.conf").withFallback(ConfigFactory.systemEnvironment()))
+    val searchIndexerConfig = new FrameworkSearchIndexerConfig(config)
     val kafkaUtil = new FlinkKafkaConnector(searchIndexerConfig)
-    val task = new SearchIndexerStreamTask(searchIndexerConfig, kafkaUtil)
+    val task = new FrameworkSearchIndexerStreamTask(searchIndexerConfig, kafkaUtil)
     task.process()
   }
 
@@ -63,6 +64,6 @@ object SearchIndexerStreamTask {
 
 // $COVERAGE-ON$
 
-class SearchIndexerKeySelector extends KeySelector[Event, String] {
+class FrameworkSearchIndexerKeySelector extends KeySelector[Event, String] {
   override def getKey(in: Event): String = in.id.replace(".img", "")
 }

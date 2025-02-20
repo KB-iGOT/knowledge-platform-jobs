@@ -1,9 +1,12 @@
-package org.sunbird.job.searchindexer.compositesearch.helpers
+package org.sunbird.job.framework.compositesearch.helpers
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.scala.{DefaultScalaModule, ScalaObjectMapper}
+import org.apache.commons.collections.MapUtils
 import org.apache.commons.lang3.StringUtils
 import org.slf4j.LoggerFactory
 import org.sunbird.job.domain.`object`.{DefinitionCache, ObjectDefinition}
-import org.sunbird.job.searchindexer.models.CompositeIndexer
+import org.sunbird.job.framework.models.CompositeIndexer
 import org.sunbird.job.util.{ElasticSearchUtil, ScalaJsonUtil}
 
 import scala.collection.JavaConverters._
@@ -19,8 +22,9 @@ trait CompositeSearchIndexerHelper {
   }
 
   private def getIndexDocument(identifier: String)(esUtil: ElasticSearchUtil): scala.collection.mutable.Map[String, AnyRef] = {
-    val documentJson: String = esUtil.getDocumentAsString(identifier)
-    val indexDocument = if (documentJson != null && documentJson.nonEmpty) ScalaJsonUtil.deserialize[scala.collection.mutable.Map[String, AnyRef]](documentJson) else scala.collection.mutable.Map[String, AnyRef]()
+    logger.info("Adding data to index the identifier: " + identifier)
+    val documentJson: java.util.Map[String, AnyRef] = esUtil.getDocumentAsMap(identifier)
+    val indexDocument = if (documentJson != null && MapUtils.isNotEmpty(documentJson)) deepConvertUsingJackson(documentJson) else scala.collection.mutable.Map[String, AnyRef]()
     indexDocument
   }
 
@@ -98,7 +102,7 @@ trait CompositeSearchIndexerHelper {
 
   private def upsertDocument(identifier: String, message: Map[String, Any], definition: ObjectDefinition, nestedFields: List[String], ignoredFields: List[String])(esUtil: ElasticSearchUtil): Unit = {
     val operationType = message.getOrElse("operationType", "").asInstanceOf[String]
-    logger.debug("The message is" + ScalaJsonUtil.serialize(message))
+    logger.debug("The message is from framework search: " + ScalaJsonUtil.serialize(message))
     operationType match {
       case "CREATE" =>
         val indexDocument = getIndexDocument(message, false, definition, nestedFields, ignoredFields)(esUtil)
@@ -124,4 +128,9 @@ trait CompositeSearchIndexerHelper {
     propertyNewValue
   }
 
+  def deepConvertUsingJackson(javaMap: java.util.Map[String, AnyRef]): scala.collection.mutable.Map[String, AnyRef] = {
+    val mapper = new ObjectMapper() with ScalaObjectMapper
+    mapper.registerModule(DefaultScalaModule)
+    mapper.convertValue(javaMap, classOf[scala.collection.mutable.Map[String, AnyRef]])
+  }
 }

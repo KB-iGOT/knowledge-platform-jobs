@@ -35,6 +35,7 @@
         <module>program-activity-aggregate-updater</module>
 		<module>karma-points-persist-processor</module>
 		<module>user-activity-analysis-updater</module>
+      	<module>framework-search-indexer</module>
 
 	</modules>
 

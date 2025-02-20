@@ -131,6 +131,11 @@ class ElasticSearchUtil(connectionInfo: String, indexName: String, indexType: St
     response.getSourceAsString
   }
 
+  def getDocumentAsMap(identifier: String): util.Map[String, AnyRef] = {
+    val response = esClient.get(new GetRequest(indexName, indexType, identifier))
+    response.getSourceAsMap
+  }
+
   def close(): Unit = {
     if (null != esClient) try esClient.close()
     catch {
