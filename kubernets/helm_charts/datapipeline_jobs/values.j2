@@ -408,8 +408,8 @@ framework-search-indexer:
       dialcodeIndexer.parallelism = {{ dialcode_external_indexer_parallelism }}
       dialcodemetricsIndexer.parallelism = {{ dialcode_metric_indexer_parallelism }}
       checkpointing.timeout = 1200000
-      checkpointing.interval = 30000
-      checkpointing.pause.between.seconds = 15000
+      checkpointing.interval = 600000
+      checkpointing.pause.between.seconds = 90000
     }
     compositesearch.index.name = "compositesearch"
     dialcode.index.name = "dialcode"
