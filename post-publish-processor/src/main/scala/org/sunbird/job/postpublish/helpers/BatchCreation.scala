@@ -149,15 +149,14 @@ trait BatchCreation {
     var reqIdKey = "courseId"
 
     if ("Event".equalsIgnoreCase(contextType)) {
+      certTemplateId = config.defaultEventCertTemplateId
+      certTemplateAddPath = config.batchAddCertTemplateAPIPathForEvent
+      reqIdKey = "eventId"
       if (eData.get(config.resourseType) != null && config.rajyaKarmayogiSaptah.equalsIgnoreCase(eData.get(config.resourseType).asInstanceOf[String]) && eData.get(config.resourceTypeDetails) != null) {
         val resourceTypeDetailsMap = eData.get(config.resourceTypeDetails).asInstanceOf[util.Map[_, _]]
         if (resourceTypeDetailsMap.containsKey(config.certTemplate)) {
           certTemplateId = resourceTypeDetailsMap.get(config.certTemplate).asInstanceOf[String]
         }
-      } else {
-        certTemplateId = config.defaultEventCertTemplateId
-        certTemplateAddPath = config.batchAddCertTemplateAPIPathForEvent
-        reqIdKey = "eventId"
       }
     }
 
