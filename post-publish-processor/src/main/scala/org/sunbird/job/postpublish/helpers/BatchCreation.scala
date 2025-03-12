@@ -4,13 +4,14 @@ import com.datastax.driver.core.querybuilder.QueryBuilder
 import org.apache.commons.collections.{CollectionUtils, MapUtils}
 import org.apache.commons.lang3.StringUtils
 import org.slf4j.LoggerFactory
+import org.sunbird.job.postpublish.domain.Event
 import org.sunbird.job.postpublish.task.PostPublishProcessorConfig
 import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil, Neo4JUtil}
 
 import java.util
 import scala.collection.JavaConverters._
 import java.time.format.DateTimeFormatter
-import java.time.{LocalDate, ZonedDateTime, ZoneId}
+import java.time.{LocalDate, ZoneId, ZonedDateTime}
 
 trait BatchCreation {
 
@@ -47,7 +48,7 @@ trait BatchCreation {
       }
       logger.info("Batch created successfully with Id : " + batchId)
       if (batchId != "") {
-        addCertTemplateToBatch(eData.get("identifier").asInstanceOf[String], batchId, "Course")
+        addCertTemplateToBatch(eData, batchId, "Course")
       } else {
         logger.error("Failed to process batch create response and read BatchId value.")
       }
@@ -118,7 +119,7 @@ trait BatchCreation {
     } else false
   }
 
-  def getBatchDetails(identifier: String)(implicit neo4JUtil: Neo4JUtil, cassandraUtil: CassandraUtil, config: PostPublishProcessorConfig): util.Map[String, AnyRef] = {
+  def getBatchDetails(identifier: String, event: Event)(implicit neo4JUtil: Neo4JUtil, cassandraUtil: CassandraUtil, config: PostPublishProcessorConfig): util.Map[String, AnyRef] = {
     logger.info("Process Batch Creation for content: " + identifier)
     val metadata = neo4JUtil.getNodeProperties(identifier)
 
@@ -132,6 +133,11 @@ trait BatchCreation {
           put("createdBy", metadata.get("createdBy"))
           if (CollectionUtils.isNotEmpty(createdFor))
             put("createdFor", new util.ArrayList[String](createdFor))
+          if (StringUtils.isNotEmpty(event.eData.get("resourceType").asInstanceOf[String]))
+            put("resourceType", event.eData.get("resourceType").asInstanceOf[String])
+          if (MapUtils.isNotEmpty(event.eData.get("resourceTypeDetails").asInstanceOf[util.Map[_, _]])) {
+            put("resourceTypeDetails", event.eData.get("resourceTypeDetails"))
+          }
         }
       }
     } else {
@@ -139,7 +145,8 @@ trait BatchCreation {
     }
   }
 
-  def addCertTemplateToBatch(contextId: String, batchId: String, contextType: String)(implicit cassandraUtil: CassandraUtil, config: PostPublishProcessorConfig, httpUtil: HttpUtil) = {
+  def addCertTemplateToBatch(eData: java.util.Map[String, AnyRef], batchId: String, contextType: String)(implicit cassandraUtil: CassandraUtil, config: PostPublishProcessorConfig, httpUtil: HttpUtil) = {
+    val contextId = eData.get("identifier").asInstanceOf[String]
     logger.info("Adding cert template to batch:" + batchId + ", contextId: " + contextId + ", contextType: " + contextType)
     val selectQuery = QueryBuilder.select().all().from(config.sunbirdKeyspaceName, config.sbSystemSettingsTableName)
     var certTemplateId = config.defaultCertTemplateId
@@ -147,9 +154,16 @@ trait BatchCreation {
     var reqIdKey = "courseId"
 
     if ("Event".equalsIgnoreCase(contextType)) {
-      certTemplateId = config.defaultEventCertTemplateId
-      certTemplateAddPath = config.batchAddCertTemplateAPIPathForEvent
-      reqIdKey = "eventId"
+      if (eData.get("resourceType") != null && "Rajya Karmayogi Saptah".equals(eData.get("resourceType")) && eData.get("resourceTypeDetails") != null) {
+        val resourceTypeDetailsMap = eData.get("resourceTypeDetails").asInstanceOf[util.Map[_, _]]
+        if (resourceTypeDetailsMap.containsKey("certTemplate")) {
+          certTemplateId = resourceTypeDetailsMap.get("certTemplate").asInstanceOf[String]
+        }
+      } else {
+        certTemplateId = config.defaultEventCertTemplateId
+        certTemplateAddPath = config.batchAddCertTemplateAPIPathForEvent
+        reqIdKey = "eventId"
+      }
     }
 
     selectQuery.where.and(QueryBuilder.eq("id", certTemplateId))
@@ -286,7 +300,7 @@ trait BatchCreation {
       }
       logger.info("Batch created successfully with Id : " + batchId)
       if (batchId != "") {
-        addCertTemplateToBatch(eData.get("identifier").asInstanceOf[String], batchId, "Event")
+        addCertTemplateToBatch(eData, batchId, "Event")
       } else {
         logger.error("Failed to process batch create response and read BatchId value.")
       }

@@ -45,7 +45,7 @@ class PostPublishEventRouter(config: PostPublishProcessorConfig, httpUtil: HttpU
       getShallowCopiedContents(identifier)(config, httpUtil).foreach(metadata => context.output(config.shallowContentPublishOutTag, metadata))
 
       // Process Batch Creation
-      val batchDetails = getBatchDetails(identifier)(neo4JUtil, cassandraUtil, config)
+      val batchDetails = getBatchDetails(identifier,event)(neo4JUtil, cassandraUtil, config)
       if (!batchDetails.isEmpty)
         context.output(config.batchCreateOutTag, batchDetails)
 
