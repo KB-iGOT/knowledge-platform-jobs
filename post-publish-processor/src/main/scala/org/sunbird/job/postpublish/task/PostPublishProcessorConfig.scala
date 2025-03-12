@@ -120,7 +120,7 @@ class PostPublishProcessorConfig(override val config: Config) extends BaseJobCon
   val minPercetageToCompleteEventResource: Int = 50
 
   val resourseType: String = "resourceType"
-  val resourseTypeDetails: String = "resourceTypeDetails"
+  val resourceTypeDetails: String = "resourceTypeDetails"
   val rajyaKarmayogiSaptah: String = "Rajya Karmayogi Saptah"
   val certTemplate: String = "certTemplate"
 

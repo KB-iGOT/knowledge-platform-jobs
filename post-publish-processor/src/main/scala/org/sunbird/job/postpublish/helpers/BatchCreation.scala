@@ -141,7 +141,7 @@ trait BatchCreation {
   }
 
   def addCertTemplateToBatch(eData: java.util.Map[String, AnyRef], batchId: String, contextType: String)(implicit cassandraUtil: CassandraUtil, config: PostPublishProcessorConfig, httpUtil: HttpUtil) = {
-    val contextId = eData.get("identifier").asInstanceOf[String]
+    val contextId = eData.get(config.identifier).asInstanceOf[String]
     logger.info("Adding cert template to batch:" + batchId + ", contextId: " + contextId + ", contextType: " + contextType)
     val selectQuery = QueryBuilder.select().all().from(config.sunbirdKeyspaceName, config.sbSystemSettingsTableName)
     var certTemplateId = config.defaultCertTemplateId
@@ -149,8 +149,8 @@ trait BatchCreation {
     var reqIdKey = "courseId"
 
     if ("Event".equalsIgnoreCase(contextType)) {
-      if (eData.get(config.resourseType) != null && config.rajyaKarmayogiSaptah.equalsIgnoreCase(eData.get(config.resourseType).asInstanceOf[String]) && eData.get(config.resourseTypeDetails) != null) {
-        val resourceTypeDetailsMap = eData.get(config.resourseTypeDetails).asInstanceOf[util.Map[_, _]]
+      if (eData.get(config.resourseType) != null && config.rajyaKarmayogiSaptah.equalsIgnoreCase(eData.get(config.resourseType).asInstanceOf[String]) && eData.get(config.resourceTypeDetails) != null) {
+        val resourceTypeDetailsMap = eData.get(config.resourceTypeDetails).asInstanceOf[util.Map[_, _]]
         if (resourceTypeDetailsMap.containsKey(config.certTemplate)) {
           certTemplateId = resourceTypeDetailsMap.get(config.certTemplate).asInstanceOf[String]
         }
@@ -218,10 +218,10 @@ trait BatchCreation {
           put("resourceType", metadata.get("resourceType"))
           put("duration", metadata.get("duration"))
           put("description", metadata.get("description"))
-          if (StringUtils.isNotEmpty(metadata.get("resourceType").asInstanceOf[String]))
+          if (StringUtils.isNotEmpty(metadata.get(config.resourseType).asInstanceOf[String]))
             put(config.resourseType, metadata.get(config.resourseType))
-          if (MapUtils.isNotEmpty(metadata.get("resourceTypeDetails").asInstanceOf[util.Map[_, _]]))
-            put(config.resourseTypeDetails, metadata.get(config.resourseTypeDetails))
+          if (MapUtils.isNotEmpty(metadata.get(config.resourceTypeDetails).asInstanceOf[util.Map[_, _]]))
+            put(config.resourceTypeDetails, metadata.get(config.resourceTypeDetails))
         }
       }
     } else {
