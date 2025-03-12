@@ -149,10 +149,10 @@ trait BatchCreation {
     var reqIdKey = "courseId"
 
     if ("Event".equalsIgnoreCase(contextType)) {
-      if (eData.get("resourceType") != null && "Rajya Karmayogi Saptah".equals(eData.get("resourceType")) && eData.get("resourceTypeDetails") != null) {
-        val resourceTypeDetailsMap = eData.get("resourceTypeDetails").asInstanceOf[util.Map[_, _]]
-        if (resourceTypeDetailsMap.containsKey("certTemplate")) {
-          certTemplateId = resourceTypeDetailsMap.get("certTemplate").asInstanceOf[String]
+      if (eData.get(config.resourseType) != null && config.rajyaKarmayogiSaptah.equalsIgnoreCase(eData.get(config.resourseType).asInstanceOf[String]) && eData.get(config.resourseTypeDetails) != null) {
+        val resourceTypeDetailsMap = eData.get(config.resourseTypeDetails).asInstanceOf[util.Map[_, _]]
+        if (resourceTypeDetailsMap.containsKey(config.certTemplate)) {
+          certTemplateId = resourceTypeDetailsMap.get(config.certTemplate).asInstanceOf[String]
         }
       } else {
         certTemplateId = config.defaultEventCertTemplateId
@@ -219,9 +219,9 @@ trait BatchCreation {
           put("duration", metadata.get("duration"))
           put("description", metadata.get("description"))
           if (StringUtils.isNotEmpty(metadata.get("resourceType").asInstanceOf[String]))
-            put("resourceType", metadata.get("resourceType"))
+            put(config.resourseType, metadata.get(config.resourseType))
           if (MapUtils.isNotEmpty(metadata.get("resourceTypeDetails").asInstanceOf[util.Map[_, _]]))
-            put("resourceTypeDetails", metadata.get("resourceTypeDetails"))
+            put(config.resourseTypeDetails, metadata.get(config.resourseTypeDetails))
         }
       }
     } else {
