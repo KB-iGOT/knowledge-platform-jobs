@@ -119,7 +119,7 @@ trait BatchCreation {
     } else false
   }
 
-  def getBatchDetails(identifier: String, event: Event)(implicit neo4JUtil: Neo4JUtil, cassandraUtil: CassandraUtil, config: PostPublishProcessorConfig): util.Map[String, AnyRef] = {
+  def getBatchDetails(identifier: String)(implicit neo4JUtil: Neo4JUtil, cassandraUtil: CassandraUtil, config: PostPublishProcessorConfig): util.Map[String, AnyRef] = {
     logger.info("Process Batch Creation for content: " + identifier)
     val metadata = neo4JUtil.getNodeProperties(identifier)
 
@@ -133,11 +133,6 @@ trait BatchCreation {
           put("createdBy", metadata.get("createdBy"))
           if (CollectionUtils.isNotEmpty(createdFor))
             put("createdFor", new util.ArrayList[String](createdFor))
-          if (StringUtils.isNotEmpty(event.eData.get("resourceType").asInstanceOf[String]))
-            put("resourceType", event.eData.get("resourceType").asInstanceOf[String])
-          if (MapUtils.isNotEmpty(event.eData.get("resourceTypeDetails").asInstanceOf[util.Map[_, _]])) {
-            put("resourceTypeDetails", event.eData.get("resourceTypeDetails"))
-          }
         }
       }
     } else {
@@ -223,6 +218,10 @@ trait BatchCreation {
           put("resourceType", metadata.get("resourceType"))
           put("duration", metadata.get("duration"))
           put("description", metadata.get("description"))
+          if (StringUtils.isNotEmpty(metadata.get("resourceType").asInstanceOf[String]))
+            put("resourceType", metadata.get("resourceType"))
+          if (MapUtils.isNotEmpty(metadata.get("resourceTypeDetails").asInstanceOf[util.Map[_, _]]))
+            put("resourceTypeDetails", metadata.get("resourceTypeDetails"))
         }
       }
     } else {
