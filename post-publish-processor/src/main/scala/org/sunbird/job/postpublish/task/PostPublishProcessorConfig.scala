@@ -118,4 +118,10 @@ class PostPublishProcessorConfig(override val config: Config) extends BaseJobCon
 
   val allowedResourceTypesForEventBatch: util.List[String] = if (config.hasPath("service.batchCreation.event.categories")) config.getStringList("service.batchCreation.event.categories") else util.Arrays.asList("Karmayogi Saptah")
   val minPercetageToCompleteEventResource: Int = 50
+
+  val resourseType: String = "resourceType"
+  val resourceTypeDetails: String = "resourceTypeDetails"
+  val rajyaKarmayogiSaptah: String = "Rajya Karmayogi Saptah"
+  val certTemplate: String = "certTemplate"
+
 }
