@@ -12,6 +12,7 @@ import java.util
 import scala.collection.JavaConverters._
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZoneId, ZonedDateTime}
+import com.fasterxml.jackson.databind.ObjectMapper
 
 trait BatchCreation {
 
@@ -219,8 +220,21 @@ trait BatchCreation {
           put("description", metadata.get("description"))
           if (StringUtils.isNotEmpty(metadata.get(config.resourseType).asInstanceOf[String]))
             put(config.resourseType, metadata.get(config.resourseType))
-          if (MapUtils.isNotEmpty(metadata.get(config.resourceTypeDetails).asInstanceOf[util.Map[_, _]]))
-            put(config.resourceTypeDetails, metadata.get(config.resourceTypeDetails))
+          val resourceTypeDetails = metadata.get(config.resourceTypeDetails)
+          if (resourceTypeDetails != null) {
+            if (resourceTypeDetails.isInstanceOf[String]) {
+              val jsonString = resourceTypeDetails.asInstanceOf[String]
+              try {
+                val parsedMap = parseJsonToMap(jsonString)
+                put(config.resourceTypeDetails, parsedMap)
+              } catch {
+                case e: Exception =>
+                  logger.error("Error parsing resourceTypeDetails as JSON: " + e.getMessage)
+              }
+            } else if (resourceTypeDetails.isInstanceOf[java.util.Map[_, _]]) {
+              put(config.resourceTypeDetails, resourceTypeDetails)
+            }
+          }
         }
       }
     } else {
@@ -306,5 +320,11 @@ trait BatchCreation {
       logger.error("Batch create failed: " + httpResponse.status + " :: " + httpResponse.body)
       throw new Exception("Batch creation failed for " + eData.get("identifier"))
     }
+  }
+
+  def parseJsonToMap(jsonString: String): util.Map[String, String] = {
+    val mapper = new ObjectMapper()
+    val map = mapper.readValue(jsonString, classOf[java.util.Map[String, String]])
+    map
   }
 }
