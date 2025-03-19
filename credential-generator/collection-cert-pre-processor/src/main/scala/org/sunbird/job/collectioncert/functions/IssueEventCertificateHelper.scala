@@ -84,8 +84,8 @@ trait IssueEventCertificateHelper {
         EnrolledUser(userId, oldId, issuedOn, {
           if (addProps.nonEmpty) Map[String, Any](config.enrollment -> addProps) else Map()
         })
-      } else EnrolledUser(event.userId, "")
-    } else EnrolledUser(event.userId, "")
+      } else EnrolledUser(event.userId, "", new Date())
+    } else EnrolledUser(event.userId, "", new Date())
   }
 
   def validateEventAssessmentCriteria(event: Event, assessmentCriteria: Map[String, AnyRef], enrolledUser: String, additionalProps: Map[String, List[String]])(metrics: Metrics, cassandraUtil: CassandraUtil, contentCache: DataCache, config: CollectionCertPreProcessorConfig): AssessedUser = {
