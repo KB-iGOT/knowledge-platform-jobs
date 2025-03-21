@@ -69,9 +69,7 @@ trait ImageEnrichmentHelper {
               val optimisedURLArray = upload(optimisedFile, contentId)(cloudStorageUtil)
               variantsMap.put(resolution, optimisedURLArray(1))
             }
-          } else {
-            variantsMap.put(resolution, originalURL)
-          }
+          } else variantsMap.put(resolution, originalURL)
         })
         case _ => logger.error("ERR_INVALID_FILE_URL", s"Please Provide Valid File Url for identifier: $contentId!")
           throw new Exception(s"Please Provide Valid File Url for identifier : $contentId and URL : $originalURL.")
