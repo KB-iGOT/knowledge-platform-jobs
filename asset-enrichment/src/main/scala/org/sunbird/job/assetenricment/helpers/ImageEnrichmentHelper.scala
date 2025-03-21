@@ -1,7 +1,6 @@
 package org.sunbird.job.assetenricment.helpers
 
 import org.apache.commons.lang.StringUtils
-import org.im4java.core.Info
 import org.slf4j.LoggerFactory
 import org.sunbird.job.assetenricment.models.Asset
 import org.sunbird.job.assetenricment.task.AssetEnrichmentConfig
@@ -63,10 +62,7 @@ trait ImageEnrichmentHelper {
           val dimension = variantValueMap.getOrElse("dimensions", List[Int]()).asInstanceOf[List[Int]]
           val dpi = variantValueMap.getOrElse("dpi", 0).asInstanceOf[Int]
           if (dimension == null || dimension.size != 2) throw new Exception("Content Optimizer Error. Image Resolution/variants is not configured for content optimization.")
-          logger.info("width : ",dimension(0))
-          logger.info("hieght : ",dimension(1))
           if (isImageOptimizable(file, dimension(0), dimension(1))) {
-            logger.info("inside else if condtion")
             val targetResolution = getOptimalDPI(file, dpi)
             val optimisedFile = optimizeImage(file, targetResolution, dimension(0), dimension(1), resolution)
             if (null != optimisedFile && optimisedFile.exists) {
@@ -74,7 +70,6 @@ trait ImageEnrichmentHelper {
               variantsMap.put(resolution, optimisedURLArray(1))
             }
           } else {
-            logger.info("inside else condtion")
             variantsMap.put(resolution, originalURL)
           }
         })
