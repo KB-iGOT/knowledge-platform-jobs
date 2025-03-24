@@ -62,18 +62,14 @@ trait ImageEnrichmentHelper {
           val dimension = variantValueMap.getOrElse("dimensions", List[Int]()).asInstanceOf[List[Int]]
           val dpi = variantValueMap.getOrElse("dpi", 0).asInstanceOf[Int]
           if (dimension == null || dimension.size != 2) throw new Exception("Content Optimizer Error. Image Resolution/variants is not configured for content optimization.")
-          if (dimension(0) > 5000 && dimension(1) > 5000) {
-            variantsMap.put(resolution, originalURL)
-          } else if (isImageOptimizable(file, dimension(0), dimension(1))) {
+          if (isImageOptimizable(file, dimension(0), dimension(1))) {
             val targetResolution = getOptimalDPI(file, dpi)
             val optimisedFile = optimizeImage(file, targetResolution, dimension(0), dimension(1), resolution)
             if (null != optimisedFile && optimisedFile.exists) {
               val optimisedURLArray = upload(optimisedFile, contentId)(cloudStorageUtil)
               variantsMap.put(resolution, optimisedURLArray(1))
             }
-          } else {
-            variantsMap.put(resolution, originalURL)
-          }
+          } else variantsMap.put(resolution, originalURL)
         })
         case _ => logger.error("ERR_INVALID_FILE_URL", s"Please Provide Valid File Url for identifier: $contentId!")
           throw new Exception(s"Please Provide Valid File Url for identifier : $contentId and URL : $originalURL.")
