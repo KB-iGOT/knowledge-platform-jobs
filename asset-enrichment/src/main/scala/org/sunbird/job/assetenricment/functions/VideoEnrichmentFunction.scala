@@ -1,5 +1,6 @@
 package org.sunbird.job.assetenricment.functions
 
+import org.apache.commons.io.FileUtils
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.streaming.api.functions.ProcessFunction
 import org.slf4j.LoggerFactory
@@ -12,6 +13,7 @@ import org.sunbird.job.exception.InvalidEventException
 import org.sunbird.job.util.{CloudStorageUtil, Neo4JUtil}
 import org.sunbird.job.{BaseProcessFunction, Metrics}
 
+import java.io.File
 import scala.collection.JavaConverters._
 
 class VideoEnrichmentFunction(config: AssetEnrichmentConfig,
@@ -48,6 +50,8 @@ class VideoEnrichmentFunction(config: AssetEnrichmentConfig,
         logger.error(s"Error while processing message for Video Enrichment for identifier : ${asset.identifier}.", ex)
         metrics.incCounter(config.failedVideoEnrichmentEventCount)
         throw new InvalidEventException(ex.getMessage, Map("partition" -> event.partition, "offset" -> event.offset), ex)
+    } finally {
+      FileUtils.deleteDirectory(new File(s"/tmp/$asset.identifier"))
     }
   }
 
