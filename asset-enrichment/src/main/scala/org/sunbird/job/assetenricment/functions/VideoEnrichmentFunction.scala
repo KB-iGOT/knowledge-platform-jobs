@@ -49,6 +49,7 @@ class VideoEnrichmentFunction(config: AssetEnrichmentConfig,
         metrics.incCounter(config.failedVideoEnrichmentEventCount)
         throw new InvalidEventException(ex.getMessage, Map("partition" -> event.partition, "offset" -> event.offset), ex)
     }
+    FileUtils.deleteDirectory(new File(s"/tmp/$asset.identifier"))
   }
 
   override def metricsList(): List[String] = {
