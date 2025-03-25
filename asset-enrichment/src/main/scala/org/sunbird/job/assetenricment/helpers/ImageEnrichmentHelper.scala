@@ -9,10 +9,8 @@ import org.sunbird.job.assetenricment.util.{AssetFileUtils, ImageResizerUtil}
 import org.sunbird.job.domain.`object`.DefinitionCache
 import org.sunbird.job.util.{CloudStorageUtil, FileUtils, Neo4JUtil, ScalaJsonUtil, Slug}
 
-import java.awt.image.BufferedImage
 import java.io.File
 import java.net.URL
-import javax.imageio.ImageIO
 import scala.collection.mutable
 
 trait ImageEnrichmentHelper {
@@ -97,55 +95,23 @@ trait ImageEnrichmentHelper {
 
   def isImageOptimizable(file: File, dimensionX: Int, dimensionY: Int): Boolean = {
     val inputFileName = file.getAbsolutePath
-    try {
-      val imageInfo = new Info(inputFileName, true)
-      val width = imageInfo.getImageWidth
-      val height = imageInfo.getImageHeight
-      (dimensionX < width && dimensionY < height)
-    } catch {
-      case e1: Exception =>
-        logger.error("Error while getting Image Info using im4java", e1)
-        try {
-          val image: BufferedImage = ImageIO.read(file)
-          val width = image.getWidth
-          val height = image.getHeight
-          (dimensionX < width && dimensionY < height)
-        } catch {
-          case e2: Exception =>
-            logger.error("Error while getting Image Info using ImageIO", e2)
-            throw new Exception("Failed to get image dimensions using both im4java and ImageIO", e2)
-        }
-    }
+    val imageInfo = new Info(inputFileName, true)
+    val width = imageInfo.getImageWidth
+    val height = imageInfo.getImageHeight
+    (dimensionX < width && dimensionY < height)
   }
 
   def getOptimalDPI(file: File, dpi: Int): Double = {
     val inputFileName = file.getAbsolutePath
-    try {
-      val imageInfo = new Info(inputFileName, false)
-      val resString = imageInfo.getProperty("Resolution")
-      if (resString != null) {
-        val res = resString.split("x")
-        if (res.nonEmpty) {
-          val xresd = res(0).toDouble
-          return Math.min(xresd, dpi.toDouble)
-        }
-      }
-      0.toDouble
-    } catch {
-      case e1: Exception =>
-        logger.error("Error while getting DPI from Image using im4java", e1)
-        try {
-          val image: BufferedImage = ImageIO.read(file)
-          val width = image.getWidth
-          val height = image.getHeight
-          val resolution = Math.min(width, height).toDouble
-          Math.min(resolution, dpi.toDouble)
-        } catch {
-          case e2: Exception =>
-            logger.error("Error while getting DPI from Image using ImageIO", e2)
-            throw new Exception("Failed to get DPI using both im4java and ImageIO", e2)
-        }
-    }
+    val imageInfo = new Info(inputFileName, false)
+    val resString = imageInfo.getProperty("Resolution")
+    if (resString != null) {
+      val res = resString.split("x")
+      if (res.nonEmpty) {
+        val xresd = res(0).toDouble
+        if (xresd < dpi.toDouble) xresd else dpi.toDouble
+      } else 0.toDouble
+    } else 0.toDouble
   }
 
   def saveImageVariants(variantsMap: Map[String, String], asset: Asset)(implicit neo4JUtil: Neo4JUtil): Unit = {
