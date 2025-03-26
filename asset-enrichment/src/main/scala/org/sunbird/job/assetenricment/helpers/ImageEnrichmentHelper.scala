@@ -1,7 +1,6 @@
 package org.sunbird.job.assetenricment.helpers
 
 import org.apache.commons.lang.StringUtils
-import org.im4java.core.Info
 import org.slf4j.LoggerFactory
 import org.sunbird.job.assetenricment.models.Asset
 import org.sunbird.job.assetenricment.task.AssetEnrichmentConfig
@@ -14,6 +13,8 @@ import java.io.File
 import java.net.URL
 import javax.imageio.ImageIO
 import scala.collection.mutable
+import com.sksamuel.scrimage.ImmutableImage
+import com.sksamuel.scrimage.nio.JpegWriter
 
 trait ImageEnrichmentHelper {
 
@@ -92,59 +93,39 @@ trait ImageEnrichmentHelper {
   private def optimizeImage(file: File, dpi: Double, width: Int, height: Int, resolution: String): File = {
     val fileType = AssetFileUtils.getFileType(file)
     val proc = new ImageResizerUtil
-    if (proc.isApplicable(fileType)) proc.process(file, dpi, width, height, resolution) else null
+    if (proc.isApplicable(fileType)) {
+      val image = ImmutableImage.loader().fromFile(file)
+      val resizedImage = image.scaleTo(width, height)
+      val outputFile = new File(file.getParent, s"optimized_${file.getName}")
+      resizedImage.output(JpegWriter.Default, outputFile)
+      outputFile
+    } else null
   }
 
   def isImageOptimizable(file: File, dimensionX: Int, dimensionY: Int): Boolean = {
-    val inputFileName = file.getAbsolutePath
     try {
-      val imageInfo = new Info(inputFileName, true)
-      val width = imageInfo.getImageWidth
-      val height = imageInfo.getImageHeight
+      val image = ImmutableImage.loader().fromFile(file)
+      val width = image.width
+      val height = image.height
       (dimensionX < width && dimensionY < height)
     } catch {
-      case e1: Exception =>
-        logger.error("Error while getting Image Info using im4java", e1)
-        try {
-          val image: BufferedImage = ImageIO.read(file)
-          val width = image.getWidth
-          val height = image.getHeight
-          (dimensionX < width && dimensionY < height)
-        } catch {
-          case e2: Exception =>
-            logger.error("Error while getting Image Info using ImageIO", e2)
-            throw new Exception("Failed to get image dimensions using both im4java and ImageIO", e2)
-        }
+      case e: Exception =>
+        logger.error("Error while getting Image Info using Scrimage", e)
+        throw new Exception("Failed to get image dimensions using Scrimage", e)
     }
   }
-
+  
   def getOptimalDPI(file: File, dpi: Int): Double = {
-    val inputFileName = file.getAbsolutePath
     try {
-      val imageInfo = new Info(inputFileName, false)
-      val resString = imageInfo.getProperty("Resolution")
-      if (resString != null) {
-        val res = resString.split("x")
-        if (res.nonEmpty) {
-          val xresd = res(0).toDouble
-          return Math.min(xresd, dpi.toDouble)
-        }
-      }
-      0.toDouble
+      val image = ImmutableImage.loader().fromFile(file)
+      val width = image.width
+      val height = image.height
+      val resolution = Math.min(width, height).toDouble
+      Math.min(resolution, dpi.toDouble)
     } catch {
-      case e1: Exception =>
-        logger.error("Error while getting DPI from Image using im4java", e1)
-        try {
-          val image: BufferedImage = ImageIO.read(file)
-          val width = image.getWidth
-          val height = image.getHeight
-          val resolution = Math.min(width, height).toDouble
-          Math.min(resolution, dpi.toDouble)
-        } catch {
-          case e2: Exception =>
-            logger.error("Error while getting DPI from Image using ImageIO", e2)
-            throw new Exception("Failed to get DPI using both im4java and ImageIO", e2)
-        }
+      case e: Exception =>
+        logger.error("Error while getting DPI from Image using Scrimage", e)
+        throw new Exception("Failed to get DPI using Scrimage", e)
     }
   }
 
