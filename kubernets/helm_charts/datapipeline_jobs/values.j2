@@ -306,7 +306,7 @@ post-publish-processor:
       learning_service.basePath = "{{ kp_learning_service_base_url }}"
       dial.basePath = "https://{{domain_name}}/dial/"
       content.basePath = "{{ kp_content_service_base_url }}"
-      batchCreation.event.categories = ["Karmayogi Saptah", "Karmayogi Talks"]
+      batchCreation.event.categories = ["Karmayogi Saptah", "Karmayogi Talks", "Rajya Karmayogi Saptah"]
     }
 
   flink-conf: |+
@@ -375,7 +375,7 @@ search-indexer:
     dialcode.index.name = "dialcode"
     dailcodemetrics.index.name = "dialcodemetrics"
     restrict.metadata.objectTypes = []
-    nested.fields = ["badgeAssertions", "targets", "badgeAssociations", "plugins", "me_totalTimeSpent", "me_totalPlaySessionCount", "me_totalTimeSpentInSec", "batches", "trackable", "credentials", "discussionForum", "provider", "osMetadata", "actions", "transcripts", "accessibility", "taxonomyPaths_v2", "competencies_v3", "test_competencies_v2", "competencies_v2", "secureSettings", "test_competencies_v4", "competencies_v5", "test_secureSettings", "competencies_v6", "referenceNodes"]
+    nested.fields = ["badgeAssertions", "targets", "badgeAssociations", "plugins", "me_totalTimeSpent", "me_totalPlaySessionCount", "me_totalTimeSpentInSec", "batches", "trackable", "credentials", "discussionForum", "provider", "osMetadata", "actions", "transcripts", "accessibility", "taxonomyPaths_v2", "competencies_v3", "test_competencies_v2", "competencies_v2", "secureSettings", "test_competencies_v4", "competencies_v5", "test_secureSettings", "competencies_v6", "referenceNodes", "resourceTypeDetails"]
     schema.definition_cache.expiry = {{ schema_definition_cache_expiry_in_sec }}
     restrict.objectTypes=["EventSet", "Questionnaire", "Misconception", "FrameworkType", "EventSetImage", "EventImage", "Term", "CategoryInstance","Framework"]
     ignored.fields={{ search_indexer_ignored_fields | to_json }}
@@ -407,12 +407,15 @@ framework-search-indexer:
       compositeSearch.parallelism = {{ composite_framework_search_indexer_parallelism }}
       dialcodeIndexer.parallelism = {{ dialcode_external_indexer_parallelism }}
       dialcodemetricsIndexer.parallelism = {{ dialcode_metric_indexer_parallelism }}
+      checkpointing.timeout = 1200000
+      checkpointing.interval = 600000
+      checkpointing.pause.between.seconds = 90000
     }
     compositesearch.index.name = "compositesearch"
     dialcode.index.name = "dialcode"
     dailcodemetrics.index.name = "dialcodemetrics"
     restrict.metadata.objectTypes = []
-    nested.fields = ["badgeAssertions", "targets", "badgeAssociations", "plugins", "me_totalTimeSpent", "me_totalPlaySessionCount", "me_totalTimeSpentInSec", "batches", "trackable", "credentials", "discussionForum", "provider", "osMetadata", "actions", "transcripts", "accessibility", "taxonomyPaths_v2", "competencies_v3", "test_competencies_v2", "competencies_v2", "secureSettings", "test_competencies_v4", "competencies_v5", "test_secureSettings", "competencies_v6", "referenceNodes"]
+    nested.fields = ["badgeAssertions", "targets", "badgeAssociations", "plugins", "me_totalTimeSpent", "me_totalPlaySessionCount", "me_totalTimeSpentInSec", "batches", "trackable", "credentials", "discussionForum", "provider", "osMetadata", "actions", "transcripts", "accessibility", "taxonomyPaths_v2", "competencies_v3", "test_competencies_v2", "competencies_v2", "secureSettings", "test_competencies_v4", "competencies_v5", "test_secureSettings", "competencies_v6", "referenceNodes", "resourceTypeDetails"]
     schema.definition_cache.expiry = {{ schema_definition_cache_expiry_in_sec }}
     restrict.objectTypes = ["EventSet", "Questionnaire", "Misconception", "FrameworkType", "EventSetImage", "EventImage"]
     ignored.fields={{ framework_search_indexer_ignored_fields | to_json }}
@@ -993,7 +996,7 @@ content-publish:
       }
 
       nested.fields = ["badgeAssertions", "targets", "badgeAssociations", "plugins", "me_totalTimeSpent", "me_totalPlaySessionCount", "me_totalTimeSpentInSec", "batches", "trackable", "credentials", "discussionForum", "provider", "osMetadata", "actions", "taxonomyPaths_v2", "competencies_v3", "test_competencies_v2", "competencies_v2", "secureSettings", "test_competencies_v4", "competencies_v5", "test_secureSettings", "competencies_v6", "referenceNodes"]
-      restrict.objectTypes = ["EventSet", "Questionnaire", "Misconception", "FrameworkType", "EventSetImage", "EventImage"]
+      restrict.objectTypes = ["EventSet", "Questionnaire", "Misconception", "FrameworkType", "EventSetImage", "EventImage", "resourceTypeDetails"]
     }
     cloud_storage {
         folder {

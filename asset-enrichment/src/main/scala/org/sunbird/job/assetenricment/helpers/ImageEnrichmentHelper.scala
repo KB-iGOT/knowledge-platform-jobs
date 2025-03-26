@@ -8,8 +8,10 @@ import org.sunbird.job.assetenricment.util.{AssetFileUtils, ImageResizerUtil}
 import org.sunbird.job.domain.`object`.DefinitionCache
 import org.sunbird.job.util.{CloudStorageUtil, FileUtils, Neo4JUtil, ScalaJsonUtil, Slug}
 
+import java.awt.image.BufferedImage
 import java.io.File
 import java.net.URL
+import javax.imageio.ImageIO
 import scala.collection.mutable
 import com.sksamuel.scrimage.ImmutableImage
 import com.sksamuel.scrimage.nio.JpegWriter
@@ -112,6 +114,7 @@ trait ImageEnrichmentHelper {
         throw new Exception("Failed to get image dimensions using Scrimage", e)
     }
   }
+  
   def getOptimalDPI(file: File, dpi: Int): Double = {
     try {
       val image = ImmutableImage.loader().fromFile(file)
