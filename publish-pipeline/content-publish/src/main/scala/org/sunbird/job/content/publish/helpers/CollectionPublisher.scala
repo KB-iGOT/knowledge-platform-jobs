@@ -150,11 +150,36 @@ trait CollectionPublisher extends ObjectReader with SyncMessagesGenerator with O
   }
 
   private def setCompatibilityLevel(obj: ObjectData, updatedMeta: Map[String, AnyRef]): Option[Map[String, AnyRef]] = {
-    if (level4ContentTypes.contains(obj.getString("contentType", ""))) {
-      logger.info("CollectionPublisher:: setCompatibilityLevel:: setting compatibility level for content id : " + obj.identifier + " as 4.")
-      Some(updatedMeta ++ Map("compatibilityLevel" -> 4.asInstanceOf[AnyRef]))
-    } else Some(updatedMeta)
+    // Check if the obj's metadata map contains the "compatibilityLevel" key
+    obj.metadata.get("compatibilityLevel") match {
+      case Some(level: AnyRef) =>
+        if (level.isInstanceOf[Int]) {
+          val levelInt = level.asInstanceOf[Int]
+          if (levelInt < 4) {
+            logger.info(s"CollectionPublisher:: setCompatibilityLevel:: compatibility level is less than 4 for content id : ${obj.identifier}, setting it to 5.")
+            Some(updatedMeta ++ Map("compatibilityLevel" -> 5.asInstanceOf[AnyRef]))
+          } else {
+            logger.info(s"CollectionPublisher:: setCompatibilityLevel:: compatibility level is ${level}, for content id : ${obj.identifier}, using the same.")
+            Some(updatedMeta ++ Map("compatibilityLevel" -> levelInt.asInstanceOf[AnyRef]))
+          }
+        } else {
+          logger.info(s"CollectionPublisher:: setCompatibilityLevel:: compatibility level is not an integer for content id : ${obj.identifier}")
+          Some(updatedMeta)
+        }
+      case None =>
+        logger.info(s"CollectionPublisher:: setCompatibilityLevel:: compatibility level is not exist for content id : ${obj.identifier}, checking the contentType.")
+        val contentType = obj.getString("contentType", "")
+        if (level4ContentTypes.contains(contentType)) {
+          logger.info(s"CollectionPublisher:: setCompatibilityLevel:: contentType exists in level4ContentTypes, setting compatibility level to 4 for content id : ${obj.identifier}.")
+          // Set compatibilityLevel to 4 if contentType is in level4ContentTypes
+          Some(updatedMeta ++ Map("compatibilityLevel" -> 4.asInstanceOf[AnyRef]))
+        } else {
+          // If contentType is not in level4ContentTypes, return the updatedMeta unchanged
+          Some(updatedMeta)
+        }
+    }
   }
+
 
   def getUnitsFromLiveContent(obj: ObjectData)(implicit cassandraUtil: CassandraUtil, readerConfig: ExtDataConfig): List[String] = {
     val objHierarchy = getHierarchy(obj.metadata.getOrElse("identifier", "").asInstanceOf[String], obj.metadata.getOrElse("pkgVersion", 1).asInstanceOf[Integer].doubleValue(), readerConfig).get
