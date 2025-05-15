@@ -47,7 +47,7 @@ class ProgramProgressCompleteFunction(config: ProgramActivityAggregateUpdaterCon
     } else events
     logger.info("pendingEnrolments =>"+pendingEnrolments)
 
-    val enrolmentQueries = pendingEnrolments.map(enrolmentComplete => getEnrolmentCompleteQuery(enrolmentComplete))
+    val enrolmentQueries = pendingEnrolments.map(enrolmentComplete => getEnrolmentCompleteQuery(enrolmentComplete)(metrics))
     logger.info("enrolmentQueries => "+enrolmentQueries)
     updateDB(config.thresholdBatchWriteSize, enrolmentQueries)(metrics)
     pendingEnrolments.foreach(e => {
@@ -89,13 +89,21 @@ class ProgramProgressCompleteFunction(config: ProgramActivityAggregateUpdaterCon
     cassandraUtil.findOne(selectWhere.toString)
   }
 
-  def getEnrolmentCompleteQuery(enrolment: CollectionProgress): Update.Where = {
+  def getEnrolmentCompleteQuery(enrolment: CollectionProgress)(implicit metrics: Metrics): Update.Where = {
     logger.info("Enrolment completed for userId: " + enrolment.userId + " batchId: " + enrolment.batchId)
+    val existingRow = getEnrolment(enrolment.userId, enrolment.courseId, enrolment.batchId)(metrics)
+    val existingContentStatus = Option(existingRow.getMap("contentstatus", classOf[String], classOf[Integer])).getOrElse(new java.util.HashMap[String, Integer]())
+
+    // Merge logic
+    val newContentStatus = enrolment.contentStatus.mapValues(_.asInstanceOf[Integer]).asJava
+    newContentStatus.forEach((k, v) => existingContentStatus.put(k, v))
+
+    logger.info("Merged contentstatus map used in getEnrolmentCompleteQuery: " + existingContentStatus)
     QueryBuilder.update(config.dbKeyspace, config.dbUserEnrolmentsTable)
       .`with`(QueryBuilder.set("status", 2))
       .and(QueryBuilder.set("completedon", enrolment.completedOn))
       .and(QueryBuilder.set("progress", enrolment.progress))
-      .and(QueryBuilder.set("contentstatus", enrolment.contentStatus.asJava))
+      .and(QueryBuilder.set("contentstatus", existingContentStatus))
       .and(QueryBuilder.set("datetime", System.currentTimeMillis))
       .where(QueryBuilder.eq("userid", enrolment.userId))
       .and(QueryBuilder.eq("courseid", enrolment.courseId))
