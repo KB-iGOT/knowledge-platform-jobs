@@ -8,6 +8,7 @@ import org.apache.flink.api.java.typeutils.TypeExtractor
 import org.apache.flink.streaming.api.scala.OutputTag
 import org.sunbird.job.BaseJobConfig
 import org.sunbird.job.aggregate.domain.CollectionProgress
+import scala.collection.JavaConverters._
 
 class ActivityAggregateUpdaterConfig(override val config: Config) extends BaseJobConfig(config, "activity-aggregate-updater") {
 
@@ -145,4 +146,9 @@ class ActivityAggregateUpdaterConfig(override val config: Config) extends BaseJo
   val caseStudy = "Case Study"
   val coursecategory = "coursecategory"
 
+  val excludedCategories: Set[String] = 
+  if (config.hasPath("activity.aggregate.excluded.primaryCategories")) 
+    config.getStringList("activity.aggregate.excluded.primaryCategories").asScala.toSet 
+  else 
+    Set("Program", "Curated Program", "Blended Program")
 }

@@ -472,15 +472,13 @@ class ActivityAggregatesFunction(config: ActivityAggregateUpdaterConfig, httpUti
     // Get the primary Categories for the courses here
     var isValidCourse = false
     var courseCategory = ""
+    val excludedCategories = config.excludedCategories
     val contentObj: java.util.Map[String, AnyRef] =
       getCourseInfo(identifier)(metrics, config, contentCache, httpUtil)
     if (!contentObj.isEmpty) {
-      val primaryCategory = contentObj.get("primaryCategory")
+      val primaryCategory = contentObj.get("primaryCategory").asInstanceOf[String]
       courseCategory = contentObj.get("courseCategory").asInstanceOf[String]
-      if (primaryCategory != null &&
-        (primaryCategory != "Program"
-          || primaryCategory != "Curated Program"
-          || primaryCategory != "Blended Program")) {
+      if (primaryCategory != null && !excludedCategories.contains(primaryCategory)) {
         isValidCourse = true
       }
       logger.info("PrimaryCategory value is : " + primaryCategory + ", for Id: " + identifier)
