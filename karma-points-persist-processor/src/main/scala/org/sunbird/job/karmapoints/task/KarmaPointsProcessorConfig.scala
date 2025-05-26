@@ -153,5 +153,6 @@ class KarmaPointsProcessorConfig(override val config: Config) extends BaseJobCon
   val COURSE = "Course"
   val ROOT_ORG_ID ="rootorgid"
   val USER_UNDERSCORE_ID ="user_id"
+  val cacheDbId: Int = if(config.hasPath("redis.database.karmaPointCache.id")) config.getInt("redis.database.karmaPointCache.id") else 0
 }
 
