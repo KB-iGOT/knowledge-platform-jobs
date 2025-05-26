@@ -904,7 +904,11 @@ karma-points-persist-processor:
       user_assessment_data.table = "user_assessment_data"
       course_batch.table = "course_batch"
     }
-
+    redis {
+      database {
+        karmaPointCache.id = 0
+      }
+    }
     service {
       cbplan.basePath = "{{ cb_ext_service_base_url }}"
       learner.basePath = "{{ learner_service_base_url }}"
