@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory
 import org.sunbird.job.karmapoints.task.KarmaPointsProcessorConfig
 import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil, ScalaJsonUtil}
 import org.sunbird.job.Metrics
+import org.sunbird.job.cache.{DataCache, RedisConnect}
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -237,6 +238,17 @@ object Utility {
     if (addInfo != null)
       query.value(config.ADD_INFO, addInfo)
     cassandraUtil.upsert(query.toString)
+    val currentKarmaPoints = getUserTotalKarmaPoints(userId)(config, cassandraUtil)
+    val redisKey = s"user:karmaPoints:$userId"
+    val redisValue = currentKarmaPoints.toString
+    try {
+      val redisConnect = new RedisConnect(config)
+      val dataCache = new DataCache(config, redisConnect, config.cacheDbId, List())
+      dataCache.setWithRetry(redisKey, redisValue)
+    } catch {
+      case e: Exception =>
+        e.printStackTrace()
+    }
   }
 
   private def executeHttpGetRequest(url: String, headers: Map[String, String])(
@@ -396,5 +408,17 @@ object Utility {
     batchLookupQuery.where(QueryBuilder.eq(config.DB_COLUMN_COURSE_ID, courseId)
     ).and(QueryBuilder.eq(config.DB_COLUMN_BATCH_ID, batchId))
     cassandraUtil.find(batchLookupQuery.toString)
+  }
+
+  private def getUserTotalKarmaPoints(userId: String)(config: KarmaPointsProcessorConfig,
+                                                      cassandraUtil: CassandraUtil): Int = {
+    val query = s"SELECT total_points FROM ${config.sunbird_keyspace}.${config.user_karma_summary_table} WHERE userid = '$userId'"
+    val result = cassandraUtil.find(query)
+    if (result != null) {
+      val totalPoint = result.get(0).getInt(config.TOTAL_POINTS)
+      totalPoint
+    } else {
+      0
+    }
   }
 }
