@@ -242,8 +242,9 @@ object Utility {
     val redisKey = s"user:karmaPoints:$userId"
     val redisValue = currentKarmaPoints.toString
     try {
-      val redisConnect = new RedisConnect(config)
+      val redisConnect = new RedisConnect(config,Option(config.metaRedisHost), Option(config.metaRedisPort))
       val dataCache = new DataCache(config, redisConnect, config.cacheDbId, List())
+      dataCache.init()
       dataCache.setWithRetry(redisKey, redisValue)
     } catch {
       case e: Exception =>
