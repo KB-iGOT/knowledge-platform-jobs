@@ -905,6 +905,8 @@ karma-points-persist-processor:
       course_batch.table = "course_batch"
     }
     redis {
+      host={{redis_host}}
+      port=6379
       database {
         karmaPointCache.id = 0
       }
