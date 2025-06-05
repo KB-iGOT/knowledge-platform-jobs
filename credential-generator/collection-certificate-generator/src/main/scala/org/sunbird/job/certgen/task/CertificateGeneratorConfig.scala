@@ -1,12 +1,13 @@
 package org.sunbird.job.certgen.task
 
 import java.util
-
 import com.typesafe.config.Config
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.typeutils.TypeExtractor
+import org.apache.flink.api.scala.createTypeInformation
 import org.apache.flink.streaming.api.scala.OutputTag
 import org.sunbird.job.BaseJobConfig
+import org.sunbird.job.certgen.domain.Event
 import org.sunbird.job.certgen.functions.{NotificationMetaData, UserFeedMetaData}
 
 class CertificateGeneratorConfig(override val config: Config) extends BaseJobConfig(config, "collection-certificate-generator") {
@@ -180,4 +181,8 @@ class CertificateGeneratorConfig(override val config: Config) extends BaseJobCon
   val enableUserNotification: Boolean = if(config.hasPath("enable.user.email.notification")) config.getBoolean("enable.user.email.notification") else true
   val specialEventCertificateName: String = if(config.hasPath("specialEventCertificateName")) config.getString("specialEventCertificateName") else ""
   val eventIssueName = "eventIssueName"
+
+  // Add this to CertificateGeneratorConfig class
+  val certificateGenerationCompletionTagName = "post-certificate-generation-completion"
+  val certificateGenerationCompletionOutputTag: OutputTag[Event] = OutputTag[Event](certificateGenerationCompletionTagName)
 }

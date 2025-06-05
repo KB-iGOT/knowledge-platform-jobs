@@ -12,7 +12,7 @@ import org.sunbird.incredible.StorageParams
 import org.sunbird.incredible.pojos.exceptions.ServerException
 import org.sunbird.incredible.processor.store.StorageService
 import org.sunbird.job.certgen.domain.Event
-import org.sunbird.job.certgen.functions.{CertificateGeneratorFunction, CreateUserFeedFunction, NotificationMetaData, NotifierFunction, UserFeedMetaData}
+import org.sunbird.job.certgen.functions.{CertificateGenerationCompletionProcessorFn, CertificateGeneratorFunction, CreateUserFeedFunction, NotificationMetaData, NotifierFunction, UserFeedMetaData}
 import org.sunbird.job.connector.FlinkKafkaConnector
 import org.sunbird.job.util.{FlinkUtil, HttpUtil}
 
@@ -53,6 +53,12 @@ class CertificateGeneratorStreamTask(config: CertificateGeneratorConfig, kafkaCo
       .process(new CreateUserFeedFunction(config, httpUtil))
       .name("user-feed")
       .uid("user-feed")
+      .setParallelism(config.userFeedParallelism)
+
+    processStreamTask.getSideOutput(config.certificateGenerationCompletionOutputTag)
+      .process(new CertificateGenerationCompletionProcessorFn(config, httpUtil))
+      .name("post-certificate-generation-completion")
+      .uid("post-certificate-generation-completion")
       .setParallelism(config.userFeedParallelism)
 
     env.execute(config.jobName)

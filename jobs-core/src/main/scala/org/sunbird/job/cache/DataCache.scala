@@ -225,6 +225,33 @@ class DataCache(val config: BaseJobConfig, val redisConnect: RedisConnect, val d
   def getDBIndex(): Long = {
     this.redisConnection.getDB()
   }
+
+  /**
+   * Retrieves a string value from Redis and returns it directly
+   * @param key Redis key
+   * @return The string value or empty string if not found
+   */
+  def getStringValue(key: String): String = {
+    try {
+      val data = redisConnection.get(key)
+      if (data != null && !data.isEmpty()) {
+        data
+      } else {
+        ""
+      }
+    } catch {
+      case ex: JedisException =>
+        logger.error(s"Exception when retrieving string value from redis for key: $key", ex)
+        close()
+        this.redisConnection = redisConnect.getConnection(dbIndex)
+        val data = redisConnection.get(key)
+        if (data != null && !data.isEmpty()) {
+          data
+        } else {
+          ""
+        }
+    }
+  }
 }
 
 // $COVERAGE-ON$
