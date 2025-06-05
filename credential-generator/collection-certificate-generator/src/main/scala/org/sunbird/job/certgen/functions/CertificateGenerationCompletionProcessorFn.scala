@@ -21,7 +21,7 @@ class CertificateGenerationCompletionProcessorFn(config: CertificateGeneratorCon
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
     val redisConnect = new RedisConnect(config)
-    dataCache = new DataCache(config, redisConnect, 0, List())
+    dataCache = new DataCache(config, redisConnect, config.cacheDbId, List())
     dataCache.init()
     cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
     logger.info("CertificateGenerationCompletionProcessorFn: Redis connection initialized")
