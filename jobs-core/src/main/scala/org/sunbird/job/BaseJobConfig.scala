@@ -68,4 +68,6 @@ class BaseJobConfig(val config: Config, val jobName: String) extends Serializabl
   def getBoolean(key: String, default: Boolean): Boolean = {
     if (config.hasPath(key)) config.getBoolean(key) else default
   }
+
+  val redisTTL: Int =  259200
 }

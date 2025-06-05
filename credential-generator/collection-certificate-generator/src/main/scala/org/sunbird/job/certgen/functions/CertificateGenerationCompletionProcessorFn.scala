@@ -70,9 +70,9 @@ class CertificateGenerationCompletionProcessorFn(config: CertificateGeneratorCon
           val redisUserCertificateCount = dataCache.getStringValue(redisKey)
           if (redisUserCertificateCount.nonEmpty) {
             val updatedRedisValue = redisUserCertificateCount.toInt + 1
-            dataCache.setWithRetry(redisKey, updatedRedisValue.toString)
+            dataCache.setWithRetryAndTTL(redisKey, updatedRedisValue.toString)
           } else {
-            dataCache.setWithRetry(redisKey, redisValue)
+            dataCache.setWithRetryAndTTL(redisKey, redisValue)
           }
 
         }
