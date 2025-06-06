@@ -121,7 +121,6 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
           related.getOrElse(config.COURSE_ID, "").asInstanceOf[String], event.courseName, event.templateId,
           Certificate(uuid, event.name, qrMap.accessCode, formatter.format(new Date()), "", ""))
         updateUserEnrollmentTable(event, userEnrollmentData, context)
-        metrics.incCounter(config.successEventCount)
       } finally {
         cleanUp(uuid, directory)
       }
@@ -440,8 +439,6 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
       col._2 match {
         case value: List[Any] =>
           selectWhere.and(QueryBuilder.in(col._1, value.asJava))
-        case _ =>
-          selectWhere.and(QueryBuilder.eq(col._1, col._2))
       }
     })
     logger.info("select query {}", selectWhere.toString)
