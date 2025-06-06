@@ -77,6 +77,7 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
         logger.info(s"Certificate already issued for: ${event.eData.getOrElse("userId", "")} ${event.related}")
       }
       metrics.incCounter(config.successEventCount)
+      context.output(config.certificateGenerationCompletionOutputTag, event)
     } catch {
       case e: Exception =>
         metrics.incCounter(config.failedEventCount)
