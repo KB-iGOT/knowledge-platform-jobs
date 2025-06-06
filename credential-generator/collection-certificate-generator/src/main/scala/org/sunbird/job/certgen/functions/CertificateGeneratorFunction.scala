@@ -121,7 +121,6 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
           related.getOrElse(config.COURSE_ID, "").asInstanceOf[String], event.courseName, event.templateId,
           Certificate(uuid, event.name, qrMap.accessCode, formatter.format(new Date()), "", ""))
         updateUserEnrollmentTable(event, userEnrollmentData, context)
-        metrics.incCounter(config.successEventCount)
       } finally {
         cleanUp(uuid, directory)
       }
@@ -134,8 +133,6 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
       if (redisUserCertificateCount.nonEmpty) {
         val updatedRedisValue = redisUserCertificateCount.toInt + 1
         dataCache.setWithRetryAndTTL(redisKey, updatedRedisValue.toString)
-      } else {
-        dataCache.setWithRetryAndTTL(redisKey, redisValue)
       }
     }
 
