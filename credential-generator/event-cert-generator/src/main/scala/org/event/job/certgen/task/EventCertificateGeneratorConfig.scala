@@ -194,4 +194,5 @@ class EventCertificateGeneratorConfig(override val config: Config) extends BaseJ
   val link: String = "link"
   val specialEventCertificateName: String = if(config.hasPath("specialEventCertificateName")) config.getString("specialEventCertificateName") else ""
   val eventIssueName = "eventIssueName"
+  val cacheDbId: Int = if(config.hasPath("redis.database.certificateCountCache.id")) config.getInt("redis.database.certificateCountCache.id") else 0
 }
