@@ -183,7 +183,5 @@ class CertificateGeneratorConfig(override val config: Config) extends BaseJobCon
   val eventIssueName = "eventIssueName"
 
   // Add this to CertificateGeneratorConfig class
-  val certificateGenerationCompletionTagName = "post-certificate-generation-completion"
-  val certificateGenerationCompletionOutputTag: OutputTag[Event] = OutputTag[Event](certificateGenerationCompletionTagName)
   val cacheDbId: Int = if(config.hasPath("redis.database.certificateCountCache.id")) config.getInt("redis.database.certificateCountCache.id") else 0
 }
