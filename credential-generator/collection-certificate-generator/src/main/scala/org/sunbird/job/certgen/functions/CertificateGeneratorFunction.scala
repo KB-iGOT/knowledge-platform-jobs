@@ -14,6 +14,7 @@ import org.sunbird.incredible.processor.CertModel
 import org.sunbird.incredible.processor.store.StorageService
 import org.sunbird.incredible.processor.views.SvgGenerator
 import org.sunbird.incredible.{CertificateConfig, CertificateGenerator, JsonKeys, ScalaModuleJsonUtils}
+import org.sunbird.job.cache.{DataCache, RedisConnect}
 import org.sunbird.job.certgen.domain.Issuer
 import org.sunbird.job.certgen.domain._
 import org.sunbird.job.certgen.exceptions.ServerException
@@ -42,12 +43,16 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
   implicit val certificateConfig: CertificateConfig = CertificateConfig(basePath = config.basePath, encryptionServiceUrl = config.encServiceUrl, contextUrl = config.CONTEXT, issuerUrl = config.ISSUER_URL,
     evidenceUrl = config.EVIDENCE_URL, signatoryExtension = config.SIGNATORY_EXTENSION)
   implicit var esUtil: ElasticSearchUtil = null
+  private var dataCache: DataCache = _
 
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
     cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
     if(esUtil==null)
       esUtil = new ElasticSearchUtil(config.esConnection, config.certIndex, "config.auditHistoryIndexType")
+    val redisConnect = new RedisConnect(config)
+    dataCache = new DataCache(config, redisConnect, config.cacheDbId, List())
+    dataCache.init()
   }
 
   override def close(): Unit = {
@@ -89,6 +94,10 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
   def generateCertificate(event: Event, context: KeyedProcessFunction[String, Event, String]#Context)(implicit metrics: Metrics): Unit = {
     val certModelList: List[CertModel] = new CertMapper(certificateConfig).mapReqToCertModel(event)
     val certificateGenerator = new CertificateGenerator
+    val primaryFields = Map(config.userId.toLowerCase() -> event.userId,
+      config.batchId.toLowerCase -> event.batchId,
+      config.courseId.toLowerCase -> event.courseId)
+    val increaseCertCount: Boolean = getIssuedCertificatesDetailsFromUserEnrollmentTable(primaryFields)
     certModelList.foreach(certModel => {
       var uuid: String = null
       try {
@@ -113,11 +122,21 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
           related.getOrElse(config.COURSE_ID, "").asInstanceOf[String], event.courseName, event.templateId,
           Certificate(uuid, event.name, qrMap.accessCode, formatter.format(new Date()), "", ""))
         updateUserEnrollmentTable(event, userEnrollmentData, context)
-        metrics.incCounter(config.successEventCount)
       } finally {
         cleanUp(uuid, directory)
       }
     })
+
+    if (increaseCertCount) {
+      val redisKey = s"user:certCount:$event.userId"
+      val redisValue = 1.toString
+      val redisUserCertificateCount = dataCache.getStringValue(redisKey)
+      if (redisUserCertificateCount.nonEmpty) {
+        val updatedRedisValue = redisUserCertificateCount.toInt + 1
+        dataCache.setWithRetryAndTTL(redisKey, updatedRedisValue.toString)
+      }
+    }
+
   }
 
   @throws[Exception]
@@ -410,5 +429,29 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
     logger.info("Cert generator... Triggering program cert pre processor event : " + event)
     context.output(config.generateProgramCertificateOutputTag, event)
   }
-  */
+  */ private def getIssuedCertificatesDetailsFromUserEnrollmentTable(columns: Map[String, AnyRef]): Boolean = {
+    logger.info("primary columns {}", columns)
+    val selectWhere = QueryBuilder.select("issued_certificates", "status", "progress")
+      .from(config.dbKeyspace, config.dbEnrollmentTable)
+      .where()
+    columns.map(col => {
+      col._2 match {
+        case value: List[Any] =>
+          selectWhere.and(QueryBuilder.in(col._1, value.asJava))
+        case _ =>
+          selectWhere.and(QueryBuilder.eq(col._1, col._2))
+      }
+    })
+    logger.info("select query {}", selectWhere.toString)
+    val records = cassandraUtil.find(selectWhere.toString).asScala.toList
+    //Check status == 2 and issued_certificates is not empty if so, return false -- means increaseCertCount is false
+    !records.exists(row => {
+      val certificates = row.getObject("issued_certificates")
+        .asInstanceOf[java.util.List[java.util.Map[String, String]]]
+      val status = row.getInt("status")
+      certificates != null && !certificates.isEmpty && status == 2
+    })
+  }
+
+
 }
