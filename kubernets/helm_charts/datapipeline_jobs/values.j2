@@ -736,6 +736,12 @@ collection-certificate-generator:
       rc.basePath = "{{ cert_rc_base_url }}"
       rc.entity = "{{ cert_rc_entity }}"
     }
+    redis {
+      database {
+        relationCache.id = 10
+      }
+    }
+
     enable.suppress.exception = {{ collection_certificate_generator_enable_suppress_exception | lower }}
     enable.rc.certificate = false
 
