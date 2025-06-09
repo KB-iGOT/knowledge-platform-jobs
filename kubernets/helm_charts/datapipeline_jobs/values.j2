@@ -798,6 +798,12 @@ event-cert-generator:
       rc.basePath = "{{ cert_rc_base_url }}"
       rc.entity = "{{ cert_rc_entity }}"
     }
+    redis {
+      database {
+        relationCache.id = 10
+      }
+    }
+  
     enable.suppress.exception = {{ event_cert_generator_enable_suppress_exception | lower }}
     enable.rc.certificate = false
 
