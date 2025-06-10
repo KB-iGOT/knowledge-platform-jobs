@@ -92,6 +92,8 @@ spec:
         operator: "Equal"
         value: "flink"
         effect: "NoSchedule"
+      nodeSelector:
+        cloud.google.com/gke-nodepool: "{{ .Values.tolerations.nodepoolname }}"
       {{- end }}        
       volumes:
       - name: flink-config-volume
@@ -174,6 +176,8 @@ spec:
         operator: "Equal"
         value: "flink"
         effect: "NoSchedule"
+      nodeSelector:
+        cloud.google.com/gke-nodepool: "{{ .Values.tolerations.nodepoolname }}"        
       {{- end }}        
       volumes:
       - name: flink-config-volume
