@@ -11,6 +11,7 @@ import org.sunbird.job.cache.{DataCache, RedisConnect}
 import org.sunbird.job.content.publish.domain.Event
 import org.sunbird.job.content.publish.helpers.CollectionPublisher
 import org.sunbird.job.content.task.ContentPublishConfig
+import org.sunbird.job.content.util.NotificationManager
 import org.sunbird.job.domain.`object`.{DefinitionCache, ObjectDefinition}
 import org.sunbird.job.exception.InvalidInputException
 import org.sunbird.job.helper.FailedEventHelper
@@ -126,6 +127,17 @@ class CollectionPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil
           pushPostProcessEvent(successObj, context)(metrics)
           metrics.incCounter(config.collectionPublishSuccessEventCount)
           logger.info("CollectionPublishFunction:: Collection publishing completed successfully for : " + data.identifier)
+          try {
+            new NotificationManager(config.notificationUrl, httpUtil).sendNotification(
+              "CONTENT_PUBLISHED",
+              "UPDATE",
+              List(obj.metadata.get("createdBy").asInstanceOf[String]),
+              obj.metadata.get("name").asInstanceOf[String],
+              Map[String, Any]("id" -> obj.identifier)
+            )
+          } catch {
+            case e: Exception => logger.info("Error in sending notification ", e)
+          }
         } else {
           saveOnFailure(obj, messages, data.pkgVersion)(neo4JUtil)
           val errorMessages = messages.mkString("; ")
