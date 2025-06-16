@@ -406,6 +406,7 @@ core_namespace: "{{ env }}"
 source_base_url: "{{proto}}://{{domain_name}}/api"
 cb_ext_service_base_url: http://sb-cb-ext-service.{{ core_namespace }}.svc.cluster.local:7001/
 core_content_service_base_url: http://content-service.{{ core_namespace }}.svc.cluster.local:9000/
+cb_notification_wrapper_service_base_url: http://cb-notification-wrapper-service.{{ core_namespace }}.svc.cluster.local:8081
 
 ###  Notification Job related Vars
 notification_job_consumer_parallelism: 1
