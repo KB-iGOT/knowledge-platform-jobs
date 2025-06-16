@@ -128,6 +128,7 @@ class CollectionPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil
           metrics.incCounter(config.collectionPublishSuccessEventCount)
           logger.info("CollectionPublishFunction:: Collection publishing completed successfully for : " + data.identifier)
           try {
+            logger.info("Node metadata is {}", obj.metadata)
             new NotificationManager(config.notificationUrl, httpUtil).sendNotification(
               "CONTENT_PUBLISHED",
               "UPDATE",
