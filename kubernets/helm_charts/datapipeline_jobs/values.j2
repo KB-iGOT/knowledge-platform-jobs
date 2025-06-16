@@ -738,7 +738,7 @@ collection-certificate-generator:
     }
     redis {
       database {
-        relationCache.id = 10
+        relationCache.id = 0
       }
     }
 
@@ -800,7 +800,7 @@ event-cert-generator:
     }
     redis {
       database {
-        relationCache.id = 10
+        relationCache.id = 0
       }
     }
     enable.suppress.exception = {{ event_cert_generator_enable_suppress_exception | lower }}
