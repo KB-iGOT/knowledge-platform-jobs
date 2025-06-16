@@ -19,6 +19,9 @@ class ContentPublishConfig(override val config: Config) extends PublishConfig(co
   // Job Configuration
   val jobEnv: String = config.getString("job.env")
 
+  // notification url
+  val notificationUrl: String = config.getString("notification.url")
+
   // Kafka Topics Configuration
   val kafkaInputTopic: String = config.getString("kafka.input.topic")
   val postPublishTopic: String = config.getString("kafka.post_publish.topic")
