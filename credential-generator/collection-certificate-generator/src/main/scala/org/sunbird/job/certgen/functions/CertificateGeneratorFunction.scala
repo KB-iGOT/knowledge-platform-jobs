@@ -135,7 +135,7 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
         val updatedRedisValue = redisUserCertificateCount.toInt + 1
         dataCache.setWithRetryAndTTL(redisKey, updatedRedisValue.toString)
       }else {
-        logger.warn("Certificate count not found in redis for user: " + event.userId)
+        logger.info("Certificate count not found in redis for user: " + event.userId)
       }
     }
 
