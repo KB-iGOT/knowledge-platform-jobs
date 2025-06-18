@@ -742,6 +742,15 @@ collection-certificate-generator:
       }
     }
 
+    redis {
+      database {
+      certificateCountCache.id = 12
+      }
+      data{
+        host= {{data_redis_host}}
+        port= {{data_redis_port}}
+      }
+    }
     enable.suppress.exception = {{ collection_certificate_generator_enable_suppress_exception | lower }}
     enable.rc.certificate = false
 
@@ -803,6 +812,17 @@ event-cert-generator:
         relationCache.id = 0
       }
     }
+
+    redis {
+      database {
+      certificateCountCache.id = 12
+      }
+      data{
+        host= {{data_redis_host}}
+        port= {{data_redis_port}}
+      }
+    }
+    
     enable.suppress.exception = {{ event_cert_generator_enable_suppress_exception | lower }}
     enable.rc.certificate = false
 
