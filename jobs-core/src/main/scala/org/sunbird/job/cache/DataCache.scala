@@ -280,6 +280,22 @@ class DataCache(val config: BaseJobConfig, val redisConnect: RedisConnect, val d
         redisConnection.expire(key, config.redisTTL)
     }
   }
+
+  def hget(key: String, field: String): Int = {
+    try {
+      val result = redisConnection.hmget(key, field)
+      if (result != null && !result.isEmpty && result.get(0) != null) {
+        redisConnection.expire(key, config.redisTTL) // Reset TTL on access
+        result.get(0).toInt
+      } else {
+        0
+      }
+    } catch {
+      case ex: JedisException =>
+        logger.error("Error in hget: ", ex)
+        0
+    }
+  }
 }
 
 // $COVERAGE-ON$
