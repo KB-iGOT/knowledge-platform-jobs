@@ -144,10 +144,10 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
     if (increaseCertCount) {
       val userId = event.userId
       val redisKey = "user_wise_certificate_count"
-      val redisUserCertificateCount = dataCache.getStringValue(redisKey)
-      if (redisUserCertificateCount.nonEmpty) {
+      val redisUserCertificateCount = dataCache.hget(redisKey,userId)
+      if (redisUserCertificateCount>0) {
         logger.info("Increasing certificate count for user: " + event.userId)
-        val updatedRedisValue = redisUserCertificateCount.toInt + 1
+        val updatedRedisValue = redisUserCertificateCount + 1
         dataCache.hsetWithRetry(redisKey,userId, updatedRedisValue.toString)
       }else {
         logger.info("Certificate count not found in redis for user: " + event.userId)
