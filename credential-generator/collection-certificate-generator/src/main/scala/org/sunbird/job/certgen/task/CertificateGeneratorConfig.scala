@@ -184,4 +184,7 @@ class CertificateGeneratorConfig(override val config: Config) extends BaseJobCon
 
   // Add this to CertificateGeneratorConfig class
   val cacheDbId: Int = if(config.hasPath("redis.database.certificateCountCache.id")) config.getInt("redis.database.certificateCountCache.id") else 0
+
+  val dataRedisHost: Option[String] = if (config.hasPath("redis.data.host")) Some(config.getString("redis.data.host")) else None
+  val dataRedisPort: Option[Int] = if (config.hasPath("redis.data.port")) Some(config.getInt("redis.data.port")) else None
 }
