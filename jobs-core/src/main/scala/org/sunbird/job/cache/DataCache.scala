@@ -266,6 +266,20 @@ class DataCache(val config: BaseJobConfig, val redisConnect: RedisConnect, val d
         redisConnection.expire(key,config.redisTTL)
     }
   }
+
+  def hsetWithRetry(key: String, field: String, value: String): Unit = {
+    try {
+      redisConnection.hset(key, field, value)
+      redisConnection.expire(key, config.redisTTL)
+    } catch {
+      case ex: JedisException =>
+        logger.error("Error in hsetWithRetry: ", ex)
+        close()
+        this.redisConnection = redisConnect.getConnection(dbIndex)
+        redisConnection.hset(key, field, value)
+        redisConnection.expire(key, config.redisTTL)
+    }
+  }
 }
 
 // $COVERAGE-ON$
