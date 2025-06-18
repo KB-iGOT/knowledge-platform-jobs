@@ -50,7 +50,9 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
     cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
     if (esUtil == null)
       esUtil = new ElasticSearchUtil(config.esConnection, config.certIndex, "config.auditHistoryIndexType")
-    val redisConnect = new RedisConnect(config)
+    val redisHost: Option[String] = if (config.hasPath("redis.data.host")) Some(config.getString("redis.data.host")) else None
+    val redisPort: Option[Int] = if (config.hasPath("redis.data.port")) Some(config.getString("redis.data.port")) else None
+    val redisConnect = new RedisConnect(config,redisHost,redisPort)
     dataCache = new DataCache(config, redisConnect, config.cacheDbId, List())
     dataCache.init()
   }
