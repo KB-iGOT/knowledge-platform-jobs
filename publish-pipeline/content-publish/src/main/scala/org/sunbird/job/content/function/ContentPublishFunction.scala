@@ -99,8 +99,8 @@ class ContentPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil,
           metrics.incCounter(config.contentPublishSuccessEventCount)
           logger.info("Content publishing completed successfully for : " + data.identifier)
           logger.info("Notification started successfully")
-          if (enrichedObj.metadata.getOrElse("primaryCategory", null).toString.equalsIgnoreCase("Learning Resource") &&
-            enrichedObj.metadata.getOrElse("primaryCategory", null) != null) {
+          val maybeCategory = Option(enrichedObj.metadata.getOrElse("primaryCategory", null))
+          if (maybeCategory.exists(_.toString.equalsIgnoreCase("Learning Resource"))) {
             try {
               logger.info("Node metadata is {}", obj.metadata)
               new NotificationManager(config.notificationUrl, httpUtil).sendNotification(
