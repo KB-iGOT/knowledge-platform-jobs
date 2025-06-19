@@ -11,6 +11,7 @@ import org.sunbird.job.cache.{DataCache, RedisConnect}
 import org.sunbird.job.content.publish.domain.Event
 import org.sunbird.job.content.publish.helpers.{ContentPublisher, ExtractableMimeTypeHelper}
 import org.sunbird.job.content.task.ContentPublishConfig
+import org.sunbird.job.content.util.NotificationManager
 import org.sunbird.job.domain.`object`.DefinitionCache
 import org.sunbird.job.exception.InvalidInputException
 import org.sunbird.job.helper.FailedEventHelper
@@ -91,12 +92,30 @@ class ContentPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil,
             logger.info("Ecar generation done for Content: " + objWithEcar.identifier)
           } else {
             logger.info("Ecar file generation is skipped as per configuration")
-          }          
+          }
           saveOnSuccess(objWithEcar)(neo4JUtil, cassandraUtil, readerConfig, definitionCache, definitionConfig)
           pushStreamingUrlEvent(enrichedObj, context)(metrics)
           pushMVCProcessorEvent(enrichedObj, context)(metrics)
           metrics.incCounter(config.contentPublishSuccessEventCount)
           logger.info("Content publishing completed successfully for : " + data.identifier)
+          logger.info("Notification started successfully")
+          if (enrichedObj.metadata.getOrElse("primaryCategory", null).toString.equalsIgnoreCase("Learning Resource") &&
+            enrichedObj.metadata.getOrElse("primaryCategory", null) != null) {
+            try {
+              logger.info("Node metadata is {}", obj.metadata)
+              new NotificationManager(config.notificationUrl, httpUtil).sendNotification(
+                "CONTENT_PUBLISHED",
+                "UPDATE",
+                List(obj.metadata("createdBy").asInstanceOf[String]),
+                obj.metadata("name").asInstanceOf[String],
+                Map[String, Any]("id" -> obj.identifier)
+              )
+            } catch {
+              case e: Exception => logger.info("Error in sending notification for resource ", e)
+            }
+          }
+
+
         } else {
           saveOnFailure(obj, messages, data.pkgVersion)(neo4JUtil)
           val errorMessages = messages.mkString("; ")
@@ -105,7 +124,7 @@ class ContentPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil,
         }
       }
     } catch {
-      case ex@(_: InvalidInputException | _: ClientException | _:java.lang.IllegalArgumentException) => // ClientException - Invalid input exception.
+      case ex@(_: InvalidInputException | _: ClientException | _: java.lang.IllegalArgumentException) => // ClientException - Invalid input exception.
         ex.printStackTrace()
         saveOnFailure(obj, List(ex.getMessage), data.pkgVersion)(neo4JUtil)
         pushFailedEvent(data, null, ex, context)(metrics)
