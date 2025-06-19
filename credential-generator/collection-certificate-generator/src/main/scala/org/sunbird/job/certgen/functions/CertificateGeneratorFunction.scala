@@ -50,7 +50,9 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
     cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
     if(esUtil==null)
       esUtil = new ElasticSearchUtil(config.esConnection, config.certIndex, "config.auditHistoryIndexType")
-    val redisConnect = new RedisConnect(config)
+    val redisHost: Option[String] = config.dataRedisHost
+    val redisPort: Option[Int] = config.dataRedisPort
+    val redisConnect = new RedisConnect(config,redisHost,redisPort)
     dataCache = new DataCache(config, redisConnect, config.cacheDbId, List())
     dataCache.init()
   }
@@ -127,12 +129,15 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
     })
 
     if (increaseCertCount) {
-      val redisKey = s"user:certCount:$event.userId"
-      val redisValue = 1.toString
-      val redisUserCertificateCount = dataCache.getStringValue(redisKey)
-      if (redisUserCertificateCount.nonEmpty) {
-        val updatedRedisValue = redisUserCertificateCount.toInt + 1
-        dataCache.setWithRetryAndTTL(redisKey, updatedRedisValue.toString)
+      val userId = event.userId
+      val redisKey = "user_wise_certificate_count"
+      val redisUserCertificateCount = dataCache.hget(redisKey,userId)
+      if (redisUserCertificateCount>0) {
+        logger.info("Increasing certificate count for user: " + event.userId)
+        val updatedRedisValue = redisUserCertificateCount + 1
+        dataCache.hsetWithRetry(redisKey,userId, updatedRedisValue.toString)
+      }else {
+        logger.info("Certificate count not found in redis for user: " + event.userId)
       }
     }
 
