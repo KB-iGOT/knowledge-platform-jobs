@@ -106,8 +106,9 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
     println("generateCertificate " + event)
     val certificateGenerator = new CertificateGenerator
     val primaryFields = Map(config.userId.toLowerCase() -> event.userId,
-      config.batchId.toLowerCase -> event.batchId,
-      config.courseId.toLowerCase -> event.courseId)
+      config.contentId.toLowerCase -> event.eventId,
+      config.contextId.toLowerCase -> event.eventId,
+      config.batchId.toLowerCase -> event.batchId)
     val increaseCertCount: Boolean = getIssuedCertificatesDetailsFromUserEnrollmentTable(primaryFields)
     certModelList.foreach(certModel => {
       var uuid: String = null

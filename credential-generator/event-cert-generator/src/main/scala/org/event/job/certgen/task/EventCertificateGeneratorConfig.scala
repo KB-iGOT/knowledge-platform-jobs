@@ -133,6 +133,8 @@ class EventCertificateGeneratorConfig(override val config: Config) extends BaseJ
   val courseId = "courseId"
   val batchId = "batchId"
   val userId = "userId"
+  val contentId = "contentId"
+  val contextId = "contextId"
   val notifyTemplate = "notifyTemplate"
   val firstName = "firstName"
   val trainingName = "TrainingName"
