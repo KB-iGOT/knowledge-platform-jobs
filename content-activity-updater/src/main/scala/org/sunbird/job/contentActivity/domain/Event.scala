@@ -1,21 +1,29 @@
 package org.sunbird.job.contentActivity.domain
 
 import org.sunbird.job.domain.reader.JobRequest
-import org.sunbird.job.contentActivity.task.ContentActivityUpdaterConfig
 
 class Event(eventMap: java.util.Map[String, Any], partition: Int, offset: Long)  extends JobRequest(eventMap, partition, offset) {
-    def action: String = readOrDefault[String]("edata.action", "")
+    
+    def eventId: String = readOrDefault[String]("mid", "")
 
-    def eData: Map[String, AnyRef] = readOrDefault[Map[String, AnyRef]]("edata", Map[String, AnyRef]())
+    def operationType: String = readOrDefault[String]("operationType", "")
 
-    def batchId: String = readOrDefault[String]("edata.batchId", "")
+    def contentId: String = readOrDefault[String]("nodeUniqueId", "")
 
-    def eventType: String = readOrDefault[String]("edata.type", "")
+    def createdOn: String = readOrDefault[String]("transactionData.createdOn.nv", "")
 
-    def typeId: String = readOrDefault[String]("edata.typeId", "")
+    def lastUpdatedOn: String = readOrDefault[String]("transactionData.lastUpdatedOn.nv", "")
 
-    def userId: String = readOrDefault[String]("edata.userId", "")
+    def transactionData: Map[String, AnyRef] = readOrDefault[Map[String, AnyRef]]("transactionData", Map[String, AnyRef]())
 
-    def status: String = readOrDefault[String]("edata.status", "")
+    def lastStatusChangedOn: String = readOrDefault[String]("transactionData.lastStatusChangedOn.nv", "")
+
+    def channel: String = readOrDefault[String]("transactionData.channel.nv", "")
+
+    def status: String = readOrDefault[String]("transactionData.createdBy.nv", "")
+
+    def userId: String = readOrDefault[String]("userId", "")
+
+    def createdBy: String = readOrDefault[String]("transactionData.createdBy.nv", "")
 
 }

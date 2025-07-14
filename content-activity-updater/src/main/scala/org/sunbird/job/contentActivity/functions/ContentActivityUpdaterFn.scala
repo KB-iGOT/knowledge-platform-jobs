@@ -1,4 +1,4 @@
-package org.sunbird.job.contentActivity.domain
+package org.sunbird.job.contentActivity.functions
 
 import com.datastax.driver.core.Row
 import com.datastax.driver.core.querybuilder.QueryBuilder
@@ -9,8 +9,8 @@ import org.apache.flink.streaming.api.functions.KeyedProcessFunction
 import org.slf4j.LoggerFactory
 import org.sunbird.job.cache.{DataCache, RedisConnect}
 import org.sunbird.job.exception.InvalidEventException
-import org.sunbird.job.contentActivity.domain.{Event, ContentState}
 import org.sunbird.job.contentActivity.task.ContentActivityUpdaterConfig
+import org.sunbird.job.contentActivity.domain.Event
 import org.sunbird.job.util.{CassandraUtil, HttpUtil, PostgresUtil}
 import org.sunbird.job.{BaseProcessKeyedFunction, Metrics}
 import java.sql.{Connection, DriverManager, PreparedStatement, ResultSet, Timestamp}
@@ -80,11 +80,11 @@ class ContentActivityUpdaterFn(config: ContentActivityUpdaterConfig, httpUtil: H
             logger.info(s"Processing event: ${event.eventId} for user: ${event.userId}")
             metrics.incCounter(config.totalEventsCount)
             val userId = event.userId
-            val typeId = event.typeId
-            val batchId = event.batchId
-            val eventType = event.eventType
+            val operationType = event.operationType
+            val mid = event.mid
+            val contentId = event.contentId
             val status = event.status
-            logger.info(s"Event details - UserId: $userId, TypeId: $typeId, BatchId: $batchId, EventType: $eventType, Status: $status")       
+            logger.info(s"Event details - UserId: $userId, operationType: $operationType, mid: $mid, contentId: $contentId, Status: $status")       
             } catch {
             case e: Exception =>
                 logger.error(s"Error processing event: ${event.eventId} for user: ${event.userId}", e)

@@ -1,4 +1,4 @@
-package org.sunbird.job.contentActivity.domain
+package org.sunbird.job.contentActivity.task
 
 import java.io.File
 import com.typesafe.config.ConfigFactory
@@ -11,14 +11,12 @@ import org.slf4j.LoggerFactory
 import org.sunbird.job.connector.FlinkKafkaConnector
 import org.sunbird.job.contentActivity.domain.Event
 import org.sunbird.job.contentActivity.functions.ContentActivityUpdaterFn
-import org.sunbird.job.contentActivity.config.ContentActivityUpdaterConfig
-import org.sunbird.job.contentActivity.functions.ContentActivityUpdaterKeySelector
 import org.sunbird.job.util.{FlinkUtil, HttpUtil}
 
 class ContentActivityUpdaterTask(config: ContentActivityUpdaterConfig, kafkaConnector: FlinkKafkaConnector, httpUtil: HttpUtil) {
   
     // logger initialization
-    @transient private[this] val logger = LoggerFactory.getLogger(classOf[ContnetActivityUpdaterTask])
+    @transient private[this] val logger = LoggerFactory.getLogger(classOf[ContentActivityUpdaterTask])
 
     // Method to process the content activity updates
     def process(): Unit = {
@@ -54,15 +52,15 @@ object ContentActivityUpdaterTask {
         val config = configFilePath.map {
             path => ConfigFactory.parseFile(new File(path)).resolve()
         }.getOrElse(ConfigFactory.load("content-activity-updater.conf").withFallback(ConfigFactory.systemEnvironment()))
-        val userActivityAnalysisUpdaterConfig = new UserActivityAnalysisUpdaterConfig(config)
-        val kafkaUtil = new FlinkKafkaConnector(userActivityAnalysisUpdaterConfig)
+        val contentActivityUpdaterConfig = new ContentActivityUpdaterConfig(config)
+        val kafkaUtil = new FlinkKafkaConnector(contentActivityUpdaterConfig)
         val httpUtil = new HttpUtil()
-        val task = new UserActivityAnalysisUpdaterTask(userActivityAnalysisUpdaterConfig, kafkaUtil, httpUtil)
+        val task = new ContentActivityUpdaterTask(contentActivityUpdaterConfig, kafkaUtil, httpUtil)
         task.process()
     }
 }
 
 // KeySelector implementation to extract keys for grouping events
 class ContentActivityUpdaterKeySelector extends KeySelector[Event, String] {
-    override def getKey(event: Event): String = Set(event.userId, event.typeId, event.batchId,event.eventType,event.status).mkString("_")
+    override def getKey(event: Event): String = Set(event.userId, event.channel, event.contentId, event.transactionData, event.status, event.createdBy, event.createdOn, event.eventId, event.operationType).mkString("_")
 }
