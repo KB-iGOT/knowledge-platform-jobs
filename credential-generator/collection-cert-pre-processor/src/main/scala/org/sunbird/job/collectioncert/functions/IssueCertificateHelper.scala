@@ -257,6 +257,7 @@ trait IssueCertificateHelper {
             "primaryCategory" -> courseInfo.getOrDefault("primaryCategory", "").asInstanceOf[String],
             "parentCollections" -> parentCollections,
             "coursePosterImage" -> courseInfo.getOrDefault("coursePosterImage", "").asInstanceOf[String],
+            "completedLanguage" -> event.completedLanguage
         )
         logger.info("Constructured eData from preProcessor : " + JSONUtil.serialize(eData))
         ScalaJsonUtil.serialize(BEJobRequestEvent(edata = eData, `object` = EventObject(id= event.userId)))
@@ -316,9 +317,21 @@ trait IssueCertificateHelper {
             courseInfoMap.put("primaryCategory", primaryCategory)
             courseInfoMap.put("coursePosterImage", posterImage)
             courseInfoMap.put("providerName", providerName)
-            val languageMapV1 = courseMetadata.getOrElse("languageMapV1", Map.empty[String, AnyRef])
+            val languageMapV1: Map[String, Map[String, AnyRef]] =
+                toScalaNestedMap(courseMetadata.getOrElse("languagemapv1", new java.util.HashMap[String, Object]()))
             courseInfoMap.put("languageMapV1", languageMapV1.asInstanceOf[AnyRef])
             courseInfoMap
         }
+    }
+
+    def toScalaNestedMap(obj: Any): Map[String, Map[String, AnyRef]] = obj match {
+        case outer: java.util.Map[_, _] =>
+            outer.asScala.collect {
+                case (k, v: java.util.Map[_, _]) =>
+                    k.toString -> v.asScala.collect {
+                        case (ik, iv) => ik.toString -> iv.asInstanceOf[AnyRef]
+                    }.toMap
+            }.toMap
+        case _ => Map.empty[String, Map[String, AnyRef]]
     }
 }
