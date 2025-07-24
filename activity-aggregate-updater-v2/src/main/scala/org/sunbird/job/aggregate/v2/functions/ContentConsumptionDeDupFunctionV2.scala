@@ -9,21 +9,21 @@ import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.streaming.api.functions.ProcessFunction
 import org.slf4j.LoggerFactory
-import org.sunbird.job.aggregate.v2.common.DeDupHelper
+import org.sunbird.job.aggregate.v2.common.DeDupHelperV2
 import org.sunbird.job.aggregate.v2.domain.Event
-import org.sunbird.job.aggregate.v2.task.ActivityAggregateUpdaterConfig
+import org.sunbird.job.aggregate.v2.task.ActivityAggregateUpdaterConfigV2
 import org.sunbird.job.cache.RedisConnect
 import org.sunbird.job.dedup.DeDupEngine
 import org.sunbird.job.{BaseProcessFunction, Metrics}
 
 import scala.collection.JavaConverters._
 
-class ContentConsumptionDeDupFunction(config: ActivityAggregateUpdaterConfig)
-                                     (implicit val stringTypeInfo: TypeInformation[String])
+class ContentConsumptionDeDupFunctionV2(config: ActivityAggregateUpdaterConfigV2)
+                                       (implicit val stringTypeInfo: TypeInformation[String])
   extends BaseProcessFunction[Event, String](config) {
 
   val mapType: Type = new TypeToken[Map[String, AnyRef]]() {}.getType
-  private[this] val logger = LoggerFactory.getLogger(classOf[ContentConsumptionDeDupFunction])
+  private[this] val logger = LoggerFactory.getLogger(classOf[ContentConsumptionDeDupFunctionV2])
   var deDupEngine: DeDupEngine = _
 
   override def open(parameters: Configuration): Unit = {
@@ -51,7 +51,7 @@ class ContentConsumptionDeDupFunction(config: ActivityAggregateUpdaterConfig)
     val status = event.contents.headOption.map(_.status).getOrElse(0)
     val language = event.language
 
-    val checksum = DeDupHelper.getMessageId(courseId, batchId, userId, contentId, status, language)
+    val checksum = DeDupHelperV2.getMessageId(courseId, batchId, userId, contentId, status, language)
     println("checksum: " + checksum)
 
     if (deDupEngine.isUniqueEvent(checksum)) {

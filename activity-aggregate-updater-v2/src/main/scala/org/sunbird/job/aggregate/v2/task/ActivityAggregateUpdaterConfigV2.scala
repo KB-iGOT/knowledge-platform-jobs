@@ -8,7 +8,7 @@ import org.sunbird.job.BaseJobConfig
 import org.sunbird.job.aggregate.v2.domain.CollectionProgress
 import scala.collection.JavaConverters._
 
-class ActivityAggregateUpdaterConfig(override val config: Config) extends BaseJobConfig(config, "activity-aggregate-updater-v2"){
+class ActivityAggregateUpdaterConfigV2(override val config: Config) extends BaseJobConfig(config, "activity-aggregate-updater-v2"){
 
   private val serialVersionUID = -1234567890123456789L
 

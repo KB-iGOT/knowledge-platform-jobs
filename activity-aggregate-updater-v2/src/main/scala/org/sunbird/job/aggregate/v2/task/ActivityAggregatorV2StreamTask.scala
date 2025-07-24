@@ -5,14 +5,14 @@ import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.utils.ParameterTool
 import org.apache.flink.streaming.api.scala._
 import org.sunbird.job.aggregate.v2.domain.Event
-import org.sunbird.job.aggregate.v2.functions.{ActivityAggregatesFunction, ContentConsumptionDeDupFunction}
+import org.sunbird.job.aggregate.v2.functions.{ActivityAggregatesFunctionV2, ContentConsumptionDeDupFunctionV2}
 import org.sunbird.job.connector.FlinkKafkaConnector
 import org.sunbird.job.util.HttpUtil
 import scala.collection.JavaConverters._
 
 import java.io.File
 
-class ActivityAggregatorV2StreamTask(config: ActivityAggregateUpdaterConfig,
+class ActivityAggregatorV2StreamTask(config: ActivityAggregateUpdaterConfigV2,
                                      kafkaConnector: FlinkKafkaConnector,
                                      httpUtil: HttpUtil) {
 
@@ -34,7 +34,7 @@ class ActivityAggregatorV2StreamTask(config: ActivityAggregateUpdaterConfig,
 
     // Apply de-duplication
     val dedupedProcess = rawStream
-      .process(new ContentConsumptionDeDupFunction(config))
+      .process(new ContentConsumptionDeDupFunctionV2(config))
       .name(config.consumptionDeDupFn)
       .uid(config.consumptionDeDupFn)
       .setParallelism(config.deDupProcessParallelism)
@@ -48,7 +48,7 @@ class ActivityAggregatorV2StreamTask(config: ActivityAggregateUpdaterConfig,
 
     // Aggregation process
     val processedStream = keyedStream
-      .process(new ActivityAggregatesFunction(config, httpUtil))
+      .process(new ActivityAggregatesFunctionV2(config, httpUtil))
       .name(config.activityAggregateUpdaterFn)
       .uid(config.activityAggregateUpdaterFn)
       .setParallelism(config.activityAggregateUpdaterParallelism)
@@ -71,7 +71,7 @@ object ActivityAggregateUpdaterStreamTaskV2 {
       ConfigFactory.parseFile(new File(path)).resolve()
     ).getOrElse(ConfigFactory.load("activity-aggregate-updater.conf").withFallback(ConfigFactory.systemEnvironment()))
 
-    val taskConfig = new ActivityAggregateUpdaterConfig(config)
+    val taskConfig = new ActivityAggregateUpdaterConfigV2(config)
     val kafkaConnector = new FlinkKafkaConnector(taskConfig)
     val httpUtil = new HttpUtil
 

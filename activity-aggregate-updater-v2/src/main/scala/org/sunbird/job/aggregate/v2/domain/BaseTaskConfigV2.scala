@@ -3,7 +3,7 @@ package org.sunbird.job.aggregate.v2.domain
 import com.typesafe.config.Config
 import org.apache.flink.util.OutputTag
 
-abstract class BaseTaskConfig(config: Config, val jobName: String, val jobEnv: String = "dev") extends Serializable {
+abstract class BaseTaskConfigV2(config: Config, val jobName: String, val jobEnv: String = "dev") extends Serializable {
 
   val kafkaBrokerList: String = config.getString("kafka.broker-list")
 

@@ -6,7 +6,7 @@ import java.util.Date
 
 case class CollectionProgress(userId: String, batchId: String, courseId: String, progress: Int, completedOn: Date, contentStatus: Map[String, Int], inputContents: List[String], completed: Boolean = false, courseCategory: String = "")
 
-case class TaskContext(config: BaseTaskConfig, cassandraUtil: CassandraUtil)
+case class TaskContext(config: BaseTaskConfigV2, cassandraUtil: CassandraUtil)
 
 case class ContentDetail(contentId: String, status: Int)
 

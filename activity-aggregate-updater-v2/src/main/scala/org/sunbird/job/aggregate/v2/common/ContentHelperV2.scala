@@ -2,17 +2,17 @@ package org.sunbird.job.aggregate.v2.common
 
 import org.slf4j.LoggerFactory
 import org.sunbird.job.Metrics
-import org.sunbird.job.aggregate.v2.task.ActivityAggregateUpdaterConfig
+import org.sunbird.job.aggregate.v2.task.ActivityAggregateUpdaterConfigV2
 import org.sunbird.job.cache.DataCache
 import org.sunbird.job.util.{HttpUtil, ScalaJsonUtil}
 import scala.collection.JavaConverters._
 
-trait ContentHelper {
+trait ContentHelperV2 {
 
-  private[this] val logger = LoggerFactory.getLogger(classOf[ContentHelper])
+  private[this] val logger = LoggerFactory.getLogger(classOf[ContentHelperV2])
   def getCourseInfo(courseId: String)(
     metrics: Metrics,
-    config: ActivityAggregateUpdaterConfig,
+    config: ActivityAggregateUpdaterConfigV2,
     contentCache: DataCache,
     httpUtil: HttpUtil
   ): java.util.Map[String, AnyRef] = {
@@ -115,7 +115,7 @@ trait ContentHelper {
   }
 
   def getAPICall(url: String, responseParam: String)(
-    config: ActivityAggregateUpdaterConfig,
+    config: ActivityAggregateUpdaterConfigV2,
     httpUtil: HttpUtil,
     metrics: Metrics
   ): Map[String, AnyRef] = {

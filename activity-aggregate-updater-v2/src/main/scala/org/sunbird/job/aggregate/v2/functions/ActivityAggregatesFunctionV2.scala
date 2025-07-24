@@ -9,9 +9,9 @@ import org.apache.flink.streaming.api.functions.{KeyedProcessFunction, ProcessFu
 import org.apache.flink.util.Collector
 import org.slf4j.LoggerFactory
 import org.sunbird.job.Metrics
-import org.sunbird.job.aggregate.v2.common.{ContentHelper, DeDupHelper}
+import org.sunbird.job.aggregate.v2.common.{ContentHelperV2, DeDupHelperV2}
 import org.sunbird.job.aggregate.v2.domain.{ContentDetail, ContentStatus, Event, UserActivityAgg, UserContentConsumption}
-import org.sunbird.job.aggregate.v2.task.ActivityAggregateUpdaterConfig
+import org.sunbird.job.aggregate.v2.task.ActivityAggregateUpdaterConfigV2
 import org.sunbird.job.cache.{DataCache, RedisConnect}
 import org.sunbird.job.dedup.DeDupEngine
 import org.sunbird.job.util.{CassandraUtil, HttpUtil}
@@ -22,12 +22,12 @@ import java.util.concurrent.atomic.AtomicLong
 import scala.collection.JavaConverters._
 import java.util.{Map => JMap}
 
-class ActivityAggregatesFunction(config: ActivityAggregateUpdaterConfig,
-                                 httpUtil: HttpUtil, @transient var cassandraUtil: CassandraUtil = null)
-  extends KeyedProcessFunction[String, Event, Event] with ContentHelper {
+class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
+                                   httpUtil: HttpUtil, @transient var cassandraUtil: CassandraUtil = null)
+  extends KeyedProcessFunction[String, Event, Event] with ContentHelperV2 {
 
   @transient private var metrics: Metrics = _
-  private[this] val logger = LoggerFactory.getLogger(classOf[ActivityAggregatesFunction])
+  private[this] val logger = LoggerFactory.getLogger(classOf[ActivityAggregatesFunctionV2])
   private var cache: DataCache = _
   private var contentCache: DataCache = _
   var deDupEngine: DeDupEngine = _
@@ -128,7 +128,7 @@ class ActivityAggregatesFunction(config: ActivityAggregateUpdaterConfig,
     if (config.dedupEnabled) {
       event.contents
         .filter(_.status == 2)
-        .map(c => DeDupHelper.getMessageId(event.courseId, event.batchId, event.userId, c.contentId, 2, event.language))
+        .map(c => DeDupHelperV2.getMessageId(event.courseId, event.batchId, event.userId, c.contentId, 2, event.language))
         .foreach(cs => deDupEngine.storeChecksum(cs))
     }
 
@@ -217,7 +217,7 @@ class ActivityAggregatesFunction(config: ActivityAggregateUpdaterConfig,
 
   def verifyPrimaryCategory(identifier: String)(
     metrics: Metrics,
-    config: ActivityAggregateUpdaterConfig,
+    config: ActivityAggregateUpdaterConfigV2,
     httpUtil: HttpUtil,
     contentCache: DataCache
   ): (Boolean, String) = {

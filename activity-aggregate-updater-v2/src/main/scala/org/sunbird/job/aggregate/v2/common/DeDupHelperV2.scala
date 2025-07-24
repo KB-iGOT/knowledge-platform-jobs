@@ -2,7 +2,7 @@ package org.sunbird.job.aggregate.v2.common
 
 import java.security.MessageDigest
 
-object DeDupHelper {
+object DeDupHelperV2 {
 
 
   def getMessageId(collectionId: String, batchId: String, userId: String, contentId: String, status: Int, language: String): String = {
