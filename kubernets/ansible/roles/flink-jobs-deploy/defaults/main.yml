@@ -67,6 +67,23 @@ program_activity_agg_consumer_parallelism: 1
 program_activity_agg_dedup_parallelism: 1
 program_activity_agg_parallelism: 1
 
+### Activity Aggregate V2 job related vars
+activity_agg_v2_consumer_parallelism: 1
+activity_agg_v2_dedup_parallelism: 1
+activity_agg_v2_parallelism: 1
+middleware_user_activity_agg_v2_table: "user_activity_agg_v2"
+activity_agg_v2_checkpointing_interval: 300000
+activity_agg_v2_checkpointing_pause_interval: 90000
+activity_agg_v2_restart_strategy_delay: 240000
+activity_agg_v2_batch_interval: 60
+activity_agg_v2_batch_read_size: 1
+activity_agg_v2_batch_write_size: 10
+activity_agg_v2_window_shards: 1000
+activity_agg_v2_dedup_index: 14
+activity_agg_v2_dedup_expiry: 604800
+activity_agg_v2_enrolment_filter_processe_enabled: true
+activity_agg_v2_collection_status_cache_expiry_time: 3600
+
 ### Relation Cache Updater Job related Vars
 extractor_consumer_parallelism: 1
 relation_cache_updater_consumer_parallelism: 1
@@ -190,6 +207,13 @@ flink_job_names:
     cpu_requests: 0.3
   program-activity-aggregate-updater:
     job_class_name: 'org.sunbird.job.programaggregate.task.ProgramActivityAggregateUpdaterStreamTask'
+    replica: 1
+    jobmanager_memory: 1024m
+    taskmanager_memory: 1024m
+    taskslots: 1
+    cpu_requests: 0.3
+  activity-aggregate-updater-v2:
+    job_class_name: 'org.sunbird.job.aggregate.task.ActivityAggregateUpdaterStreamTask'
     replica: 1
     jobmanager_memory: 1024m
     taskmanager_memory: 1024m
