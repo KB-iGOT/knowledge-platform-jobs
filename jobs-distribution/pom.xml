@@ -146,6 +146,12 @@
             <version>1.0.0</version>
             <type>jar</type>
         </dependency>
+        <dependency>
+            <groupId>org.sunbird</groupId>
+            <artifactId>activity-aggregate-updater-v2</artifactId>
+            <version>1.0.0</version>
+            <type>jar</type>
+        </dependency>
     </dependencies>
 
     <build>
