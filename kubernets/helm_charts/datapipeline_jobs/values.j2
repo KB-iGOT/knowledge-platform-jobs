@@ -241,7 +241,7 @@ activity-aggregate-updater-v2:
   activity-aggregate-updater-v2: |+
     include file("/data/flink/conf/base-config.conf")
     kafka {
-      input.topic = {{ env_name }}.coursebatch.job.request
+      input.topic = {{ env_name }}.coursebatch.job.request.v2
       output.audit.topic = {{ env_name }}.telemetry.raw
       output.failed.topic = {{ env_name }}.activity.agg.failed
       output.certissue.topic = {{ env_name }}.issue.certificate.request
@@ -260,9 +260,9 @@ activity-aggregate-updater-v2:
     }
     lms-cassandra {
       keyspace = "{{ middleware_course_keyspace }}"
-      consumption.table = "{{ middleware_consumption_table }}"
-      user_activity_agg.table = "{{ middleware_user_activity_agg_v2_table }}"
-      user_enrolments.table = "user_enrolments"
+      consumption.table = "coursebatch.job.request.v2"
+      user_activity_agg.table = "{{ middleware_user_activity_agg_table }}"
+      user_enrolments.table = "user_enrolments_v2"
     }
     redis {
       database {
