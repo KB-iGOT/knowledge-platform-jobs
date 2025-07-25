@@ -7,9 +7,9 @@ import org.apache.flink.streaming.api.scala._
 import org.sunbird.job.aggregate.v2.domain.Event
 import org.sunbird.job.aggregate.v2.functions.{ActivityAggregatesFunctionV2, ContentConsumptionDeDupFunctionV2}
 import org.sunbird.job.connector.FlinkKafkaConnector
-import org.sunbird.job.util.HttpUtil
-import scala.collection.JavaConverters._
+import org.sunbird.job.util.{FlinkUtil, HttpUtil}
 
+import scala.collection.JavaConverters._
 import java.io.File
 
 class ActivityAggregatorV2StreamTask(config: ActivityAggregateUpdaterConfigV2,
@@ -18,7 +18,8 @@ class ActivityAggregatorV2StreamTask(config: ActivityAggregateUpdaterConfigV2,
 
   def process(): Unit = {
 
-    val env = StreamExecutionEnvironment.getExecutionEnvironment
+    //val env = StreamExecutionEnvironment.getExecutionEnvironment
+    implicit val env: StreamExecutionEnvironment = FlinkUtil.getExecutionContext(config)
 
     // Type info
     implicit val eventTypeInfo: TypeInformation[Event] = TypeInformation.of(classOf[Event])
