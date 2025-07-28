@@ -399,10 +399,7 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
 
     val completedCount = translatedLeafNodes.count(cid => updatedLangMap.getOrElse(cid, 0) == 2)
 
-    val progress =
-      if (translatedLeafNodes.nonEmpty)
-        (completedCount.toDouble / translatedLeafNodes.size.toDouble * 100).toInt
-      else 0
+    val progress = completedCount
 
     val finalLangContentStatus = langContentStatus + (language -> updatedLangMap)
 
