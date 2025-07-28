@@ -140,7 +140,7 @@ metrics_data_transformer_producer_parallelism: 1
 collection_cert_pre_processor_consumer_parallelism: 1
 generate_certificate_parallelism: 1
 middleware_course_batch_table: "course_batch"
-middleware_user_enrolments_table: "user_enrolments"
+middleware_user_enrolments_table: "user_enrolments_v2"
 middleware_assessment_aggregator_table: "assessment_aggregator"
 
 ###  Collection Generator Job related Vars
@@ -167,7 +167,7 @@ user_activity_analysis_updater_enable_rc_certificate: true
 program_cert_pre_processor_consumer_parallelism: 1
 generate_certificate_parallelism: 1
 middleware_course_batch_table: "course_batch"
-middleware_user_enrolments_table: "user_enrolments"
+middleware_user_enrolments_table: "user_enrolments_v2"
 middleware_assessment_aggregator_table: "assessment_aggregator"
 
 ### Karma Points Persist Processor
