@@ -215,7 +215,18 @@ trait IssueCertificateHelper {
         def nullStringCheck(name:String):String = {if(StringUtils.equalsIgnoreCase("null", name)) ""  else name}
         val recipientName = nullStringCheck(firstName).concat(" ").concat(nullStringCheck(lastName)).trim
         val courseInfo: java.util.Map[String, AnyRef] = getCourseInfo(event.courseId)(metrics, config, cache, httpUtil)
-        val courseName = courseInfo.getOrDefault("courseName", "").asInstanceOf[String]
+        val languageMapV1 = courseInfo.getOrDefault("languageMapV1", Map.empty[String, AnyRef])
+          .asInstanceOf[Map[String, Map[String, AnyRef]]]
+
+        val languageDetails = languageMapV1.getOrElse(event.completedLanguage, Map.empty[String, AnyRef])
+        val languageCourseId = languageDetails.getOrElse("id", "").asInstanceOf[String]
+
+        val languageCourseInfo = getCourseInfo(languageCourseId)(metrics, config, cache, httpUtil)
+        val courseName = if (StringUtils.isBlank(event.completedLanguage)) {
+            courseInfo.getOrDefault("courseName", "").asInstanceOf[String]
+        } else {
+            languageCourseInfo.getOrDefault("courseName", "").asInstanceOf[String]
+        }
         val dateFormatter = new SimpleDateFormat("yyyy-MM-dd")
         val related = getRelatedData(event, enrolledUser, assessedUser, userDetails, additionalProps, certName, courseName)(config)
         val parentCollections: List[String] = Option(courseInfo.get(config.parentCollections))
@@ -246,6 +257,7 @@ trait IssueCertificateHelper {
             "primaryCategory" -> courseInfo.getOrDefault("primaryCategory", "").asInstanceOf[String],
             "parentCollections" -> parentCollections,
             "coursePosterImage" -> courseInfo.getOrDefault("coursePosterImage", "").asInstanceOf[String],
+            "completedLanguage" -> event.completedLanguage
         )
         logger.info("Constructured eData from preProcessor : " + JSONUtil.serialize(eData))
         ScalaJsonUtil.serialize(BEJobRequestEvent(edata = eData, `object` = EventObject(id= event.userId)))
@@ -271,7 +283,7 @@ trait IssueCertificateHelper {
     def getCourseInfo(courseId: String)(metrics: Metrics, config: CollectionCertPreProcessorConfig, cache: DataCache, httpUtil: HttpUtil): java.util.Map[String, AnyRef] = {
         val courseMetadata = cache.getWithRetry(courseId)
         if (null == courseMetadata || courseMetadata.isEmpty) {
-            val url = config.contentBasePath + config.contentReadApi + "/" + courseId + "?fields=name,parentCollections,primaryCategory,posterImage,organisation"
+            val url = config.contentBasePath + config.contentReadApi + "/" + courseId + "?fields=name,parentCollections,primaryCategory,posterImage,organisation,languageMapV1"
             val response = getAPICall(url, "content")(config, httpUtil, metrics)
             val courseName = StringContext.processEscapes(response.getOrElse(config.name, "").asInstanceOf[String]).filter(_ >= ' ')
             val primaryCategory = StringContext.processEscapes(response.getOrElse(config.primaryCategory, "").asInstanceOf[String]).filter(_ >= ' ')
@@ -287,6 +299,8 @@ trait IssueCertificateHelper {
             courseInfoMap.put("primaryCategory", primaryCategory)
             courseInfoMap.put("coursePosterImage", posterImage)
             courseInfoMap.put("providerName", providerName)
+            val languageMapV1 = response.getOrElse("languageMapV1", Map.empty[String, AnyRef])
+            courseInfoMap.put("languageMapV1", languageMapV1.asInstanceOf[AnyRef])
             courseInfoMap
         } else {
             val courseName = StringContext.processEscapes(courseMetadata.getOrElse(config.name, "").asInstanceOf[String]).filter(_ >= ' ')
@@ -303,7 +317,21 @@ trait IssueCertificateHelper {
             courseInfoMap.put("primaryCategory", primaryCategory)
             courseInfoMap.put("coursePosterImage", posterImage)
             courseInfoMap.put("providerName", providerName)
+            val languageMapV1: Map[String, Map[String, AnyRef]] =
+                toScalaNestedMap(courseMetadata.getOrElse("languagemapv1", new java.util.HashMap[String, Object]()))
+            courseInfoMap.put("languageMapV1", languageMapV1.asInstanceOf[AnyRef])
             courseInfoMap
         }
+    }
+
+    def toScalaNestedMap(obj: Any): Map[String, Map[String, AnyRef]] = obj match {
+        case outer: java.util.Map[_, _] =>
+            outer.asScala.collect {
+                case (k, v: java.util.Map[_, _]) =>
+                    k.toString -> v.asScala.collect {
+                        case (ik, iv) => ik.toString -> iv.asInstanceOf[AnyRef]
+                    }.toMap
+            }.toMap
+        case _ => Map.empty[String, Map[String, AnyRef]]
     }
 }
