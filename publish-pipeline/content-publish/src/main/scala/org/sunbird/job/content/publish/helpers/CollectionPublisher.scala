@@ -152,20 +152,19 @@ trait CollectionPublisher extends ObjectReader with SyncMessagesGenerator with O
   private def setCompatibilityLevel(obj: ObjectData, updatedMeta: Map[String, AnyRef]): Option[Map[String, AnyRef]] = {
     // Check if the obj's metadata map contains the "compatibilityLevel" key
     obj.metadata.get("compatibilityLevel") match {
-      case Some(level: AnyRef) =>
-        if (level.isInstanceOf[Int]) {
-          val levelInt = level.asInstanceOf[Int]
+      case Some(level: Number) =>
+        
+          val levelInt = level.intValue()
           if (levelInt < 4) {
             logger.info(s"CollectionPublisher:: setCompatibilityLevel:: compatibility level is less than 4 for content id : ${obj.identifier}, setting it to 5.")
-            Some(updatedMeta ++ Map("compatibilityLevel" -> 5.asInstanceOf[AnyRef]))
+            Some(updatedMeta ++ Map("compatibilityLevel" -> Integer.valueOf(5)))
           } else {
             logger.info(s"CollectionPublisher:: setCompatibilityLevel:: compatibility level is ${level}, for content id : ${obj.identifier}, using the same.")
-            Some(updatedMeta ++ Map("compatibilityLevel" -> levelInt.asInstanceOf[AnyRef]))
+            Some(updatedMeta ++ Map("compatibilityLevel" -> Integer.valueOf(levelInt)))
           }
-        } else {
-          logger.info(s"CollectionPublisher:: setCompatibilityLevel:: compatibility level is not an integer for content id : ${obj.identifier}")
-          Some(updatedMeta)
-        }
+      case Some(nonNumeric) =>
+        logger.warn(s"CollectionPublisher:: setCompatibilityLevel:: compatibility level is not a number for content id : ${obj.identifier}, value: $nonNumeric, setting it to 5.")
+        Some(updatedMeta ++ Map("compatibilityLevel" -> Integer.valueOf(5))) 
       case None =>
         logger.info(s"CollectionPublisher:: setCompatibilityLevel:: compatibility level is not exist for content id : ${obj.identifier}, checking the contentType.")
         val contentType = obj.getString("contentType", "")
