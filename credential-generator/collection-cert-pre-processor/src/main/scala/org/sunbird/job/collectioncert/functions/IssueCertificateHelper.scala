@@ -3,7 +3,7 @@ package org.sunbird.job.collectioncert.functions
 import java.text.SimpleDateFormat
 import com.datastax.driver.core.querybuilder.QueryBuilder
 import com.datastax.driver.core.{Row, TypeTokens}
-import org.apache.commons.collections.CollectionUtils
+import org.apache.commons.collections.{CollectionUtils, MapUtils}
 import org.apache.commons.lang3.StringUtils
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
@@ -11,7 +11,7 @@ import org.sunbird.job.Metrics
 import org.sunbird.job.cache.DataCache
 import org.sunbird.job.collectioncert.domain.{AssessedUser, AssessmentUserAttempt, BEJobRequestEvent, EnrolledUser, Event, EventObject}
 import org.sunbird.job.collectioncert.task.CollectionCertPreProcessorConfig
-import org.sunbird.job.util.{CassandraUtil, HttpUtil, ScalaJsonUtil, JSONUtil}
+import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil, ScalaJsonUtil}
 
 import scala.collection.JavaConverters._
 
@@ -227,11 +227,12 @@ trait IssueCertificateHelper {
                 new java.util.HashMap[String, AnyRef]()
             }
 
-        val courseName = if (StringUtils.isBlank(event.completedLanguage)) {
-            courseInfo.getOrDefault("courseName", "").asInstanceOf[String]
-        } else {
-            languageCourseInfo.getOrDefault("courseName", "").asInstanceOf[String]
-        }
+        val courseName =
+            if (StringUtils.isNotBlank(event.completedLanguage) && MapUtils.isNotEmpty(languageCourseInfo)) {
+                languageCourseInfo.getOrDefault("courseName", "").asInstanceOf[String]
+            } else {
+                courseInfo.getOrDefault("courseName", "").asInstanceOf[String]
+            }
         val dateFormatter = new SimpleDateFormat("yyyy-MM-dd")
         val related = getRelatedData(event, enrolledUser, assessedUser, userDetails, additionalProps, certName, courseName)(config)
         val parentCollections: List[String] = Option(courseInfo.get(config.parentCollections))
