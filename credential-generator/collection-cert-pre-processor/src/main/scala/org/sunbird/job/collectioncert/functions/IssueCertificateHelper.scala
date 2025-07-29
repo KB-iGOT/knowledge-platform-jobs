@@ -220,8 +220,13 @@ trait IssueCertificateHelper {
 
         val languageDetails = languageMapV1.getOrElse(event.completedLanguage, Map.empty[String, AnyRef])
         val languageCourseId = languageDetails.getOrElse("id", "").asInstanceOf[String]
+        val languageCourseInfo: java.util.Map[String, AnyRef] =
+            if (StringUtils.isNotBlank(languageCourseId)) {
+                getCourseInfo(languageCourseId)(metrics, config, cache, httpUtil)
+            } else {
+                new java.util.HashMap[String, AnyRef]()
+            }
 
-        val languageCourseInfo = getCourseInfo(languageCourseId)(metrics, config, cache, httpUtil)
         val courseName = if (StringUtils.isBlank(event.completedLanguage)) {
             courseInfo.getOrDefault("courseName", "").asInstanceOf[String]
         } else {
