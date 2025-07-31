@@ -104,4 +104,16 @@ class ContentPublishConfig(override val config: Config) extends PublishConfig(co
   val allowedExtensionsWord: util.List[String] = if (config.hasPath("mimetype.allowed_extensions.word")) config.getStringList("mimetype.allowed_extensions.word") else util.Arrays.asList[String]("doc", "docx", "ppt", "pptx", "key", "odp", "pps", "odt", "wpd", "wps", "wks")
   val isECARGenerationEnabled: Boolean = if (config.hasPath("content.ecar.file.generation.enabled")) config.getBoolean("content.ecar.file.generation.enabled") else true
   val taggingProperties: util.List[String] = if (config.hasPath("taggingProperties")) config.getStringList("taggingProperties") else util.Arrays.asList[String]("domain", "ageGroup", "genre", "theme", "keywords")
+
+
+  val courseCategoryToCompatibilityLevel: Map[String, Int] = {
+    if (config.hasPath("courseCategoryToCompatibilityLevel")) {
+      config.getObject("courseCategoryToCompatibilityLevel").unwrapped().asScala.collect {
+        case (k, v: Number) => k -> v.intValue()
+      }.toMap
+    } else Map.empty
+  }
+
+  val defaultCompatibilityLevel: Int =
+    if (config.hasPath("defaultCompatibilityLevel")) config.getInt("defaultCompatibilityLevel") else 4
 }

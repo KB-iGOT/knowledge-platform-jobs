@@ -149,34 +149,15 @@ trait CollectionPublisher extends ObjectReader with SyncMessagesGenerator with O
     new ObjectData(updatedObj.identifier, updatedObj.metadata, updatedObj.extData, updatedObj.hierarchy)
   }
 
-  private def setCompatibilityLevel(obj: ObjectData, updatedMeta: Map[String, AnyRef]): Option[Map[String, AnyRef]] = {
-    // Check if the obj's metadata map contains the "compatibilityLevel" key
-    obj.metadata.get("compatibilityLevel") match {
-      case Some(level: Number) =>
-        
-          val levelInt = level.intValue()
-          if (levelInt < 4) {
-            logger.info(s"CollectionPublisher:: setCompatibilityLevel:: compatibility level is less than 4 for content id : ${obj.identifier}, setting it to 5.")
-            Some(updatedMeta ++ Map("compatibilityLevel" -> Integer.valueOf(5)))
-          } else {
-            logger.info(s"CollectionPublisher:: setCompatibilityLevel:: compatibility level is ${level}, for content id : ${obj.identifier}, using the same.")
-            Some(updatedMeta ++ Map("compatibilityLevel" -> Integer.valueOf(levelInt)))
-          }
-      case Some(nonNumeric) =>
-        logger.warn(s"CollectionPublisher:: setCompatibilityLevel:: compatibility level is not a number for content id : ${obj.identifier}, value: $nonNumeric, setting it to 5.")
-        Some(updatedMeta ++ Map("compatibilityLevel" -> Integer.valueOf(5))) 
-      case None =>
-        logger.info(s"CollectionPublisher:: setCompatibilityLevel:: compatibility level is not exist for content id : ${obj.identifier}, checking the contentType.")
-        val contentType = obj.getString("contentType", "")
-        if (level4ContentTypes.contains(contentType)) {
-          logger.info(s"CollectionPublisher:: setCompatibilityLevel:: contentType exists in level4ContentTypes, setting compatibility level to 4 for content id : ${obj.identifier}.")
-          // Set compatibilityLevel to 4 if contentType is in level4ContentTypes
-          Some(updatedMeta ++ Map("compatibilityLevel" -> 4.asInstanceOf[AnyRef]))
-        } else {
-          // If contentType is not in level4ContentTypes, return the updatedMeta unchanged
-          Some(updatedMeta)
-        }
-    }
+  private def setCompatibilityLevel(obj: ObjectData, updatedMeta: Map[String, AnyRef])(implicit config: PublishConfig): Option[Map[String, AnyRef]] = {
+    val contentConfig = config.asInstanceOf[ContentPublishConfig]
+    val courseCategory = obj.getString("courseCategory", "").trim
+    if (courseCategory.isEmpty)
+      throw new IllegalArgumentException(s"courseCategory is required in object metadata but is missing for content id: ${obj.identifier}")
+
+    val expectedLevel = contentConfig.courseCategoryToCompatibilityLevel.getOrElse(courseCategory, contentConfig.defaultCompatibilityLevel)
+    logger.info(s"CollectionPublisher:: setCompatibilityLevel:: courseCategory: $courseCategory, expected compatibility level: $expectedLevel for content id: ${obj.identifier}")
+    Some(updatedMeta.updated("compatibilityLevel", Integer.valueOf(expectedLevel)))
   }
 
 
