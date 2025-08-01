@@ -215,17 +215,16 @@ trait IssueCertificateHelper {
         def nullStringCheck(name:String):String = {if(StringUtils.equalsIgnoreCase("null", name)) ""  else name}
         val recipientName = nullStringCheck(firstName).concat(" ").concat(nullStringCheck(lastName)).trim
         val courseInfo: java.util.Map[String, AnyRef] = getCourseInfo(event.courseId)(metrics, config, cache, httpUtil)
+        var courseName = courseInfo.getOrDefault("courseName", "").asInstanceOf[String]
         val languageMapV1 = courseInfo.getOrDefault("languageMapV1", Map.empty[String, AnyRef])
           .asInstanceOf[Map[String, Map[String, AnyRef]]]
 
         val languageDetails = languageMapV1.getOrElse(event.completedLanguage, Map.empty[String, AnyRef])
         val languageCourseId = languageDetails.getOrElse("id", "").asInstanceOf[String]
 
-        val languageCourseInfo = getCourseInfo(languageCourseId)(metrics, config, cache, httpUtil)
-        val courseName = if (StringUtils.isBlank(event.completedLanguage)) {
-            courseInfo.getOrDefault("courseName", "").asInstanceOf[String]
-        } else {
-            languageCourseInfo.getOrDefault("courseName", "").asInstanceOf[String]
+        if (StringUtils.isNotBlank(languageCourseId)) {
+            val languageCourseInfo = getCourseInfo(languageCourseId)(metrics, config, cache, httpUtil)
+            courseName = languageCourseInfo.getOrDefault("courseName", "").asInstanceOf[String]
         }
         val dateFormatter = new SimpleDateFormat("yyyy-MM-dd")
         val related = getRelatedData(event, enrolledUser, assessedUser, userDetails, additionalProps, certName, courseName)(config)
