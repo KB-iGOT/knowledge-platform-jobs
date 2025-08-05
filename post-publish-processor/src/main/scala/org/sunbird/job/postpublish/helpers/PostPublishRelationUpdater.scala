@@ -54,7 +54,7 @@ trait PostPublishRelationUpdater {
     val courseMetadata = cache.getWithRetry(courseId)
     if (null == courseMetadata || courseMetadata.isEmpty) {
       val url =
-        config.contentReadURL + "/" + courseId + "?fields=identifier,name,versionKey,parentCollections,primaryCategory,languageMapV1"
+        config.contentReadURL + "/" + courseId + "?fields=identifier,name,versionKey,parentCollections,primaryCategory,languageMapV1,courseCategory,status"
       val response = getAPICall(url, "content")(config, httpUtil, metrics)
       logger.info("Content read response" + JSONUtil.serialize(response))
       val courseName = StringContext
@@ -81,6 +81,13 @@ trait PostPublishRelationUpdater {
           case _ =>
             Map.empty[String, Map[String, AnyRef]]
         }
+      val courseCategory = StringContext
+        .processEscapes(
+          response.getOrElse("courseCategory", "").asInstanceOf[String]
+        )
+        .filter(_ >= ' ')
+      val status = response
+        .getOrElse("status", "").asInstanceOf[String]
 
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
@@ -90,6 +97,8 @@ trait PostPublishRelationUpdater {
       courseInfoMap.put("primaryCategory", primaryCategory)
       courseInfoMap.put(config.versionKey, versionKey)
       courseInfoMap.put("languageMapV1", languageMapV1)
+      courseInfoMap.put("courseCategory", courseCategory)
+      courseInfoMap.put("status", status)
       courseInfoMap
     } else {
       val name = courseMetadata.getOrElse(config.name, "").asInstanceOf[String]
@@ -101,6 +110,9 @@ trait PostPublishRelationUpdater {
       val languageMapV1 = courseMetadata
         .getOrElse("languagemapv1", new java.util.HashMap[String, AnyRef]())
         .asInstanceOf[java.util.Map[String, java.util.Map[String, AnyRef]]]
+      val courseCategory = courseMetadata.getOrElse("coursecategory", "").asInstanceOf[String]
+      val status = courseMetadata
+        .getOrElse("status", "").asInstanceOf[String]
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
       courseInfoMap.put("courseId", courseId)
@@ -109,6 +121,8 @@ trait PostPublishRelationUpdater {
       courseInfoMap.put("primaryCategory", category)
       courseInfoMap.put(config.versionKey, version)
       courseInfoMap.put("languageMapV1", languageMapV1)
+      courseInfoMap.put("courseCategory", courseCategory)
+      courseInfoMap.put("status", status)
       courseInfoMap
     }
 
