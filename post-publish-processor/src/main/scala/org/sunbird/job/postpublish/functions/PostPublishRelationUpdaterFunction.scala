@@ -260,21 +260,23 @@ class PostPublishRelationUpdaterFunction(
 
     languageMap.asScala.foreach { case (langKey, langMeta) =>
       val targetId = Option(langMeta.get("id")).map(_.toString).getOrElse("")
+      val existingCreatedBy = Option(langMeta.get("createdBy")).map(_.toString).getOrElse("")
       if (StringUtils.isNotBlank(targetId)) {
         try {
           val targetMeta = getCourseInfo(targetId)(metrics, config, cache, httpUtil)
-          val targetStatus = Option(targetMeta.get("status"))
-            .map(_.toString.toLowerCase)
-            .getOrElse("")
+          val targetStatus = if (targetId == publishedId) "live" else {
+            Option(targetMeta.get("status")).map(_.toString.toLowerCase).getOrElse("")
+          }
 
           val isBase = langKey == baseLang
           val isSelf = targetId == publishedId
-
+          val finalStatus = if (targetId == publishedId) "Live" else targetStatus.capitalize
           // Always add to fullLangMap
           val fullEntry = new java.util.HashMap[String, AnyRef]()
           fullEntry.put("id", targetId)
           fullEntry.put("isBaseLang", Boolean.box(isBase))
-          fullEntry.put("status", targetStatus.capitalize)
+          fullEntry.put("status", finalStatus)
+          fullEntry.put("createdBy", existingCreatedBy)
           fullLangMap.put(langKey.toLowerCase, fullEntry)
 
           // Conditionally add to updatedLangMap
@@ -282,7 +284,8 @@ class PostPublishRelationUpdaterFunction(
             val cleanEntry = new java.util.HashMap[String, AnyRef]()
             cleanEntry.put("id", targetId)
             cleanEntry.put("isBaseLang", Boolean.box(isBase))
-            cleanEntry.put("status", targetStatus.capitalize)
+            cleanEntry.put("status", finalStatus)
+            cleanEntry.put("createdBy", existingCreatedBy)
             updatedLangMap.put(langKey.toLowerCase, cleanEntry)
           } else {
             logger.info(s"Skipping $targetId ($langKey) as it is not Live and not base/self.")
