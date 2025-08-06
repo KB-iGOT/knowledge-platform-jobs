@@ -208,80 +208,130 @@ class PostPublishRelationUpdaterFunction(
     httpUtil: HttpUtil,
     metrics: Metrics
   ): Unit = {
-    val contentMeta = getCourseInfo(publishedId)(metrics, config, cache, httpUtil)
-    val courseCategory = Option(contentMeta.get("courseCategory")).map(_.toString).getOrElse("")
-    if (!"Multilingual Course".equalsIgnoreCase(courseCategory)) {
-      logger.info(s"Content $publishedId is not a Multilingual Course. Skipping languageMapV1 update.")
-      return
+    val publishedMeta = getCourseInfo(publishedId)(metrics, config, cache, httpUtil)
+    val courseCategory = Option(publishedMeta.get("courseCategory")).map(_.toString).getOrElse("")
+
+
+     if (!"Multilingual Course".equalsIgnoreCase(courseCategory)) {
+       logger.info(s"Content $publishedId is not a Multilingual Course. Skipping languageMapV1 update.")
+       return
+     }
+
+    val languageMap: java.util.Map[String, java.util.Map[String, AnyRef]] = Option(publishedMeta.get("languageMapV1")) match {
+      case Some(map: java.util.Map[_, _]) =>
+        map.asInstanceOf[java.util.Map[String, java.util.Map[String, AnyRef]]]
+
+      case Some(scalaMap: Map[_, _]) =>
+        scalaMap
+          .asInstanceOf[Map[String, Map[String, AnyRef]]]
+          .map { case (k, v) => k -> v.asJava }
+          .asJava
+
+      case _ => new java.util.HashMap[String, java.util.Map[String, AnyRef]]()
     }
-
-    logger.info(s"Content $publishedId is a Multilingual Course. Updating languageMapV1 across all linked objects...")
-
-    val languageMap = Option(contentMeta.get("languageMapV1"))
-      .map(_.asInstanceOf[java.util.Map[String, java.util.Map[String, AnyRef]]])
-      .getOrElse(new java.util.HashMap[String, java.util.Map[String, AnyRef]]())
 
     if (languageMap.isEmpty) {
       logger.warn(s"No languageMapV1 found for $publishedId")
       return
     }
 
-    // Step 1: Find the language corresponding to the publishedId
-    val languageOpt = languageMap.asScala.find {
-      case (_, langMeta) => Option(langMeta.get("id")).contains(publishedId)
-    }.map(_._1)
+    // Find the base language entry
+    val baseEntryOpt = languageMap.asScala.find {
+      case (_, meta) =>
+        Option(meta.get("isBaseLang")).exists {
+          case bool: java.lang.Boolean => bool.booleanValue()
+          case _ => false
+        }
+    }
 
-    if (languageOpt.isEmpty) {
-      logger.warn(s"No matching language entry found for publishedId $publishedId in languageMapV1.")
+    if (baseEntryOpt.isEmpty) {
+      logger.warn(s"No base language found in languageMapV1 for $publishedId")
       return
     }
 
-    val publishedLanguage = languageOpt.get
-    logger.info(s"Published language is '$publishedLanguage' for id $publishedId")
+    val baseLang = baseEntryOpt.get._1
+    val baseContentId = baseEntryOpt.get._2.get("id").toString
 
-    // Step 2: For each do_id in languageMapV1, update the publishedLanguage status to Live
-    languageMap.asScala.foreach {
-      case (_, langMeta) =>
-        val doId = Option(langMeta.get("id")).map(_.toString).getOrElse("")
-        if (StringUtils.isNotBlank(doId)) {
-          try {
-            val targetMeta = getCourseInfo(doId)(metrics, config, cache, httpUtil)
-            val versionKey = targetMeta.get(config.versionKey)
+    logger.info(s"Base language is $baseLang, base contentId is $baseContentId")
 
-            val targetLangMap = Option(targetMeta.get("languageMapV1"))
-              .map(_.asInstanceOf[java.util.Map[String, java.util.Map[String, AnyRef]]])
-              .getOrElse(new java.util.HashMap[String, java.util.Map[String, AnyRef]]())
+    val fullLangMap = new java.util.HashMap[String, java.util.Map[String, AnyRef]]()
 
-            // Update the status of publishedLanguage
-            val entryToUpdate = Option(targetLangMap.get(publishedLanguage)).getOrElse(new java.util.HashMap[String, AnyRef]())
-            entryToUpdate.put("status", "Live")
-            targetLangMap.put(publishedLanguage, entryToUpdate)
+    val updatedLangMap = new java.util.HashMap[String, java.util.Map[String, AnyRef]]()
 
-            val updateRequest: Map[String, Any] = Map(
-              "request" -> Map(
-                "content" -> Map(
-                  "versionKey" -> versionKey,
-                  "languageMapV1" -> targetLangMap
-                )
-              )
-            )
-
-            val patchRequest = new HttpPatch(config.contentSystemUpdatePath + doId)
-            patchRequest.setEntity(new StringEntity(JSONUtil.serialize(updateRequest), ContentType.APPLICATION_JSON))
-            val response = HttpClients.createDefault().execute(patchRequest)
-
-            if (response.getStatusLine.getStatusCode == 200) {
-              logger.info(s"Successfully updated languageMapV1 in $doId with '$publishedLanguage' = Live")
-            } else {
-              logger.error(s"Failed to update $doId: ${response.getStatusLine}")
-            }
-          } catch {
-            case ex: Throwable =>
-              logger.error(s"Error while updating languageMapV1 for linked object: $doId", ex)
+    languageMap.asScala.foreach { case (langKey, langMeta) =>
+      val targetId = Option(langMeta.get("id")).map(_.toString).getOrElse("")
+      val existingCreatedBy = Option(langMeta.get("createdBy")).map(_.toString).getOrElse("")
+      if (StringUtils.isNotBlank(targetId)) {
+        try {
+          val targetMeta = getCourseInfo(targetId)(metrics, config, cache, httpUtil)
+          val targetStatus = if (targetId == publishedId) "live" else {
+            Option(targetMeta.get("status")).map(_.toString.toLowerCase).getOrElse("")
           }
+
+          val isBase = langKey == baseLang
+          val isSelf = targetId == publishedId
+          val finalStatus = if (targetId == publishedId) "Live" else targetStatus.capitalize
+          // Always add to fullLangMap
+          val fullEntry = new java.util.HashMap[String, AnyRef]()
+          fullEntry.put("id", targetId)
+          fullEntry.put("isBaseLang", Boolean.box(isBase))
+          fullEntry.put("status", finalStatus)
+          fullEntry.put("createdBy", existingCreatedBy)
+          fullLangMap.put(langKey.toLowerCase, fullEntry)
+
+          // Conditionally add to updatedLangMap
+          if (targetStatus == "live" || isBase || isSelf) {
+            val cleanEntry = new java.util.HashMap[String, AnyRef]()
+            cleanEntry.put("id", targetId)
+            cleanEntry.put("isBaseLang", Boolean.box(isBase))
+            cleanEntry.put("status", finalStatus)
+            cleanEntry.put("createdBy", existingCreatedBy)
+            updatedLangMap.put(langKey.toLowerCase, cleanEntry)
+          } else {
+            logger.info(s"Skipping $targetId ($langKey) as it is not Live and not base/self.")
+          }
+        } catch {
+          case ex: Throwable =>
+            logger.error(s"Error fetching metadata for $langKey -> $targetId", ex)
         }
+      }
+    }
+
+    logger.info(s"Final fullLangMap (for base): ${JSONUtil.serialize(fullLangMap)}")
+    logger.info(s"Final updatedLangMap (for others): ${JSONUtil.serialize(updatedLangMap)}")
+
+    // Update each course
+    updatedLangMap.asScala.foreach { case (_, langMeta) =>
+      val targetId = langMeta.get("id").toString
+      try {
+        val targetMeta = getCourseInfo(targetId)(metrics, config, cache, httpUtil)
+        val versionKey = Option(targetMeta.get(config.versionKey)).getOrElse("").toString
+
+        // Use fullLangMap for base, updatedLangMap for others
+        val mapToUpdate = if (targetId == baseContentId) fullLangMap else updatedLangMap
+
+        val updateReq = Map(
+          "request" -> Map(
+            "content" -> Map(
+              "versionKey" -> versionKey,
+              "languageMapV1" -> mapToUpdate
+            )
+          )
+        )
+
+        val patchReq = new HttpPatch(config.contentSystemUpdatePath + targetId)
+        patchReq.setEntity(new StringEntity(JSONUtil.serialize(updateReq), ContentType.APPLICATION_JSON))
+        val response = HttpClients.createDefault().execute(patchReq)
+
+        if (response.getStatusLine.getStatusCode == 200) {
+          logger.info(s"Successfully updated languageMapV1 for $targetId")
+        } else {
+          logger.error(s"Failed to update languageMapV1 for $targetId: ${response.getStatusLine}")
+        }
+      } catch {
+        case ex: Throwable =>
+          logger.error(s"Exception while updating languageMapV1 for $targetId", ex)
+      }
     }
   }
-
-
 }
