@@ -13,6 +13,7 @@ import org.sunbird.job.content.publish.helpers.EventPublisher
 import org.sunbird.job.domain.`object`.{DefinitionCache, ObjectDefinition}
 import org.sunbird.job.exception.InvalidInputException
 import org.sunbird.job.helper.FailedEventHelper
+import org.sunbird.job.content.util.NotificationManager
 import org.sunbird.job.publish.core.{ExtDataConfig, ObjectData}
 import org.sunbird.job.publish.helpers._
 import org.sunbird.job.util._
