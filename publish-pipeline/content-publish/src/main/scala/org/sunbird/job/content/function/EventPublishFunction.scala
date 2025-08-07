@@ -66,7 +66,7 @@ extends BaseProcessFunction[Event, String](config) with EventPublisher with Fail
                 metrics.incCounter(config.eventTypePublishSuccessCount)
                 logger.info("Event publishing completed successfully for : " + data.identifier)
 
-                logger.info("Notification for EVENT_PUBLISH started successfully")
+                logger.info("Notification for EVENT_PUBLISH started successfully.")
                   try {
                     logger.info("Node metadata is {}", obj.metadata)
                     new NotificationManager(config.notificationUrl, httpUtil).sendNotification(
