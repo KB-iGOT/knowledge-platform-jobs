@@ -283,7 +283,22 @@ class PostPublishRelationUpdaterFunction(
 
     val updatedLangMap = new java.util.HashMap[String, java.util.Map[String, AnyRef]]()
 
-    languageMap.asScala.foreach { case (langKey, langMeta) =>
+    val parentPublishedMeta = getCourseInfo(baseContentId)(metrics, config, cache, httpUtil)
+
+    val baseLanguageMap: java.util.Map[String, java.util.Map[String, AnyRef]] = Option(parentPublishedMeta.get("languageMapV1")) match {
+      case Some(map: java.util.Map[_, _]) =>
+        map.asInstanceOf[java.util.Map[String, java.util.Map[String, AnyRef]]]
+
+      case Some(scalaMap: Map[_, _]) =>
+        scalaMap
+          .asInstanceOf[Map[String, Map[String, AnyRef]]]
+          .map { case (k, v) => k -> v.asJava }
+          .asJava
+
+      case _ => new java.util.HashMap[String, java.util.Map[String, AnyRef]]()
+    }
+
+    baseLanguageMap.asScala.foreach { case (langKey, langMeta) =>
       val targetId = Option(langMeta.get("id")).map(_.toString).getOrElse("")
       val existingCreatedBy = Option(langMeta.get("createdBy")).map(_.toString).getOrElse("")
       if (StringUtils.isNotBlank(targetId)) {
