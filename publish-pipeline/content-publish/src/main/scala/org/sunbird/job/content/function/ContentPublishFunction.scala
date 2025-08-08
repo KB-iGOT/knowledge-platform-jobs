@@ -115,7 +115,25 @@ class ContentPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil,
             }
           }
 
-
+         val courseCategory = Option(enrichedObj.metadata.getOrElse("courseCategory", null))
+         if (courseCategory.exists(cat =>
+           cat.toString.equalsIgnoreCase("Course") ||
+           cat.toString.equalsIgnoreCase("Moderated Course") ||
+           cat.toString.equalsIgnoreCase("Case Study"))
+         ) {
+           try {
+             logger.info("Node metadata is {}", obj.metadata)
+             new NotificationManager(config.notificationUrl, httpUtil).sendNotification(
+               "COURSE_PUBLISHED",
+               "UPDATE",
+               List(obj.metadata("createdBy").asInstanceOf[String]),
+               obj.metadata("name").asInstanceOf[String],
+               Map[String, Any]("id" -> obj.identifier)
+             )
+           } catch {
+             case e: Exception => logger.info("Error in sending notification for course publish", e)
+           }
+         }
         } else {
           saveOnFailure(obj, messages, data.pkgVersion)(neo4JUtil)
           val errorMessages = messages.mkString("; ")
