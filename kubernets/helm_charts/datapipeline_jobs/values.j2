@@ -260,7 +260,7 @@ activity-aggregate-updater-v2:
     }
     lms-cassandra {
       keyspace = "{{ middleware_course_keyspace }}"
-      consumption.table = "user_content_consumption_v2"
+      consumption.table = "coursebatch.job.request.v2"
       user_activity_agg.table = "{{ middleware_user_activity_agg_table }}"
       user_enrolments.table = "user_enrolments_v2"
     }
