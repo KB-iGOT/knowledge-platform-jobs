@@ -135,7 +135,6 @@ class PostPublishRelationUpdaterFunction(
           }
         }
     }
-    updateLanguageMapIfMultilingual(identifier)(config, httpUtil, metrics)
   }
 
   def getProgramHierarchy(programId: String)(
@@ -165,6 +164,7 @@ class PostPublishRelationUpdaterFunction(
   ): Unit = {
     val isValidProgram: Boolean =
       verifyPrimaryCategory(identifier)(metrics, config, httpUtil, cache)
+     val isValidMultiLingualCourse: Boolean = verifyCourseCategory(identifier)(metrics, config, httpUtil, cache)
     if (isValidProgram) {
       metrics.incCounter(config.postPublishRelationUpdateEventCount)
       logger.info(
@@ -193,6 +193,31 @@ class PostPublishRelationUpdaterFunction(
     } else {
       logger.info(
         "PostPublishRelationUpdaterFunction:: Nothing to do for ContentId : " + identifier
+      )
+    }
+    if (isValidMultiLingualCourse) {
+      metrics.incCounter(config.postPublishRelationUpdateEventCount)
+      logger.info(
+        "PostPublishRelationUpdaterFunction:: started for Content MultiLingual Course: " + identifier
+      )
+      try {
+        updateLanguageMapIfMultilingual(identifier)(config, httpUtil, metrics)
+        metrics.incCounter(config.postPublishRelationUpdateSuccessCount)
+        logger.info(
+          "PostPublishRelationUpdaterFunction:: Completed for ContentId : " + identifier
+        )
+      }  catch {
+        case ex: Throwable =>
+          logger.error(
+            s"Error while processing message of MultiLingual Course for identifier : ${identifier}.",
+            ex
+          )
+          metrics.incCounter(config.postPublishRelationUpdateFailureCount)
+          throw ex
+      }
+    } else {
+      logger.info(
+        "PostPublishRelationUpdaterFunction as this is not MultiLingual Course:: Nothing to do for ContentId : " + identifier
       )
     }
   }
