@@ -114,7 +114,7 @@ class ContentPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil,
               case e: Exception => logger.info("Error in sending notification for resource ", e)
             }
           }
-
+         logger.info("Course publish notification started successfully for : " + data.identifier)
          val courseCategory = Option(enrichedObj.metadata.getOrElse("courseCategory", null))
          if (courseCategory.exists(cat =>
            cat.toString.equalsIgnoreCase("Course") ||
@@ -122,11 +122,12 @@ class ContentPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil,
            cat.toString.equalsIgnoreCase("Case Study"))
          ) {
            try {
+             logger.info("Course publish courseCategory : " + courseCategory)
              logger.info("Node metadata is {}", obj.metadata)
              new NotificationManager(config.notificationUrl, httpUtil).sendNotification(
                "COURSE_PUBLISHED",
-               "UPDATE",
-               List(obj.metadata("createdBy").asInstanceOf[String]),
+               "ENGAGEMENT",
+                List("global"),
                obj.metadata("name").asInstanceOf[String],
                Map[String, Any]("id" -> obj.identifier)
              )
