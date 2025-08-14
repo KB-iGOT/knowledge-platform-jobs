@@ -59,11 +59,22 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       val (isValid, category) = verifyPrimaryCategory(courseId)(metrics, config, httpUtil, contentCache)
       if (!isValid) return
 
-      val enrolmentRow = readUserEnrolment(event)
+      val enrolmentRow = getEnrolment(userId, courseId, batchId)
+      var langContentStatus: Map[String, Map[String, Int]] =
+        if (enrolmentRow != null && enrolmentRow.getObject("lang_contentstatus") != null) {
+          enrolmentRow.getObject("lang_contentstatus")
+            .asInstanceOf[JMap[String, JMap[String, Integer]]]
+            .asScala
+            .map { case (lang, contentMap) =>
+              lang -> contentMap.asScala.toMap.mapValues(_.intValue())
+            }.toMap
+        } else {
+          Map.empty
+        }
 
-      val langContentStatus = if (enrolmentRow.isEmpty || !enrolmentRow.contains(language))
-        enrolmentRow + (language -> Map.empty[String, Int])
-      else enrolmentRow
+      if (!langContentStatus.contains(language)) {
+        langContentStatus = langContentStatus + (language -> Map.empty[String, Int])
+      }
 
       val existingLangMap = langContentStatus.getOrElse(language, Map.empty[String, Int])
 
@@ -81,8 +92,10 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
         else acc
       }
 
+      val statusIsTwo = enrolmentRow != null && enrolmentRow.getInt("status").equals(2)
+
       val finalLangContentStatus = updateLangContentStatusInUserEnrolment(
-        userId, courseId, batchId, language, langContentStatus, updatedLangMap, courseMetadata
+        userId, courseId, batchId, language, langContentStatus, updatedLangMap, courseMetadata, statusIsTwo
       )
 
       triggerCertificateIfRequired(event, courseMetadata, finalLangContentStatus(language), ctx)
@@ -385,7 +398,8 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
                                               language: String,
                                               langContentStatus: Map[String, Map[String, Int]],
                                               updatedLangMap: Map[String, Int],
-                                              courseMetadata: Map[String, AnyRef]
+                                              courseMetadata: Map[String, AnyRef],
+                                              statusIsTwo: Boolean
                                             ): Map[String, Map[String, Int]] = {
 
     val languageMap = courseMetadata
@@ -405,10 +419,6 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
     val progress = completedCount
 
     val finalLangContentStatus = langContentStatus + (language -> updatedLangMap)
-
-    val enrolmentRow = getEnrolment(userId, courseId, batchId)
-
-    val statusIsTwo = enrolmentRow != null && enrolmentRow.getInt("status").equals(2)
 
     val isCompleted = translatedLeafNodes.nonEmpty && completedCount == translatedLeafNodes.size
 
