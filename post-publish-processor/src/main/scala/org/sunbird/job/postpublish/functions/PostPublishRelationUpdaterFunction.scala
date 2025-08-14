@@ -301,6 +301,9 @@ class PostPublishRelationUpdaterFunction(
     baseLanguageMap.asScala.foreach { case (langKey, langMeta) =>
       val targetId = Option(langMeta.get("id")).map(_.toString).getOrElse("")
       val existingCreatedBy = Option(langMeta.get("createdBy")).map(_.toString).getOrElse("")
+      val reviewerIDs = Option(langMeta.get("reviewerIDs")).map(_.asInstanceOf[java.util.List[String]]).getOrElse(new java.util.ArrayList[String]())
+      val publisherIDs = Option(langMeta.get("publisherIDs")).map(_.asInstanceOf[java.util.List[String]]).getOrElse(new java.util.ArrayList[String]())
+      val existingReviewStatus = Option(langMeta.get("reviewStatus")).map(_.toString).getOrElse("")
       if (StringUtils.isNotBlank(targetId)) {
         try {
           val targetMeta = getCourseInfo(targetId)(metrics, config, cache, httpUtil)
@@ -317,17 +320,27 @@ class PostPublishRelationUpdaterFunction(
           fullEntry.put("isBaseLang", Boolean.box(isBase))
           fullEntry.put("status", finalStatus)
           fullEntry.put("createdBy", existingCreatedBy)
+          fullEntry.put("reviewerIDs", reviewerIDs)
+          fullEntry.put("publisherIDs", publisherIDs)
+          fullEntry.put("reviewStatus", existingReviewStatus)
           fullLangMap.put(langKey.toLowerCase, fullEntry)
 
           // Conditionally add to updatedLangMap
           if (targetStatus == "live" || isBase || isSelf) {
+            val existingStatus = Option(langMeta.get("status")).map(_.toString).getOrElse("")
+            val existingReviewStatus = Option(langMeta.get("reviewStatus")).map(_.toString).getOrElse("")
+
             val cleanEntry = new java.util.HashMap[String, AnyRef]()
             cleanEntry.put("id", targetId)
             cleanEntry.put("isBaseLang", Boolean.box(isBase))
-            cleanEntry.put("status", finalStatus)
+            cleanEntry.put("status", if (isSelf) "Live" else existingStatus)
+            cleanEntry.put("reviewStatus", if (isSelf) "Live" else existingReviewStatus)
             cleanEntry.put("createdBy", existingCreatedBy)
+            cleanEntry.put("reviewerIDs", reviewerIDs)
+            cleanEntry.put("publisherIDs", publisherIDs)
+
             updatedLangMap.put(langKey.toLowerCase, cleanEntry)
-          } else {
+        } else {
             logger.info(s"Skipping $targetId ($langKey) as it is not Live and not base/self.")
           }
         } catch {
