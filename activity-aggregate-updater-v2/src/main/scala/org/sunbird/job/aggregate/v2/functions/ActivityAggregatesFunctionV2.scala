@@ -1,6 +1,6 @@
 package org.sunbird.job.aggregate.v2.functions
 
-import com.datastax.driver.core.querybuilder.{QueryBuilder, Update}
+import com.datastax.driver.core.querybuilder.{QueryBuilder, Select, Update}
 import com.google.gson.Gson
 import com.twitter.storehaus.cache.TTLCache
 import com.twitter.util.Duration
@@ -274,7 +274,7 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
                                      batchId: String,
                                      langMap: Map[String, Map[String, Int]],
                                      progress: Int,
-                                     isCompleted: Boolean
+                                     isCompleted: Boolean, isStatusTwo: Boolean
                                    ): Unit = {
     val mapForCassandra: JMap[String, JMap[String, Integer]] = langMap.map {
       case (language, contentMap) =>
@@ -284,9 +284,12 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
     }.asJava
     var assignments = QueryBuilder.update(config.dbKeyspace, config.dbUserEnrolmentsTable)
       .`with`(QueryBuilder.set("lang_contentstatus", mapForCassandra))
-      .and(QueryBuilder.set("status", if (isCompleted) 2 else 1))
       .and(QueryBuilder.set("progress", progress))
       .and(QueryBuilder.set("datetime", System.currentTimeMillis()))
+
+    if (!isStatusTwo) {
+      assignments = assignments.and(QueryBuilder.set("status", if (isCompleted) 2 else 1))
+    }
 
     if (isCompleted)
       assignments.and(QueryBuilder.set("completedon", new java.util.Date()))
@@ -403,9 +406,13 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
 
     val finalLangContentStatus = langContentStatus + (language -> updatedLangMap)
 
+    val enrolmentRow = getEnrolment(userId, courseId, batchId)
+
+    val statusIsTwo = enrolmentRow != null && enrolmentRow.getInt("status").equals(2)
+
     val isCompleted = translatedLeafNodes.nonEmpty && completedCount == translatedLeafNodes.size
 
-    updateUserEnrolmentLangStatus(userId, courseId, batchId, finalLangContentStatus, progress, isCompleted)
+    updateUserEnrolmentLangStatus(userId, courseId, batchId, finalLangContentStatus, progress, isCompleted, statusIsTwo)
 
     finalLangContentStatus
   }
@@ -425,5 +432,15 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
     cache.close()
     contentCache.close()
     super.close()
+  }
+
+  def getEnrolment(userId: String, courseId: String, batchId: String) = {
+    val selectWhere: Select.Where = QueryBuilder.select().all()
+      .from(config.dbKeyspace, config.dbUserEnrolmentsTable).
+      where()
+    selectWhere.and(QueryBuilder.eq("userid", userId))
+      .and(QueryBuilder.eq("courseid", courseId))
+      .and(QueryBuilder.eq("batchid", batchId))
+    cassandraUtil.findOne(selectWhere.toString)
   }
 }
