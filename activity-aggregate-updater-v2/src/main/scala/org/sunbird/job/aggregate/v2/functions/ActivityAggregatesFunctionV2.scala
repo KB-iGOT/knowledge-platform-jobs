@@ -1,6 +1,6 @@
 package org.sunbird.job.aggregate.v2.functions
 
-import com.datastax.driver.core.querybuilder.{QueryBuilder, Update}
+import com.datastax.driver.core.querybuilder.{QueryBuilder, Select, Update}
 import com.google.gson.Gson
 import com.twitter.storehaus.cache.TTLCache
 import com.twitter.util.Duration
@@ -59,11 +59,22 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       val (isValid, category) = verifyPrimaryCategory(courseId)(metrics, config, httpUtil, contentCache)
       if (!isValid) return
 
-      val enrolmentRow = readUserEnrolment(event)
+      val enrolmentRow = getEnrolment(userId, courseId, batchId)
+      var langContentStatus: Map[String, Map[String, Int]] =
+        if (enrolmentRow != null && enrolmentRow.getObject("lang_contentstatus") != null) {
+          enrolmentRow.getObject("lang_contentstatus")
+            .asInstanceOf[JMap[String, JMap[String, Integer]]]
+            .asScala
+            .map { case (lang, contentMap) =>
+              lang -> contentMap.asScala.toMap.mapValues(_.intValue())
+            }.toMap
+        } else {
+          Map.empty
+        }
 
-      val langContentStatus = if (enrolmentRow.isEmpty || !enrolmentRow.contains(language))
-        enrolmentRow + (language -> Map.empty[String, Int])
-      else enrolmentRow
+      if (!langContentStatus.contains(language)) {
+        langContentStatus = langContentStatus + (language -> Map.empty[String, Int])
+      }
 
       val existingLangMap = langContentStatus.getOrElse(language, Map.empty[String, Int])
 
@@ -81,8 +92,10 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
         else acc
       }
 
+      val statusIsTwo = enrolmentRow != null && enrolmentRow.getInt("status").equals(2)
+
       val finalLangContentStatus = updateLangContentStatusInUserEnrolment(
-        userId, courseId, batchId, language, langContentStatus, updatedLangMap, courseMetadata
+        userId, courseId, batchId, language, langContentStatus, updatedLangMap, courseMetadata, statusIsTwo
       )
 
       triggerCertificateIfRequired(event, courseMetadata, finalLangContentStatus(language), ctx)
@@ -245,36 +258,13 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
     (isValidCourse, courseCategory)
   }
 
-
-  def readUserEnrolment(event: Event): Map[String, Map[String, Int]] = {
-    val select = QueryBuilder.select("lang_contentstatus")
-      .from(config.dbKeyspace, config.dbUserEnrolmentsTable)
-      .where(QueryBuilder.eq("userid", event.userId))
-      .and(QueryBuilder.eq("courseid", event.courseId))
-      .and(QueryBuilder.eq("batchid", event.batchId))
-
-    val rows = cassandraUtil.find(select.toString).asScala
-
-    if (rows.nonEmpty) {
-      val rawMap = rows.head.getObject("lang_contentstatus")
-        .asInstanceOf[JMap[String, JMap[String, Integer]]]
-
-      rawMap.asScala.toMap.map {
-        case (lang, contentMap) =>
-          lang -> contentMap.asScala.toMap.mapValues(_.intValue())
-      }
-    } else {
-      Map.empty
-    }
-  }
-
   def updateUserEnrolmentLangStatus(
                                      userId: String,
                                      courseId: String,
                                      batchId: String,
                                      langMap: Map[String, Map[String, Int]],
                                      progress: Int,
-                                     isCompleted: Boolean
+                                     isCompleted: Boolean, isStatusTwo: Boolean
                                    ): Unit = {
     val mapForCassandra: JMap[String, JMap[String, Integer]] = langMap.map {
       case (language, contentMap) =>
@@ -284,9 +274,12 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
     }.asJava
     var assignments = QueryBuilder.update(config.dbKeyspace, config.dbUserEnrolmentsTable)
       .`with`(QueryBuilder.set("lang_contentstatus", mapForCassandra))
-      .and(QueryBuilder.set("status", if (isCompleted) 2 else 1))
       .and(QueryBuilder.set("progress", progress))
       .and(QueryBuilder.set("datetime", System.currentTimeMillis()))
+
+    if (!isStatusTwo) {
+      assignments = assignments.and(QueryBuilder.set("status", if (isCompleted) 2 else 1))
+    }
 
     if (isCompleted)
       assignments.and(QueryBuilder.set("completedon", new java.util.Date()))
@@ -382,7 +375,8 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
                                               language: String,
                                               langContentStatus: Map[String, Map[String, Int]],
                                               updatedLangMap: Map[String, Int],
-                                              courseMetadata: Map[String, AnyRef]
+                                              courseMetadata: Map[String, AnyRef],
+                                              statusIsTwo: Boolean
                                             ): Map[String, Map[String, Int]] = {
 
     val languageMap = courseMetadata
@@ -405,7 +399,7 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
 
     val isCompleted = translatedLeafNodes.nonEmpty && completedCount == translatedLeafNodes.size
 
-    updateUserEnrolmentLangStatus(userId, courseId, batchId, finalLangContentStatus, progress, isCompleted)
+    updateUserEnrolmentLangStatus(userId, courseId, batchId, finalLangContentStatus, progress, isCompleted, statusIsTwo)
 
     finalLangContentStatus
   }
@@ -425,5 +419,15 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
     cache.close()
     contentCache.close()
     super.close()
+  }
+
+  def getEnrolment(userId: String, courseId: String, batchId: String) = {
+    val selectWhere: Select.Where = QueryBuilder.select().all()
+      .from(config.dbKeyspace, config.dbUserEnrolmentsTable).
+      where()
+    selectWhere.and(QueryBuilder.eq("userid", userId))
+      .and(QueryBuilder.eq("courseid", courseId))
+      .and(QueryBuilder.eq("batchid", batchId))
+    cassandraUtil.findOne(selectWhere.toString)
   }
 }
