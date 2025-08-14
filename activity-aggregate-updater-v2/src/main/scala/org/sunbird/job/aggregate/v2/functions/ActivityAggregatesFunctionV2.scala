@@ -258,29 +258,6 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
     (isValidCourse, courseCategory)
   }
 
-
-  def readUserEnrolment(event: Event): Map[String, Map[String, Int]] = {
-    val select = QueryBuilder.select("lang_contentstatus")
-      .from(config.dbKeyspace, config.dbUserEnrolmentsTable)
-      .where(QueryBuilder.eq("userid", event.userId))
-      .and(QueryBuilder.eq("courseid", event.courseId))
-      .and(QueryBuilder.eq("batchid", event.batchId))
-
-    val rows = cassandraUtil.find(select.toString).asScala
-
-    if (rows.nonEmpty) {
-      val rawMap = rows.head.getObject("lang_contentstatus")
-        .asInstanceOf[JMap[String, JMap[String, Integer]]]
-
-      rawMap.asScala.toMap.map {
-        case (lang, contentMap) =>
-          lang -> contentMap.asScala.toMap.mapValues(_.intValue())
-      }
-    } else {
-      Map.empty
-    }
-  }
-
   def updateUserEnrolmentLangStatus(
                                      userId: String,
                                      courseId: String,
