@@ -301,8 +301,8 @@ class PostPublishRelationUpdaterFunction(
     baseLanguageMap.asScala.foreach { case (langKey, langMeta) =>
       val targetId = Option(langMeta.get("id")).map(_.toString).getOrElse("")
       val existingCreatedBy = Option(langMeta.get("createdBy")).map(_.toString).getOrElse("")
-      val reviewerIDs = Option(langMeta.get("reviewerIDs")).map(_.asInstanceOf[java.util.List[String]]).getOrElse(new java.util.ArrayList[String]())
-      val publisherIDs = Option(langMeta.get("publisherIDs")).map(_.asInstanceOf[java.util.List[String]]).getOrElse(new java.util.ArrayList[String]())
+      val reviewerIDs = safeJavaList("reviewerIDs", langMeta)
+      val publisherIDs = safeJavaList("publisherIDs", langMeta)
       val existingReviewStatus = Option(langMeta.get("reviewStatus")).map(_.toString).getOrElse("")
       if (StringUtils.isNotBlank(targetId)) {
         try {
@@ -387,4 +387,14 @@ class PostPublishRelationUpdaterFunction(
       }
     }
   }
+
+  def safeJavaList(key: String, langMeta: java.util.Map[String, AnyRef]): java.util.List[String] = {
+    Option(langMeta.get(key)) match {
+      case Some(list: java.util.List[_]) => list.asInstanceOf[java.util.List[String]]
+      case Some(Nil)                     => new java.util.ArrayList[String]()
+      case Some(seq: Seq[_])             => seq.asJava.asInstanceOf[java.util.List[String]]
+      case _                             => new java.util.ArrayList[String]()
+    }
+  }
+
 }
