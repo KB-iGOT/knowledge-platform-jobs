@@ -334,7 +334,7 @@ class PostPublishRelationUpdaterFunction(
             cleanEntry.put("id", targetId)
             cleanEntry.put("isBaseLang", Boolean.box(isBase))
             cleanEntry.put("status", if (isSelf) "Live" else existingStatus)
-            cleanEntry.put("reviewStatus", if (isSelf) "Live" else existingReviewStatus)
+            cleanEntry.put("reviewStatus", if (isSelf) "SentToPublish" else existingReviewStatus)
             cleanEntry.put("createdBy", existingCreatedBy)
             cleanEntry.put("reviewerIDs", reviewerIDs)
             cleanEntry.put("publisherIDs", publisherIDs)
