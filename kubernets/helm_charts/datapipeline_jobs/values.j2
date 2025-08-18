@@ -201,7 +201,7 @@ program-activity-aggregate-updater:
       keyspace = "{{ middleware_course_keyspace }}"
       consumption.table = "{{ middleware_consumption_table }}"
       user_activity_agg.table = "{{ middleware_user_activity_agg_table }}"
-      user_enrolments.table = "user_enrolments"
+      user_enrolments.table = "user_enrolments_v2"
     }
     redis {
       database {
