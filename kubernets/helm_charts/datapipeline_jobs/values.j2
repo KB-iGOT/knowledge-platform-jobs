@@ -260,7 +260,7 @@ activity-aggregate-updater-v2:
     }
     lms-cassandra {
       keyspace = "{{ middleware_course_keyspace }}"
-      consumption.table = "user_content_consumption_v2"
+      consumption.table = "{{ middleware_consumption_table }}"
       user_activity_agg.table = "{{ middleware_user_activity_agg_table }}"
       user_enrolments.table = "user_enrolments_v2"
     }
@@ -1156,6 +1156,14 @@ content-publish:
       Course: "Curated Program"
       Course: "Moderated Program"
     }
+
+    courseCategoryToCompatibilityLevel {
+    "Curated Program": 5
+    "Comprehensive Assessment Program": 5
+    "Multilingual Course": 5
+    }
+
+    defaultCompatibilityLevel = 4
     compositesearch.index.name = "compositesearch"
     search.document.type = "cs"
     content.ecar.file.generation.enabled = false
