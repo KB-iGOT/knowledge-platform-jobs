@@ -42,7 +42,7 @@ activity_agg_consumer_parallelism: 1
 activity_agg_dedup_parallelism: 1
 activity_agg_parallelism: 1
 enrolment_complete_parallelism: 1
-middleware_consumption_table: "user_content_consumption"
+middleware_consumption_table: "user_content_consumption_v2"
 middleware_user_activity_agg_table: "user_activity_agg"
 activity_agg_checkpointing_interval: 300000
 activity_agg_checkpointing_pause_interval: 90000
@@ -140,7 +140,7 @@ metrics_data_transformer_producer_parallelism: 1
 collection_cert_pre_processor_consumer_parallelism: 1
 generate_certificate_parallelism: 1
 middleware_course_batch_table: "course_batch"
-middleware_user_enrolments_table: "user_enrolments"
+middleware_user_enrolments_table: "user_enrolments_v2"
 middleware_assessment_aggregator_table: "assessment_aggregator"
 
 ###  Collection Generator Job related Vars
@@ -167,7 +167,7 @@ user_activity_analysis_updater_enable_rc_certificate: true
 program_cert_pre_processor_consumer_parallelism: 1
 generate_certificate_parallelism: 1
 middleware_course_batch_table: "course_batch"
-middleware_user_enrolments_table: "user_enrolments"
+middleware_user_enrolments_table: "user_enrolments_v2"
 middleware_assessment_aggregator_table: "assessment_aggregator"
 
 ### Karma Points Persist Processor

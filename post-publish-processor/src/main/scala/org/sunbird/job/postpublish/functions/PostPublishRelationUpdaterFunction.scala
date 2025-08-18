@@ -135,7 +135,6 @@ class PostPublishRelationUpdaterFunction(
           }
         }
     }
-    updateLanguageMapIfMultilingual(identifier)(config, httpUtil, metrics)
   }
 
   def getProgramHierarchy(programId: String)(
@@ -165,6 +164,7 @@ class PostPublishRelationUpdaterFunction(
   ): Unit = {
     val isValidProgram: Boolean =
       verifyPrimaryCategory(identifier)(metrics, config, httpUtil, cache)
+     val isValidMultiLingualCourse: Boolean = verifyCourseCategory(identifier)(metrics, config, httpUtil, cache)
     if (isValidProgram) {
       metrics.incCounter(config.postPublishRelationUpdateEventCount)
       logger.info(
@@ -193,6 +193,31 @@ class PostPublishRelationUpdaterFunction(
     } else {
       logger.info(
         "PostPublishRelationUpdaterFunction:: Nothing to do for ContentId : " + identifier
+      )
+    }
+    if (isValidMultiLingualCourse) {
+      metrics.incCounter(config.postPublishRelationUpdateEventCount)
+      logger.info(
+        "PostPublishRelationUpdaterFunction:: started for Content MultiLingual Course: " + identifier
+      )
+      try {
+        updateLanguageMapIfMultilingual(identifier)(config, httpUtil, metrics)
+        metrics.incCounter(config.postPublishRelationUpdateSuccessCount)
+        logger.info(
+          "PostPublishRelationUpdaterFunction:: Completed for ContentId : " + identifier
+        )
+      }  catch {
+        case ex: Throwable =>
+          logger.error(
+            s"Error while processing message of MultiLingual Course for identifier : ${identifier}.",
+            ex
+          )
+          metrics.incCounter(config.postPublishRelationUpdateFailureCount)
+          throw ex
+      }
+    } else {
+      logger.info(
+        "PostPublishRelationUpdaterFunction as this is not MultiLingual Course:: Nothing to do for ContentId : " + identifier
       )
     }
   }
@@ -258,9 +283,27 @@ class PostPublishRelationUpdaterFunction(
 
     val updatedLangMap = new java.util.HashMap[String, java.util.Map[String, AnyRef]]()
 
-    languageMap.asScala.foreach { case (langKey, langMeta) =>
+    val parentPublishedMeta = getCourseInfo(baseContentId)(metrics, config, cache, httpUtil)
+
+    val baseLanguageMap: java.util.Map[String, java.util.Map[String, AnyRef]] = Option(parentPublishedMeta.get("languageMapV1")) match {
+      case Some(map: java.util.Map[_, _]) =>
+        map.asInstanceOf[java.util.Map[String, java.util.Map[String, AnyRef]]]
+
+      case Some(scalaMap: Map[_, _]) =>
+        scalaMap
+          .asInstanceOf[Map[String, Map[String, AnyRef]]]
+          .map { case (k, v) => k -> v.asJava }
+          .asJava
+
+      case _ => new java.util.HashMap[String, java.util.Map[String, AnyRef]]()
+    }
+
+    baseLanguageMap.asScala.foreach { case (langKey, langMeta) =>
       val targetId = Option(langMeta.get("id")).map(_.toString).getOrElse("")
       val existingCreatedBy = Option(langMeta.get("createdBy")).map(_.toString).getOrElse("")
+      val reviewerIDs = safeJavaList("reviewerIDs", langMeta)
+      val publisherIDs = safeJavaList("publisherIDs", langMeta)
+      val existingReviewStatus = Option(langMeta.get("reviewStatus")).map(_.toString).getOrElse("")
       if (StringUtils.isNotBlank(targetId)) {
         try {
           val targetMeta = getCourseInfo(targetId)(metrics, config, cache, httpUtil)
@@ -277,17 +320,27 @@ class PostPublishRelationUpdaterFunction(
           fullEntry.put("isBaseLang", Boolean.box(isBase))
           fullEntry.put("status", finalStatus)
           fullEntry.put("createdBy", existingCreatedBy)
+          fullEntry.put("reviewerIDs", reviewerIDs)
+          fullEntry.put("publisherIDs", publisherIDs)
+          fullEntry.put("reviewStatus", existingReviewStatus)
           fullLangMap.put(langKey.toLowerCase, fullEntry)
 
           // Conditionally add to updatedLangMap
           if (targetStatus == "live" || isBase || isSelf) {
+            val existingStatus = Option(langMeta.get("status")).map(_.toString).getOrElse("")
+            val existingReviewStatus = Option(langMeta.get("reviewStatus")).map(_.toString).getOrElse("")
+
             val cleanEntry = new java.util.HashMap[String, AnyRef]()
             cleanEntry.put("id", targetId)
             cleanEntry.put("isBaseLang", Boolean.box(isBase))
-            cleanEntry.put("status", finalStatus)
+            cleanEntry.put("status", if (isSelf) "Live" else existingStatus)
+            cleanEntry.put("reviewStatus", if (isSelf) "Live" else existingReviewStatus)
             cleanEntry.put("createdBy", existingCreatedBy)
+            cleanEntry.put("reviewerIDs", reviewerIDs)
+            cleanEntry.put("publisherIDs", publisherIDs)
+
             updatedLangMap.put(langKey.toLowerCase, cleanEntry)
-          } else {
+        } else {
             logger.info(s"Skipping $targetId ($langKey) as it is not Live and not base/self.")
           }
         } catch {
@@ -334,4 +387,14 @@ class PostPublishRelationUpdaterFunction(
       }
     }
   }
+
+  def safeJavaList(key: String, langMeta: java.util.Map[String, AnyRef]): java.util.List[String] = {
+    Option(langMeta.get(key)) match {
+      case Some(list: java.util.List[_]) => list.asInstanceOf[java.util.List[String]]
+      case Some(Nil)                     => new java.util.ArrayList[String]()
+      case Some(seq: Seq[_])             => seq.asJava.asInstanceOf[java.util.List[String]]
+      case _                             => new java.util.ArrayList[String]()
+    }
+  }
+
 }

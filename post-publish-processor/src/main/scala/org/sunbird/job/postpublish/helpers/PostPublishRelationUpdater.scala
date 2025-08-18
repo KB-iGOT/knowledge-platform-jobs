@@ -158,4 +158,30 @@ trait PostPublishRelationUpdater {
     }
   }
 
+  def verifyCourseCategory(identifier: String)(
+    metrics: Metrics,
+    config: PostPublishProcessorConfig,
+    httpUtil: HttpUtil,
+    cache: DataCache
+  ): Boolean = {
+    logger.info(
+      "Verify Program post-publish required for content: " + identifier
+    )
+    // Get the primary Categories for the courses here
+    var isValidMultiLingualCourse = false
+    val contentObj: java.util.Map[String, AnyRef] =
+      getCourseInfo(identifier)(metrics, config, cache, httpUtil)
+    if (!contentObj.isEmpty) {
+      val courseCategory = contentObj.get("courseCategory")
+      if (courseCategory != null &&
+        (courseCategory == "Multilingual Course")) {
+        isValidMultiLingualCourse = true
+      }
+      logger.info("CourseCategory value is :" + courseCategory + ", for Id: " + identifier)
+    } else {
+      logger.error("Failed to read content details for Id: " + identifier)
+    }
+    isValidMultiLingualCourse
+  }
+
 }
