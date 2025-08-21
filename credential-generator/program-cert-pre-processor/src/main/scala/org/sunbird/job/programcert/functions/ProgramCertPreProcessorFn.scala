@@ -340,7 +340,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
       courseInfoMap.put("courseId", courseId)
       courseInfoMap.put(config.primaryCategory, primaryCategory)
       courseInfoMap.put(config.leafNodes, leafNodes.asJava)
-      courseInfoMap.put(config.language, language)
+      courseInfoMap.put(config.language, language.asJava)
       courseInfoMap
     } else {
       val primaryCategory = StringContext
@@ -353,7 +353,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
       val leafNodes = courseMetadata
         .getOrElse("leafnodes", new java.util.ArrayList()).asInstanceOf[java.util.List[String]]
       val language = courseMetadata
-        .getOrElse(config.language, List.empty[String]).asInstanceOf[List[String]]
+        .getOrElse(config.language, new java.util.ArrayList()).asInstanceOf[java.util.List[String]]
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
       courseInfoMap.put("courseId", courseId)
