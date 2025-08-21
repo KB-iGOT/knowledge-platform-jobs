@@ -105,8 +105,18 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
                   }
                 }
                 if (courseEnrollmentRow.isDefined) {
-                  val courseContentStatus = Option(courseEnrollmentRow.get.getMap(
-                    config.contentStatus, TypeToken.of(classOf[String]), TypeToken.of(classOf[Integer]))).head.asScala
+                  val langContentStatus = Option(courseEnrollmentRow.get.getMap(
+                    config.langContentStatus, TypeToken.of(classOf[String]), TypeToken.of(classOf[java.util.Map[String, Integer]]))).head.asScala
+                  val courseLanguages = courseMetadata.getOrDefault(config.language, new java.util.ArrayList[String]()).asInstanceOf[java.util.ArrayList[String]]
+
+                  val courseLanguage =
+                    if (CollectionUtils.isNotEmpty(courseLanguages))
+                      courseLanguages.get(0)
+                    else
+                      ""
+                  logger.info("The courseLanguage from courseMetadata:" + courseLanguage)
+                  val courseContentStatus = langContentStatus.get(courseLanguage.toLowerCase).head.asScala
+                  logger .info("The courseContentStatus for course: " + courseContentStatus)
                   for ((key, value) <- courseContentStatus) {
                     // Check if the key is present in leafNodeMap
                     if (courseContentStatus.get(key) != null) {
@@ -314,7 +324,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
     val courseMetadata = cache.getWithRetry(courseId)
     if (null == courseMetadata || courseMetadata.isEmpty) {
       val url =
-        config.contentReadURL + courseId + "?fields=identifier,primaryCategory,leafNodes"
+        config.contentReadURL + courseId + "?fields=identifier,primaryCategory,leafNodes,language,languageMapV1"
       val response = getAPICall(url, "content")(config, httpUtil, metrics)
       val primaryCategory = StringContext
         .processEscapes(
@@ -323,11 +333,14 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
         .filter(_ >= ' ')
       val leafNodes = response
         .getOrElse(config.leafNodes, List.empty[String]).asInstanceOf[List[String]]
+      val language = response
+        .getOrElse(config.language, List.empty[String]).asInstanceOf[List[String]]
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
       courseInfoMap.put("courseId", courseId)
       courseInfoMap.put(config.primaryCategory, primaryCategory)
       courseInfoMap.put(config.leafNodes, leafNodes.asJava)
+      courseInfoMap.put(config.language, language)
       courseInfoMap
     } else {
       val primaryCategory = StringContext
@@ -339,11 +352,14 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
         .filter(_ >= ' ')
       val leafNodes = courseMetadata
         .getOrElse("leafnodes", new java.util.ArrayList()).asInstanceOf[java.util.List[String]]
+      val language = courseMetadata
+        .getOrElse(config.language, List.empty[String]).asInstanceOf[List[String]]
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
       courseInfoMap.put("courseId", courseId)
       courseInfoMap.put(config.primaryCategory, primaryCategory)
       courseInfoMap.put(config.leafNodes, leafNodes)
+      courseInfoMap.put(config.language, language)
       courseInfoMap
     }
 
