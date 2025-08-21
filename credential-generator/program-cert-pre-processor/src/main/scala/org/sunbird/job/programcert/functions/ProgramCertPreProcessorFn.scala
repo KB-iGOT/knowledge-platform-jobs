@@ -17,7 +17,7 @@ import org.sunbird.job.programcert.task.ProgramCertPreProcessorConfig
 import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil}
 import org.sunbird.job.{BaseProcessKeyedFunction, Metrics}
 
-import java.util.{Date, UUID}
+import java.util.{Date, UUID, Map => JMap}
 import scala.collection.JavaConverters._
 import scala.collection.convert.ImplicitConversions.{`map AsScala`, `seq AsJavaList`}
 import scala.collection.mutable
@@ -105,8 +105,17 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
                   }
                 }
                 if (courseEnrollmentRow.isDefined) {
-                  val langContentStatus = Option(courseEnrollmentRow.get.getMap(
-                    config.langContentStatus, TypeToken.of(classOf[String]), TypeToken.of(classOf[java.util.Map[String, Integer]]))).head.asScala
+                  val langContentStatus: Map[String, Map[String, Int]] =
+                    if (courseEnrollmentRow.get != null && courseEnrollmentRow.get.getObject(config.langContentStatus) != null) {
+                      courseEnrollmentRow.get.getObject(config.langContentStatus)
+                        .asInstanceOf[JMap[String, JMap[String, Integer]]]
+                        .asScala
+                        .map { case (lang, contentMap) =>
+                          lang -> contentMap.asScala.toMap.mapValues(_.intValue())
+                        }.toMap
+                    } else {
+                      Map.empty
+                    }
                   val courseLanguages = courseMetadata.getOrDefault(config.language, new java.util.ArrayList[String]()).asInstanceOf[java.util.ArrayList[String]]
 
                   val courseLanguage =
@@ -115,7 +124,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
                     else
                       ""
                   logger.info("The courseLanguage from courseMetadata:" + courseLanguage)
-                  val courseContentStatus = langContentStatus.get(courseLanguage.toLowerCase).head.asScala
+                  val courseContentStatus = langContentStatus.get(courseLanguage.toLowerCase).head
                   logger .info("The courseContentStatus for course: " + courseContentStatus)
                   for ((key, value) <- courseContentStatus) {
                     // Check if the key is present in leafNodeMap
