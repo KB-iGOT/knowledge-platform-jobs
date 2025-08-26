@@ -99,8 +99,8 @@ class ContentPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil,
           metrics.incCounter(config.contentPublishSuccessEventCount)
           logger.info("Content publishing completed successfully for : " + data.identifier)
           logger.info("Notification started successfully")
-          val resourceCategoryOpt = Option(enrichedObj.metadata.get("resourceCategory")).map(_.asInstanceOf[String])
-          val primaryCategoryOpt = Option(enrichedObj.metadata.get("primaryCategory")).map(_.asInstanceOf[String])
+          val resourceCategoryOpt = getStringValue(enrichedObj.metadata, "resourceCategory")
+          val primaryCategoryOpt  = getStringValue(enrichedObj.metadata, "primaryCategory")
           val categoryToCheck = resourceCategoryOpt.filter(_.nonEmpty).orElse(primaryCategoryOpt).getOrElse("")
           if (!categoryToCheck.equalsIgnoreCase("Learning Resource")) {
             try {
@@ -187,4 +187,9 @@ class ContentPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil,
     context.output(config.failedEventOutTag, failedEvent)
     metrics.incCounter(config.contentPublishFailedEventCount)
   }
+
+  def getStringValue(map: Map[String, AnyRef], key: String): Option[String] = {
+    map.get(key) collect { case s: String if s.trim.nonEmpty => s.trim }
+  }
+
 }
