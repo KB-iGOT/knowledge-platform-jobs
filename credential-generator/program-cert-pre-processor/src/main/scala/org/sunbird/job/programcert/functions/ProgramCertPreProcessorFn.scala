@@ -17,7 +17,7 @@ import org.sunbird.job.programcert.task.ProgramCertPreProcessorConfig
 import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil}
 import org.sunbird.job.{BaseProcessKeyedFunction, Metrics}
 
-import java.util.{Date, UUID}
+import java.util.{Date, UUID, Map => JMap}
 import scala.collection.JavaConverters._
 import scala.collection.convert.ImplicitConversions.{`map AsScala`, `seq AsJavaList`}
 import scala.collection.mutable
@@ -105,8 +105,27 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
                   }
                 }
                 if (courseEnrollmentRow.isDefined) {
-                  val courseContentStatus = Option(courseEnrollmentRow.get.getMap(
-                    config.contentStatus, TypeToken.of(classOf[String]), TypeToken.of(classOf[Integer]))).head.asScala
+                  val langContentStatus: Map[String, Map[String, Int]] =
+                    if (courseEnrollmentRow.get != null && courseEnrollmentRow.get.getObject(config.langContentStatus) != null) {
+                      courseEnrollmentRow.get.getObject(config.langContentStatus)
+                        .asInstanceOf[JMap[String, JMap[String, Integer]]]
+                        .asScala
+                        .map { case (lang, contentMap) =>
+                          lang -> contentMap.asScala.toMap.mapValues(_.intValue())
+                        }.toMap
+                    } else {
+                      Map.empty
+                    }
+                  val courseLanguages = courseMetadata.getOrDefault(config.language, new java.util.ArrayList[String]()).asInstanceOf[java.util.ArrayList[String]]
+
+                  val courseLanguage =
+                    if (CollectionUtils.isNotEmpty(courseLanguages))
+                      courseLanguages.get(0)
+                    else
+                      ""
+                  logger.info("The courseLanguage from courseMetadata:" + courseLanguage)
+                  val courseContentStatus = langContentStatus.get(courseLanguage.toLowerCase).head
+                  logger .info("The courseContentStatus for course: " + courseContentStatus)
                   for ((key, value) <- courseContentStatus) {
                     // Check if the key is present in leafNodeMap
                     if (courseContentStatus.get(key) != null) {
@@ -276,7 +295,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
   }
 
   def getAllEnrolments(userId: String)(implicit metrics: Metrics): java.util.List[Row] = {
-    val selectWhere: Select.Where = QueryBuilder.select(config.dbUserId, config.dbCourseId, config.dbBatchId, config.contentStatus, config.progress, config.issuedCertificates, "completedon", "active", config.status)
+    val selectWhere: Select.Where = QueryBuilder.select(config.dbUserId, config.dbCourseId, config.dbBatchId, config.contentStatus, config.progress, config.issuedCertificates, "completedon", "active", config.status, config.langContentStatus)
       .from(config.keyspace, config.userEnrolmentsTable).where()
     selectWhere.and(QueryBuilder.eq(config.dbUserId, userId))
     metrics.incCounter(config.dbReadCount)
@@ -314,7 +333,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
     val courseMetadata = cache.getWithRetry(courseId)
     if (null == courseMetadata || courseMetadata.isEmpty) {
       val url =
-        config.contentReadURL + courseId + "?fields=identifier,primaryCategory,leafNodes"
+        config.contentReadURL + courseId + "?fields=identifier,primaryCategory,leafNodes,language,languageMapV1"
       val response = getAPICall(url, "content")(config, httpUtil, metrics)
       val primaryCategory = StringContext
         .processEscapes(
@@ -323,11 +342,14 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
         .filter(_ >= ' ')
       val leafNodes = response
         .getOrElse(config.leafNodes, List.empty[String]).asInstanceOf[List[String]]
+      val language = response
+        .getOrElse(config.language, List.empty[String]).asInstanceOf[List[String]]
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
       courseInfoMap.put("courseId", courseId)
       courseInfoMap.put(config.primaryCategory, primaryCategory)
       courseInfoMap.put(config.leafNodes, leafNodes.asJava)
+      courseInfoMap.put(config.language, language.asJava)
       courseInfoMap
     } else {
       val primaryCategory = StringContext
@@ -339,11 +361,14 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
         .filter(_ >= ' ')
       val leafNodes = courseMetadata
         .getOrElse("leafnodes", new java.util.ArrayList()).asInstanceOf[java.util.List[String]]
+      val language = courseMetadata
+        .getOrElse(config.language, new java.util.ArrayList()).asInstanceOf[java.util.List[String]]
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
       courseInfoMap.put("courseId", courseId)
       courseInfoMap.put(config.primaryCategory, primaryCategory)
       courseInfoMap.put(config.leafNodes, leafNodes)
+      courseInfoMap.put(config.language, language)
       courseInfoMap
     }
 
