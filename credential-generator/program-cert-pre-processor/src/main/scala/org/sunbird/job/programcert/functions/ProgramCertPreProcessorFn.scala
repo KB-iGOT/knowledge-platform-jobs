@@ -124,7 +124,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
                     else
                       ""
                   logger.info("The courseLanguage from courseMetadata:" + courseLanguage)
-                  val courseContentStatus = langContentStatus.get(courseLanguage.toLowerCase).head
+                  val courseContentStatus = langContentStatus.get(courseLanguage.toLowerCase).getOrElse(Map.empty)
                   logger .info("The courseContentStatus for course: " + courseContentStatus)
                   for ((key, value) <- courseContentStatus) {
                     // Check if the key is present in leafNodeMap
