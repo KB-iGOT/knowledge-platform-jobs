@@ -99,9 +99,10 @@ class ContentPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil,
           metrics.incCounter(config.contentPublishSuccessEventCount)
           logger.info("Content publishing completed successfully for : " + data.identifier)
           logger.info("Notification started successfully")
-          val maybeCategory = Option(enrichedObj.metadata.getOrElse("primaryCategory", null))
-          val maybeResourceCategory = Option(enrichedObj.metadata.getOrElse("resourceCategory",null))
-          if (maybeCategory.exists(_.toString.equalsIgnoreCase("Learning Resource")) && !maybeResourceCategory.exists(_.toString.equalsIgnoreCase("Learning Resource"))) {
+          val resourceCategoryOpt = getStringValue(enrichedObj.metadata, "resourceCategory")
+          val primaryCategoryOpt  = getStringValue(enrichedObj.metadata, "primaryCategory")
+          val categoryToCheck = resourceCategoryOpt.filter(_.nonEmpty).orElse(primaryCategoryOpt).getOrElse("")
+          if (!categoryToCheck.equalsIgnoreCase("Learning Resource")) {
             try {
               logger.info("Node metadata is {}", obj.metadata)
               new NotificationManager(config.notificationUrl, httpUtil).sendNotification(
@@ -186,4 +187,9 @@ class ContentPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil,
     context.output(config.failedEventOutTag, failedEvent)
     metrics.incCounter(config.contentPublishFailedEventCount)
   }
+
+  def getStringValue(map: Map[String, AnyRef], key: String): Option[String] = {
+    map.get(key) collect { case s: String if s.trim.nonEmpty => s.trim }
+  }
+
 }
