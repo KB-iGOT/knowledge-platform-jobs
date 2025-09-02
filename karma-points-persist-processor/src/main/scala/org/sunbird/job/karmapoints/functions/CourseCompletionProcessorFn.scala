@@ -10,7 +10,7 @@ import org.slf4j.LoggerFactory
 import org.sunbird.job.karmapoints.domain.Event
 import org.sunbird.job.karmapoints.task.KarmaPointsProcessorConfig
 import org.sunbird.job.karmapoints.util.Utility._
-import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil}
+import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil, ScalaJsonUtil}
 import org.sunbird.job.{BaseProcessFunction, Metrics}
 
 import java.time.{LocalDateTime, Period}
@@ -47,10 +47,26 @@ class CourseCompletionProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: 
     if("issue-event-certificate".equalsIgnoreCase(action)){
       return
     }
-    val hierarchy: java.util.Map[String, AnyRef] = fetchContentHierarchy(contextId) ( metrics,config, cassandraUtil)
+
+    var hierarchy: java.util.Map[String, AnyRef] = fetchContentHierarchy(contextId) ( metrics,config, cassandraUtil)
     if (Option(hierarchy).isEmpty || hierarchy.isEmpty) {
       return
     }
+
+    if (Option(hierarchy).isDefined && hierarchy.containsKey(config.LANGUAGE_MAP_v1) &&
+      eventData.get(config.COMPLETED_LANGUAGE).isDefined) {
+
+      val completedLang = eventData(config.COMPLETED_LANGUAGE).asInstanceOf[String]
+      val languageMapV1 = hierarchy.get(config.LANGUAGE_MAP_v1).asInstanceOf[java.util.Map[String, java.util.Map[String, AnyRef]]]
+
+      if (languageMapV1 != null && languageMapV1.containsKey(completedLang)) {
+        val mlCourse = languageMapV1.get(completedLang)
+        val mlCourseId = mlCourse.get(config.ID).asInstanceOf[String]
+        hierarchy = fetchContentHierarchy(mlCourseId)(metrics, config, cassandraUtil)
+      }
+    }
+
+
     val contextType = hierarchy.get(config.PRIMARY_CATEGORY).asInstanceOf[String]
     val headers = Map[String, String](
       config.HEADER_CONTENT_TYPE_KEY -> config.HEADER_CONTENT_TYPE_JSON
@@ -128,4 +144,75 @@ class CourseCompletionProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: 
     else
       return java.lang.Boolean.TRUE
   }
+
+//  def getCourseInfo(courseId: String)(metrics: Metrics, config: KarmaPointsProcessorConfig, cache: DataCache, httpUtil: HttpUtil): java.util.Map[String, AnyRef] = {
+//    val courseMetadata = cache.getWithRetry(courseId)
+//    if (null == courseMetadata || courseMetadata.isEmpty) {
+//      val url = config.contentBasePath + config.contentReadApi + "/" + courseId + "?fields=name,parentCollections,primaryCategory,posterImage,organisation,languageMapV1"
+//      val response = getAPICall(url, "content")(config, httpUtil, metrics)
+//      val courseName = StringContext.processEscapes(response.getOrElse(config.name, "").asInstanceOf[String]).filter(_ >= ' ')
+//      val primaryCategory = StringContext.processEscapes(response.getOrElse(config.primaryCategory, "").asInstanceOf[String]).filter(_ >= ' ')
+//      val posterImage: String = StringContext.processEscapes(response.getOrElse(config.posterImage, "").asInstanceOf[String]).filter(_ >= ' ')
+//      val parentCollections = response.getOrElse("parentCollections", List.empty[String]).asInstanceOf[List[String]]
+//      val orgData = response.get("organisation").toArray
+//      val pm = orgData(0).toString
+//      val providerName = pm.substring(1, pm.length - 1)
+//      val courseInfoMap: java.util.Map[String, AnyRef] = new java.util.HashMap[String, AnyRef]()
+//      courseInfoMap.put("courseId", courseId)
+//      courseInfoMap.put("courseName", courseName)
+//      courseInfoMap.put("parentCollections", parentCollections)
+//      courseInfoMap.put("primaryCategory", primaryCategory)
+//      courseInfoMap.put("coursePosterImage", posterImage)
+//      courseInfoMap.put("providerName", providerName)
+//      val languageMapV1 = response.getOrElse("languageMapV1", Map.empty[String, AnyRef])
+//      courseInfoMap.put("languageMapV1", languageMapV1.asInstanceOf[AnyRef])
+//      courseInfoMap
+//    } else {
+//      val courseName = StringContext.processEscapes(courseMetadata.getOrElse(config.name, "").asInstanceOf[String]).filter(_ >= ' ')
+//      val primaryCategory = StringContext.processEscapes(courseMetadata.getOrElse("primarycategory", "").asInstanceOf[String]).filter(_ >= ' ')
+//      val parentCollections = courseMetadata.getOrElse("parentcollections", new java.util.ArrayList()).asInstanceOf[java.util.ArrayList[String]]
+//      val posterImage: String = StringContext.processEscapes(courseMetadata.getOrElse("posterimage", "").asInstanceOf[String]).filter(_ >= ' ')
+//      val orgData = courseMetadata.get("organisation").toArray
+//      val pm = orgData(0).toString
+//      val providerName = pm.substring(1, pm.length - 1)
+//      val courseInfoMap: java.util.Map[String, AnyRef] = new java.util.HashMap[String, AnyRef]()
+//      courseInfoMap.put("courseId", courseId)
+//      courseInfoMap.put("courseName", courseName)
+//      courseInfoMap.put("parentCollections", parentCollections)
+//      courseInfoMap.put("primaryCategory", primaryCategory)
+//      courseInfoMap.put("coursePosterImage", posterImage)
+//      courseInfoMap.put("providerName", providerName)
+//      val languageMapV1: Map[String, Map[String, AnyRef]] =
+//        toScalaNestedMap(courseMetadata.getOrElse("languagemapv1", new java.util.HashMap[String, Object]()))
+//      courseInfoMap.put("languageMapV1", languageMapV1.asInstanceOf[AnyRef])
+//      courseInfoMap
+//    }
+//  }
+//
+//  def getAPICall(url: String, responseParam: String)(config:KarmaPointsProcessorConfig, httpUtil: HttpUtil, metrics: Metrics): Map[String,AnyRef] = {
+//    val response = httpUtil.get(url, config.defaultHeaders)
+//    if(200 == response.status) {
+//      ScalaJsonUtil.deserialize[Map[String, AnyRef]](response.body)
+//        .getOrElse("result", Map[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
+//        .getOrElse(responseParam, Map[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
+//    } else if(400 == response.status && response.body.contains(config.userAccBlockedErrCode)) {
+//      metrics.incCounter(config.skippedEventCount)
+//      logger.error(s"Error while fetching user details for ${url}: " + response.status + " :: " + response.body)
+//      Map[String, AnyRef]()
+//    } else {
+//      throw new Exception(s"Error from get API : ${url}, with response: ${response}")
+//    }
+//  }
+//
+//  def toScalaNestedMap(obj: Any): Map[String, Map[String, AnyRef]] = obj match {
+//    case outer: java.util.Map[_, _] =>
+//      outer.asScala.collect {
+//        case (k, v: java.util.Map[_, _]) =>
+//          k.toString -> v.asScala.collect {
+//            case (ik, iv) => ik.toString -> iv.asInstanceOf[AnyRef]
+//          }.toMap
+//      }.toMap
+//    case _ => Map.empty[String, Map[String, AnyRef]]
+//  }
+
 }

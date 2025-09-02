@@ -156,5 +156,7 @@ class KarmaPointsProcessorConfig(override val config: Config) extends BaseJobCon
   val cacheDbId: Int = if(config.hasPath("redis.database.karmaPointCache.id")) config.getInt("redis.database.karmaPointCache.id") else 0
   val metaRedisHost: String = config.getString("redis.host")
   val metaRedisPort: Int = config.getInt("redis.port")
+  val LANGUAGE_MAP_v1: String = "languageMapV1"
+  val COMPLETED_LANGUAGE: String = "completedLanguage"
 }
 
