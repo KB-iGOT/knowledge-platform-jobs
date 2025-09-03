@@ -180,7 +180,7 @@ program-activity-aggregate-updater:
   program-activity-aggregate-updater: |+
     include file("/data/flink/conf/base-config.conf")
     kafka {
-      input.topic = {{ env_name }}.coursebatch.job.request
+      input.topic = {{ env_name }}.coursebatch.job.request.v2
       output.audit.topic = {{ env_name }}.telemetry.raw
       output.failed.topic = {{ env_name }}.activity.agg.failed
       output.certissue.topic = {{ env_name }}.issue.certificate.request
@@ -201,7 +201,7 @@ program-activity-aggregate-updater:
       keyspace = "{{ middleware_course_keyspace }}"
       consumption.table = "{{ middleware_consumption_table }}"
       user_activity_agg.table = "{{ middleware_user_activity_agg_table }}"
-      user_enrolments.table = "user_enrolments"
+      user_enrolments.table = "user_enrolments_v2"
     }
     redis {
       database {
@@ -1318,3 +1318,8 @@ assessment-public-certificate-generator:
     parallelism.default: 1
     jobmanager.execution.failover-strategy: region
     taskmanager.memory.network.fraction: 0.1
+
+tolerations:
+  enabled: {{ kp_flink_tolerations_enabled | default('false') }}
+  nodepoolname: {{ kp_nodepool_name }}
+  

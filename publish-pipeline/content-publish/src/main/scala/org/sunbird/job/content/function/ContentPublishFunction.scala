@@ -205,4 +205,9 @@ class ContentPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil,
     context.output(config.failedEventOutTag, failedEvent)
     metrics.incCounter(config.contentPublishFailedEventCount)
   }
+
+  def getStringValue(map: Map[String, AnyRef], key: String): Option[String] = {
+    map.get(key) collect { case s: String if s.trim.nonEmpty => s.trim }
+  }
+
 }
