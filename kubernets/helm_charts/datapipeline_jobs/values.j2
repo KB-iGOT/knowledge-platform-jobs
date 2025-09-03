@@ -1318,3 +1318,8 @@ assessment-public-certificate-generator:
     parallelism.default: 1
     jobmanager.execution.failover-strategy: region
     taskmanager.memory.network.fraction: 0.1
+
+tolerations:
+  enabled: {{ kp_flink_tolerations_enabled | default('false') }}
+  nodepoolname: {{ kp_nodepool_name }}
+  

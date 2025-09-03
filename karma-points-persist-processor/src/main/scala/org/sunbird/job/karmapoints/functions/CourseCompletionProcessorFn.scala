@@ -10,7 +10,7 @@ import org.slf4j.LoggerFactory
 import org.sunbird.job.karmapoints.domain.Event
 import org.sunbird.job.karmapoints.task.KarmaPointsProcessorConfig
 import org.sunbird.job.karmapoints.util.Utility._
-import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil}
+import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil, ScalaJsonUtil}
 import org.sunbird.job.{BaseProcessFunction, Metrics}
 
 import java.time.{LocalDateTime, Period}
@@ -47,10 +47,26 @@ class CourseCompletionProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: 
     if("issue-event-certificate".equalsIgnoreCase(action)){
       return
     }
-    val hierarchy: java.util.Map[String, AnyRef] = fetchContentHierarchy(contextId) ( metrics,config, cassandraUtil)
+
+    var hierarchy: java.util.Map[String, AnyRef] = fetchContentHierarchy(contextId) ( metrics,config, cassandraUtil)
     if (Option(hierarchy).isEmpty || hierarchy.isEmpty) {
       return
     }
+
+    if (Option(hierarchy).isDefined && hierarchy.containsKey(config.LANGUAGE_MAP_v1) &&
+      eventData.get(config.COMPLETED_LANGUAGE).isDefined) {
+
+      val completedLang = eventData(config.COMPLETED_LANGUAGE).asInstanceOf[String]
+      val languageMapV1 = hierarchy.get(config.LANGUAGE_MAP_v1).asInstanceOf[java.util.Map[String, java.util.Map[String, AnyRef]]]
+
+      if (languageMapV1 != null && languageMapV1.containsKey(completedLang)) {
+        val mlCourse = languageMapV1.get(completedLang)
+        val mlCourseId = mlCourse.get(config.ID).asInstanceOf[String]
+        hierarchy = fetchContentHierarchy(mlCourseId)(metrics, config, cassandraUtil)
+      }
+    }
+
+
     val contextType = hierarchy.get(config.PRIMARY_CATEGORY).asInstanceOf[String]
     val headers = Map[String, String](
       config.HEADER_CONTENT_TYPE_KEY -> config.HEADER_CONTENT_TYPE_JSON
@@ -128,4 +144,5 @@ class CourseCompletionProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: 
     else
       return java.lang.Boolean.TRUE
   }
+
 }
