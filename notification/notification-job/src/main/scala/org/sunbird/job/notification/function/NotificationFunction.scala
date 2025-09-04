@@ -121,15 +121,14 @@ class NotificationFunction(config: NotificationConfig,  @transient var notificat
     def sendEmailNotification(notificationMap: scala.collection.immutable.HashMap[String, AnyRef]) = {
         import scala.collection.JavaConverters._
         logger.info("NotificationService:sendEmailNotification map: "+ notificationMap)
-        val emailIds : util.List[String] = notificationMap.get(IDS).get.asInstanceOf[List[String]].asJava
+        val emailIds: java.util.List[String] = notificationMap.getOrElse(IDS, List.empty[String]).asInstanceOf[List[String]].asJava
         logger.info("NotificationService:sendEmailNotification emailids: "+ emailIds)
         val templateMap : util.Map[String, AnyRef] = notificationMap.get(TEMPLATE).get.asInstanceOf[scala.collection.immutable.Map[String, AnyRef]].asJava
         val config = notificationMap.get(CONFIG).get.asInstanceOf[scala.collection.immutable.Map[String, AnyRef]].asJava
         val subject = config.get(SUBJECT).asInstanceOf[String]
         val emailText = templateMap.get(DATA).asInstanceOf[String]
-        val javaMap: util.HashMap[String, AnyRef] = new util.HashMap(notificationMap.asJava)
-        val copyEmail: util.List[String] = javaMap.getOrDefault(COPYEMAIL, new util.ArrayList[String]()).asInstanceOf[util.List[String]]
-        val bccEmail: util.List[String] = javaMap.getOrDefault(BCCIDS, new util.ArrayList[String]()).asInstanceOf[util.List[String]]
+        val copyEmail: java.util.List[String] = notificationMap.getOrElse(COPYEMAIL, List.empty[String]).asInstanceOf[List[String]].asJava
+        val bccEmail: java.util.List[String] = notificationMap.getOrElse(BCCIDS, List.empty[String]).asInstanceOf[List[String]].asJava
         logger.info("cc value for email is : " + copyEmail + " bcc value for email is : " + bccEmail)
         val emailRequest = new EmailRequest(subject, emailIds, copyEmail, bccEmail, "", emailText, null)
         notificationUtil.sendEmail(emailRequest)
