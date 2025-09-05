@@ -72,7 +72,7 @@ extends BaseProcessFunction[Event, String](config) with EventPublisher with Fail
                     logger.info("Node metadata is {}", obj.metadata)
                     new NotificationManager(config.notificationUrl, httpUtil).sendNotification(
                       "EVENT_PUBLISHED",
-                      "ENGAGEMENT",
+                      "UPDATE",
                       List("global"),
                       obj.metadata("name").asInstanceOf[String],
                       Map[String, Any]("id" -> obj.identifier)
