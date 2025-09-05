@@ -99,10 +99,9 @@ class ContentPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil,
           metrics.incCounter(config.contentPublishSuccessEventCount)
           logger.info("Content publishing completed successfully for : " + data.identifier)
           logger.info("Notification started successfully")
-          val resourceCategoryOpt = getStringValue(enrichedObj.metadata, "resourceCategory")
-          val primaryCategoryOpt  = getStringValue(enrichedObj.metadata, "primaryCategory")
-          val categoryToCheck = resourceCategoryOpt.filter(_.nonEmpty).orElse(primaryCategoryOpt).getOrElse("")
-          if (!categoryToCheck.equalsIgnoreCase("Learning Resource")) {
+          val maybeCategory = Option(enrichedObj.metadata.getOrElse("primaryCategory", null))
+          val maybeResourceCategory = Option(enrichedObj.metadata.getOrElse("resourceCategory",null))
+          if (maybeCategory.exists(_.toString.equalsIgnoreCase("Learning Resource")) && !maybeResourceCategory.exists(_.toString.equalsIgnoreCase("Learning Resource"))) {
             try {
               logger.info("Node metadata is {}", obj.metadata)
               new NotificationManager(config.notificationUrl, httpUtil).sendNotification(
@@ -116,8 +115,27 @@ class ContentPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil,
               case e: Exception => logger.info("Error in sending notification for resource ", e)
             }
           }
-
-
+         logger.info("Course publish notification started successfully for : " + data.identifier)
+         val courseCategory = Option(enrichedObj.metadata.getOrElse("courseCategory", null))
+         if (courseCategory.exists(cat =>
+           cat.toString.equalsIgnoreCase("Course") ||
+           cat.toString.equalsIgnoreCase("Moderated Course") ||
+           cat.toString.equalsIgnoreCase("Case Study"))
+         ) {
+           try {
+             logger.info("Course publish courseCategory : " + courseCategory)
+             logger.info("Node metadata is {}", obj.metadata)
+             new NotificationManager(config.notificationUrl, httpUtil).sendNotification(
+               "COURSE_PUBLISHED",
+               "ENGAGEMENT",
+                List("global"),
+               obj.metadata("name").asInstanceOf[String],
+               Map[String, Any]("id" -> obj.identifier)
+             )
+           } catch {
+             case e: Exception => logger.info("Error in sending notification for course publish", e)
+           }
+         }
         } else {
           saveOnFailure(obj, messages, data.pkgVersion)(neo4JUtil)
           val errorMessages = messages.mkString("; ")
