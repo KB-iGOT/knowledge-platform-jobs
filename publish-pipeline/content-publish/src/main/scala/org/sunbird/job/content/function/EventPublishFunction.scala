@@ -13,6 +13,7 @@ import org.sunbird.job.content.publish.helpers.EventPublisher
 import org.sunbird.job.domain.`object`.{DefinitionCache, ObjectDefinition}
 import org.sunbird.job.exception.InvalidInputException
 import org.sunbird.job.helper.FailedEventHelper
+import org.sunbird.job.content.util.NotificationManager
 import org.sunbird.job.publish.core.{ExtDataConfig, ObjectData}
 import org.sunbird.job.publish.helpers._
 import org.sunbird.job.util._
@@ -65,6 +66,20 @@ extends BaseProcessFunction[Event, String](config) with EventPublisher with Fail
                 pushPostProcessEvent(obj, context)(metrics)
                 metrics.incCounter(config.eventTypePublishSuccessCount)
                 logger.info("Event publishing completed successfully for : " + data.identifier)
+
+                logger.info("Notification for EVENT_PUBLISH started successfully.")
+                  try {
+                    logger.info("Node metadata is {}", obj.metadata)
+                    new NotificationManager(config.notificationUrl, httpUtil).sendNotification(
+                      "EVENT_PUBLISHED",
+                      "UPDATE",
+                      List("global"),
+                      obj.metadata("name").asInstanceOf[String],
+                      Map[String, Any]("id" -> obj.identifier)
+                    )
+                  } catch {
+                    case e: Exception => logger.error("Error in sending notification for Event publish ", e)
+                  }
             }
         } catch {
         case ex@(_: InvalidInputException | _: ClientException | _:java.lang.IllegalArgumentException) => // ClientException - Invalid input exception.
