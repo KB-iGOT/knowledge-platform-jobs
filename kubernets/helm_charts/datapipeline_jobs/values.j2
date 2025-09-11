@@ -245,7 +245,7 @@ activity-aggregate-updater-v2:
       output.audit.topic = {{ env_name }}.telemetry.raw
       output.failed.topic = {{ env_name }}.activity.agg.failed
       output.certissue.topic = {{ env_name }}.issue.certificate.request
-      groupId = {{ env_name }}-activity-aggregate-group
+      groupId = {{ env_name }}-activity-aggregate-v2-group
     }
     task {
       window.shards = {{ activity_agg_v2_window_shards }}
