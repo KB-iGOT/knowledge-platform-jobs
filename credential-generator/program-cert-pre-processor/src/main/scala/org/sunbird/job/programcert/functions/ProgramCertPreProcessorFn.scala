@@ -116,7 +116,13 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
                     } else {
                       Map.empty
                     }
-                  val courseLanguages = courseMetadata.getOrDefault(config.language, new java.util.ArrayList[String]()).asInstanceOf[java.util.ArrayList[String]]
+
+                  val courseLanguages: java.util.List[String] = courseMetadata.getOrDefault(config.language, List.empty[String])
+                    .asInstanceOf[Any] match {
+                    case l: java.util.List[_] => l.asScala.map(_.toString).toList.asJava
+                    case s: Seq[_] => s.map(_.toString).toList.asJava
+                    case _ => List.empty[String].asJava
+                  }
 
                   val courseLanguage =
                     if (CollectionUtils.isNotEmpty(courseLanguages))
@@ -125,7 +131,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
                       ""
                   logger.info("The courseLanguage from courseMetadata:" + courseLanguage)
                   val courseContentStatus = langContentStatus.get(courseLanguage.toLowerCase).getOrElse(Map.empty)
-                  logger .info("The courseContentStatus for course: " + courseContentStatus)
+                  logger.info("The courseContentStatus for course: " + courseContentStatus)
                   for ((key, value) <- courseContentStatus) {
                     // Check if the key is present in leafNodeMap
                     if (courseContentStatus.get(key) != null) {
