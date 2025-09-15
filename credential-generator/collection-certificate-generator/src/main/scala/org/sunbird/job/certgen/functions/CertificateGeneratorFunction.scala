@@ -28,7 +28,7 @@ import java.lang.reflect.Type
 import java.text.SimpleDateFormat
 import java.util
 import java.util.stream.Collectors
-import java.util.{Base64, Date, UUID}
+import java.util.{Base64, Date, TimeZone, UUID}
 import scala.collection.JavaConverters._
 import org.sunbird.job.certgen.domain.{ BEJobRequestEvent, EventObjectCourseCertificate}
 
@@ -316,7 +316,9 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
         ) ++ {
           if (event.reIssueDate.longValue() > 0L) {
             logger.info("Re-issue date is greater than 0, formatting and setting it as lastIssuedOn. Re-issue date: {}", event.reIssueDate)
-            val formattedReIssueDate = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ").format(new Date(event.reIssueDate.longValue()))
+            val dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+            dateFormat.setTimeZone(TimeZone.getTimeZone("Asia/Kolkata")) // Set to IST
+            val formattedReIssueDate = dateFormat.format(new Date(event.reIssueDate.longValue()))
             logger.info("Formatted reIssueDate as lastIssuedOn: {}", formattedReIssueDate)
             Map[String, String](config.lastIssuedOn -> formattedReIssueDate)
           } else if (!certMetaData.certificate.lastIssuedOn.isEmpty) {
