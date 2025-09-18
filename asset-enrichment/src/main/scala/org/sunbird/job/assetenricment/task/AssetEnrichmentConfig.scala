@@ -51,6 +51,8 @@ class AssetEnrichmentConfig(override val config: Config) extends BaseJobConfig(c
   val imageEnrichmentDataOutTag: OutputTag[Event] = OutputTag[Event]("image-enrichment-data")
   val videoEnrichmentDataOutTag: OutputTag[Event] = OutputTag[Event]("video-enrichment-data")
   val generateVideoStreamingOutTag: OutputTag[String] = OutputTag[String]("video-streaming-generator-request")
+  val failedEventOutputTag: OutputTag[String] = OutputTag[String]("asset-enrichment-failed")
+
 
   // Asset Variables
   val contentUploadContextDriven: Boolean = if (config.hasPath("content.upload.context.driven")) config.getBoolean("content.upload.context.driven") else true

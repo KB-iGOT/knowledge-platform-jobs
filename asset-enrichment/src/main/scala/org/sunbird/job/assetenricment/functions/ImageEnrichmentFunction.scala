@@ -10,7 +10,7 @@ import org.sunbird.job.assetenricment.models.Asset
 import org.sunbird.job.assetenricment.task.AssetEnrichmentConfig
 import org.sunbird.job.domain.`object`.DefinitionCache
 import org.sunbird.job.exception.InvalidEventException
-import org.sunbird.job.util.{CloudStorageUtil, FileUtils, Neo4JUtil}
+import org.sunbird.job.util.{CloudStorageUtil, FileUtils, JSONUtil, Neo4JUtil}
 import org.sunbird.job.{BaseProcessFunction, Metrics}
 
 import java.io.File
@@ -54,7 +54,9 @@ class ImageEnrichmentFunction(config: AssetEnrichmentConfig,
       case ex: Exception =>
         logger.error(s"Error while processing message for Image Enrichment for identifier : ${asset.identifier}.", ex)
         metrics.incCounter(config.failedImageEnrichmentEventCount)
-        throw new InvalidEventException(ex.getMessage, Map("partition" -> event.partition, "offset" -> event.offset), ex)
+        logger.error(s"Image Enrichment failed: identifier=${asset.identifier}, error=${ex.getMessage}, partition=${event.partition}, offset=${event.offset}", ex)
+        val failedEventJson: String = JSONUtil.serialize(event)
+        context.output(config.failedEventOutputTag, failedEventJson)
     } finally {
       FileUtils.deleteDirectory(new File(s"/tmp/$asset.identifier"))
     }
