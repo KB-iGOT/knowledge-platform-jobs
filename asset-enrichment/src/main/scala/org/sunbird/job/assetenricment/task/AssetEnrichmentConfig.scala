@@ -21,6 +21,8 @@ class AssetEnrichmentConfig(override val config: Config) extends BaseJobConfig(c
   // Kafka Topics Configuration
   val kafkaInputTopic: String = config.getString("kafka.input.topic")
   val videoStreamingTopic: String = config.getString("kafka.video_stream.topic")
+  val outputFailedTopic: String = config.getString("kafka.output.failed.topic")
+
 
   // Parallelism
   val eventRouterParallelism: Int = config.getInt("task.router.parallelism")

@@ -27,8 +27,12 @@ class AssetEnrichmentStreamTask(config: AssetEnrichmentConfig, kafkaConnector: F
       .name("asset-enrichment-router").uid("asset-enrichment-router")
       .setParallelism(config.eventRouterParallelism)
 
-    processStreamTask.getSideOutput(config.imageEnrichmentDataOutTag).process(new ImageEnrichmentFunction(config))
+    val imageStream = processStreamTask.getSideOutput(config.imageEnrichmentDataOutTag).process(new ImageEnrichmentFunction(config))
       .name("image-enrichment-process").uid("image-enrichment-process").setParallelism(config.imageEnrichmentIndexerParallelism)
+
+    // Sink failed events to Kafka
+    imageStream.getSideOutput(config.failedEventOutputTag).addSink(kafkaConnector.kafkaStringSink(config.outputFailedTopic))
+      .name("failed-image-events-sink").uid("failed-image-events-sink")
 
     val videoStream = processStreamTask.getSideOutput(config.videoEnrichmentDataOutTag).process(new VideoEnrichmentFunction(config))
       .name("video-enrichment-process").uid("video-enrichment-process").setParallelism(config.videoEnrichmentIndexerParallelism)
