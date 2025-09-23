@@ -50,7 +50,7 @@ class ImageEnrichmentFunction(config: AssetEnrichmentConfig,
         enrichImage(asset)(config, definitionCache, cloudStorageUtil, neo4JUtil)
         // Check if enrichment failed
         val status = asset.get("status", "").toString
-        if (status.equalsIgnoreCase(config.failed)) {
+        if (config.failed.equalsIgnoreCase(status)) {
           metrics.incCounter(config.failedImageEnrichmentEventCount)
           val failedEventJson: String = JSONUtil.serialize(event)
           context.output(config.failedEventOutputTag, failedEventJson)
