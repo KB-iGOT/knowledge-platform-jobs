@@ -73,4 +73,8 @@ class AssetEnrichmentConfig(override val config: Config) extends BaseJobConfig(c
   val schemaSupportVersionMap: Map[String, String] = if (config.hasPath("schema.supported_version")) config.getAnyRef("schema.supported_version").asInstanceOf[util.Map[String, String]].asScala.toMap else Map[String, String]()
 
   val unsupportedMimeTypes: util.List[String] = if (config.hasPath("unsupported.mimetypes")) config.getStringList("unsupported.mimetypes") else util.Arrays.asList[String]("image/svg+xml")
+
+  // constants
+  val failed = "Failed"
+
 }
