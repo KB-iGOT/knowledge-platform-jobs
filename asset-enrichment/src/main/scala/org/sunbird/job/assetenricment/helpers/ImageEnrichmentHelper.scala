@@ -33,7 +33,6 @@ trait ImageEnrichmentHelper {
         asset.put("processingError", e.getMessage)
         asset.put("status", "Failed")
         neo4JUtil.updateNode(asset.identifier, asset.getMetadata)
-        throw e
     }
   }
 
