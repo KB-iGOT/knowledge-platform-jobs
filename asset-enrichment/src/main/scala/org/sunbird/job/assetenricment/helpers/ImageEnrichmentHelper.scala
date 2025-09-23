@@ -75,9 +75,9 @@ trait ImageEnrichmentHelper {
         case _ => logger.error("ERR_INVALID_FILE_URL", s"Please Provide Valid File Url for identifier: $contentId!")
           throw new Exception(s"Please Provide Valid File Url for identifier : $contentId and URL : $originalURL.")
       }
-    }catch {
+    } catch {
       case e: Exception =>
-        logger.error("ERROR_PROCESSING_IMAGE", s"Error occurred while optimizing image for $contentId: ${e.getMessage}", e)
+        logger.error(s"Error occurred while optimizing image for $contentId: ${e.getMessage}", e)
         throw new Exception("Failed to optimize image for " + contentId, e)
     } finally {
       FileUtils.deleteDirectory(new File(s"/tmp/$contentId"))
