@@ -77,7 +77,7 @@ trait ImageEnrichmentHelper {
       }
     }catch {
       case e: Exception =>
-        logger.error("ERROR_PROCESSING_IMAGE", s"Error occurred while optimizing image for $contentId: ${e.getMessage}", e)
+        logger.error(s"Error occurred while optimizing image for $contentId: ${e.getMessage}", e)
         throw new Exception("Failed to optimize image for " + contentId, e)
     } finally {
       FileUtils.deleteDirectory(new File(s"/tmp/$contentId"))
