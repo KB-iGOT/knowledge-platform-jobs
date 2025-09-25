@@ -111,7 +111,7 @@ class CourseCompletionProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: 
     if(!StringUtils.isEmpty(acbpExpiry)){
       nonACBPCount = 0
       points = points+config.acbpQuotaKarmaPoints
-      val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+      val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssZ")
       val inputDate = LocalDateTime.parse(acbpExpiry, formatter)
       val currentDate = LocalDateTime.now
       if(currentDate.isAfter(inputDate)) {
