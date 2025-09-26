@@ -277,7 +277,7 @@ object Utility {
     config: KarmaPointsProcessorConfig,
     httpUtil: HttpUtil
   ): Boolean = {
-    val apiUrl = config.cbPlanReadUser
+    val apiUrl = config.cbPlanV2ReadUser
     val response = executeHttpGetRequest(apiUrl, headers)(config, httpUtil, metrics)
     val identifiers: List[AnyRef] = response.getOrElse(config.CONTENT, List.empty[AnyRef]) match {
       case content: List[Map[String, AnyRef]] =>
@@ -300,7 +300,7 @@ object Utility {
     config: KarmaPointsProcessorConfig,
     httpUtil: HttpUtil
   ): Map[String, String] = {
-    val apiUrl = config.cbPlanReadUser
+    val apiUrl = config.cbPlanV2ReadUser
     val response = executeHttpGetRequest(apiUrl, headers)(config, httpUtil, metrics)
     response.getOrElse(config.CONTENT, List.empty[AnyRef]) match {
       case content: List[Map[String, AnyRef]] =>
