@@ -13,7 +13,7 @@ import org.sunbird.job.karmapoints.util.Utility._
 import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil, ScalaJsonUtil}
 import org.sunbird.job.{BaseProcessFunction, Metrics}
 
-import java.time.{LocalDateTime, Period}
+import java.time.{LocalDateTime, OffsetDateTime, Period}
 import java.time.format.DateTimeFormatter
 import java.util
 
@@ -111,8 +111,8 @@ class CourseCompletionProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: 
     if(!StringUtils.isEmpty(acbpExpiry)){
       nonACBPCount = 0
       points = points+config.acbpQuotaKarmaPoints
-      val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssZ")
-      val inputDate = LocalDateTime.parse(acbpExpiry, formatter)
+      val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssX")
+      val inputDate = OffsetDateTime.parse(acbpExpiry, formatter).toLocalDateTime
       val currentDate = LocalDateTime.now
       if(currentDate.isAfter(inputDate)) {
         val period = Period.between(inputDate.toLocalDate,currentDate.toLocalDate)
