@@ -52,7 +52,7 @@ activity_agg_batch_read_size: 1
 activity_agg_batch_write_size: 10
 activity_agg_window_shards: 1000
 activity_agg_dedup_index: 14
-activity_agg_dedup_expiry: 604800
+activity_agg_dedup_expiry: 600
 activity_module_aggs_enabled: true
 activity_input_dedup_enabled: true
 activity_agg_enrolment_filter_processe_enabled: true
@@ -80,7 +80,7 @@ activity_agg_v2_batch_read_size: 1
 activity_agg_v2_batch_write_size: 10
 activity_agg_v2_window_shards: 1000
 activity_agg_v2_dedup_index: 14
-activity_agg_v2_dedup_expiry: 604800
+activity_agg_v2_dedup_expiry: 600
 activity_agg_v2_enrolment_filter_processe_enabled: true
 activity_agg_v2_collection_status_cache_expiry_time: 3600
 
@@ -429,6 +429,7 @@ qrcode_image_generator_parallelism: 1
 core_namespace: "{{ env }}"
 source_base_url: "{{proto}}://{{domain_name}}/api"
 cb_ext_service_base_url: http://sb-cb-ext-service.{{ core_namespace }}.svc.cluster.local:7001/
+cb_ext_course_service_base_url: http://cb-ext-course-service.{{ core_namespace }}.svc.cluster.local:7005/
 core_content_service_base_url: http://content-service.{{ core_namespace }}.svc.cluster.local:9000/
 cb_notification_wrapper_service_base_url: http://cb-notification-wrapper-service.{{ core_namespace }}.svc.cluster.local:8081
 

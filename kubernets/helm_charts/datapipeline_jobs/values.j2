@@ -549,6 +549,7 @@ asset-enrichment:
       input.topic = {{ env_name }}.learning.job.request
       groupId = {{ env_name }}-asset-enrichment-group
       video_stream.topic = {{ env_name }}.content.postpublish.request
+      output.failed.topic = {{ env_name }}.learning.job.failed
     }
     task {
       checkpointing.timeout = 900000
@@ -1005,6 +1006,7 @@ karma-points-persist-processor:
     }
     service {
       cbplan.basePath = "{{ cb_ext_service_base_url }}"
+      cbplan.v2.basePath = "{{ cb_ext_course_service_base_url }}"
       learner.basePath = "{{ learner_service_base_url }}"
       event.read = "{{ core_content_service_base_url }}event/v4/read/"
     }
