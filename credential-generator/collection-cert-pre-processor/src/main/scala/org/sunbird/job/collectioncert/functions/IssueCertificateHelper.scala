@@ -282,7 +282,7 @@ trait IssueCertificateHelper {
     def getCourseInfo(courseId: String)(metrics: Metrics, config: CollectionCertPreProcessorConfig, cache: DataCache, httpUtil: HttpUtil): java.util.Map[String, AnyRef] = {
         val courseMetadata = cache.getWithRetry(courseId)
         if (null == courseMetadata || courseMetadata.isEmpty) {
-            val url = config.contentBasePath + config.contentReadApi + "/" + courseId + "?fields=name,parentCollections,primaryCategory,posterImage,organisation,languageMapV1"
+            val url = config.contentBasePath + config.contentReadApi + "/" + courseId + "?fields=name,parentCollections,primaryCategory,posterImage,organisation,languageMapV1,courseCategory"
             val response = getAPICall(url, "content")(config, httpUtil, metrics)
             val courseName = StringContext.processEscapes(response.getOrElse(config.name, "").asInstanceOf[String]).filter(_ >= ' ')
             val primaryCategory = StringContext.processEscapes(response.getOrElse(config.primaryCategory, "").asInstanceOf[String]).filter(_ >= ' ')
@@ -291,6 +291,7 @@ trait IssueCertificateHelper {
             val orgData = response.get("organisation").toArray
             val pm = orgData(0).toString
             val providerName = pm.substring(1, pm.length - 1)
+            val courseCategory = StringContext.processEscapes(response.getOrElse(config.courseCategory, "").asInstanceOf[String]).filter(_ >= ' ')
             val courseInfoMap: java.util.Map[String, AnyRef] = new java.util.HashMap[String, AnyRef]()
             courseInfoMap.put("courseId", courseId)
             courseInfoMap.put("courseName", courseName)
@@ -300,6 +301,7 @@ trait IssueCertificateHelper {
             courseInfoMap.put("providerName", providerName)
             val languageMapV1 = response.getOrElse("languageMapV1", Map.empty[String, AnyRef])
             courseInfoMap.put("languageMapV1", languageMapV1.asInstanceOf[AnyRef])
+            courseInfoMap.put("courseCategory", courseCategory)
             courseInfoMap
         } else {
             val courseName = StringContext.processEscapes(courseMetadata.getOrElse(config.name, "").asInstanceOf[String]).filter(_ >= ' ')
@@ -309,6 +311,7 @@ trait IssueCertificateHelper {
             val orgData = courseMetadata.get("organisation").toArray
             val pm = orgData(0).toString
             val providerName = pm.substring(1, pm.length - 1)
+            val courseCategory = StringContext.processEscapes(courseMetadata.getOrElse("coursecategory", "").asInstanceOf[String]).filter(_ >= ' ')
             val courseInfoMap: java.util.Map[String, AnyRef] = new java.util.HashMap[String, AnyRef]()
             courseInfoMap.put("courseId", courseId)
             courseInfoMap.put("courseName", courseName)
@@ -319,6 +322,7 @@ trait IssueCertificateHelper {
             val languageMapV1: Map[String, Map[String, AnyRef]] =
                 toScalaNestedMap(courseMetadata.getOrElse("languagemapv1", new java.util.HashMap[String, Object]()))
             courseInfoMap.put("languageMapV1", languageMapV1.asInstanceOf[AnyRef])
+            courseInfoMap.put("courseCategory", courseCategory)
             courseInfoMap
         }
     }
