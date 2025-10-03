@@ -268,6 +268,7 @@ object Utility {
       logger.error(s"Error while fetching user details for $url: ${response.status} :: ${response.body}")
       Map.empty[String, AnyRef]
     } else {
+      logger.error(s"Error while fetching user details for $url: ${response.status} :: ${response.body}")
       throw new Exception(s"Error from get API: $url, with response: $response")
     }
   }

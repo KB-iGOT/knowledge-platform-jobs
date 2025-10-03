@@ -162,5 +162,6 @@ class KarmaPointsProcessorConfig(override val config: Config) extends BaseJobCon
   val metaRedisPort: Int = config.getInt("redis.port")
   val LANGUAGE_MAP_v1: String = "languageMapV1"
   val COMPLETED_LANGUAGE: String = "completedLanguage"
+  val CONTENTS = "contents"
 }
 
