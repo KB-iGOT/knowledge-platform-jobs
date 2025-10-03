@@ -279,18 +279,11 @@ object Utility {
   ): Boolean = {
     val apiUrl = config.cbPlanV2ReadUser
     val response = executeHttpGetRequest(apiUrl, headers)(config, httpUtil, metrics)
-    val identifiers: List[AnyRef] = response.getOrElse(config.CONTENT, List.empty[AnyRef]) match {
-      case content: List[Map[String, AnyRef]] =>
-        content.flatMap { contentItem =>
-          contentItem.getOrElse(config.CONTENT_LIST, List.empty[AnyRef]) match {
-            case contentList: List[Map[String, AnyRef]] =>
-              contentList.flatMap(_.get(config.IDENTIFIER))
-            case _ =>
-              List.empty[AnyRef] // or handle the case when "contentList" is not present in the response
-          }
-        }
-      case _ =>
-        List.empty[AnyRef] // or handle the case when "content" is not present in the response
+     val identifiers: List[String] = response.getOrElse(config.CONTENTS, Map.empty[String, AnyRef]) match {
+       case courses: Map[String @unchecked, AnyRef @unchecked] =>
+         courses.keys.toList
+       case _ =>
+         List.empty[String]
     }
     identifiers.contains(courseId)
   }
@@ -302,21 +295,17 @@ object Utility {
   ): Map[String, String] = {
     val apiUrl = config.cbPlanV2ReadUser
     val response = executeHttpGetRequest(apiUrl, headers)(config, httpUtil, metrics)
-    response.getOrElse(config.CONTENT, List.empty[AnyRef]) match {
-      case content: List[Map[String, AnyRef]] =>
-        content.flatMap { contentItem =>
-          contentItem.getOrElse(config.CONTENT_LIST, List.empty[AnyRef]) match {
-            case contentList: List[Map[String, AnyRef]] =>
-              contentList
-                .flatMap(item => item.get(config.IDENTIFIER).map(identifier => (identifier.toString, contentItem.getOrElse("endDate", "").toString)))
-            case _ =>
-              List.empty[(String, String)] // or handle the case when "contentList" is not present in the response
-          }
-        }.toMap
+
+    response.get(config.CONTENTS) match {
+      case Some(courses: Map[_, _]) =>
+        courses.asInstanceOf[Map[String, AnyRef]]
+          .map { case (k, v) => k -> v.toString }
       case _ =>
-        Map.empty[String, String] // or handle the case when "content" is not present in the response
+        Map.empty[String, String]
+
     }
   }
+
 
   private def insertKarmaCreditLookup(
                                        userId: String,
