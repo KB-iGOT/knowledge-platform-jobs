@@ -74,7 +74,7 @@ class KarmaPointsProcessorConfig(override val config: Config) extends BaseJobCon
 
   val cbPlanV2Base: String = config.getString("service.cbplan.v2.basePath")
 
-  val cbPlanV2ReadUser = cbPlanV2Base + "cbplan/v2/private/user/list"
+  val cbPlanV2ReadUser = cbPlanV2Base + "cbplan/v2/user/lookup"
 
   val cbEventReadUrl: String = config.getString("service.event.read")
 
@@ -162,5 +162,6 @@ class KarmaPointsProcessorConfig(override val config: Config) extends BaseJobCon
   val metaRedisPort: Int = config.getInt("redis.port")
   val LANGUAGE_MAP_v1: String = "languageMapV1"
   val COMPLETED_LANGUAGE: String = "completedLanguage"
+  val CONTENTS = "contents"
 }
 
