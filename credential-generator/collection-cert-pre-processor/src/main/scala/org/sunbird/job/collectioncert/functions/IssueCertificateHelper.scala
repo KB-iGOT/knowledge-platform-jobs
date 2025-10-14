@@ -256,7 +256,8 @@ trait IssueCertificateHelper {
             "primaryCategory" -> courseInfo.getOrDefault("primaryCategory", "").asInstanceOf[String],
             "parentCollections" -> parentCollections,
             "coursePosterImage" -> courseInfo.getOrDefault("coursePosterImage", "").asInstanceOf[String],
-            "completedLanguage" -> event.completedLanguage
+            "completedLanguage" -> event.completedLanguage,
+            "courseCategory" -> courseInfo.getOrDefault("courseCategory", "").asInstanceOf[String],
         )
         logger.info("Constructured eData from preProcessor : " + JSONUtil.serialize(eData))
         ScalaJsonUtil.serialize(BEJobRequestEvent(edata = eData, `object` = EventObject(id= event.userId)))
