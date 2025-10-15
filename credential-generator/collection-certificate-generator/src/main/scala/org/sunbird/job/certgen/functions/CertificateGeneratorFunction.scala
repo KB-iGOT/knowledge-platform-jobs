@@ -491,7 +491,7 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
           JsonKeys.ID -> uuid,
           JsonKeys.JSON_DATA -> certificateExtension, JsonKeys.ACCESS_CODE -> qrMap.accessCode,
           JsonKeys.RECIPIENT_NAME -> certModel.recipientName, JsonKeys.RECIPIENT_ID -> certModel.identifier,
-          config.RELATED -> event.related
+          config.RELATED -> event.related, JsonKeys.DYNAMIC_GENERATION -> "true"
         ) ++ {if (!event.oldId.isEmpty) Map[String, AnyRef](config.OLD_ID -> event.oldId) else Map[String, AnyRef]()}})
         addCertToRegistryV2(event, addReq, context)(metrics)
         //cert-registry v2 end
