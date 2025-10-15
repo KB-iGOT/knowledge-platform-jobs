@@ -20,7 +20,7 @@ import org.sunbird.job.certgen.domain._
 import org.sunbird.job.certgen.exceptions.ServerException
 import org.sunbird.job.certgen.task.CertificateGeneratorConfig
 import org.sunbird.job.exception.InvalidEventException
-import org.sunbird.job.util.{CassandraUtil, ElasticSearchUtil, HttpUtil, ScalaJsonUtil, JSONUtil}
+import org.sunbird.job.util.{CassandraUtil, ElasticSearchUtil, HttpUtil, JSONUtil, ScalaJsonUtil}
 import org.sunbird.job.{BaseProcessKeyedFunction, Metrics}
 
 import java.io.{File, IOException}
@@ -30,7 +30,7 @@ import java.util
 import java.util.stream.Collectors
 import java.util.{Base64, Date, UUID}
 import scala.collection.JavaConverters._
-import org.sunbird.job.certgen.domain.{ BEJobRequestEvent, EventObjectCourseCertificate}
+import org.sunbird.job.certgen.domain.{BEJobRequestEvent, EventObjectCourseCertificate}
 
 class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUtil: HttpUtil, storageService: StorageService, @transient var cassandraUtil: CassandraUtil = null)
   extends BaseProcessKeyedFunction[String, Event, String](config) {
@@ -126,7 +126,7 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
         val userEnrollmentData = UserEnrollmentData(related.getOrElse(config.BATCH_ID, "").asInstanceOf[String], certModel.identifier,
           related.getOrElse(config.COURSE_ID, "").asInstanceOf[String], event.courseName, event.templateId,
           Certificate(uuid, event.name, qrMap.accessCode, formatter.format(new Date()), "", ""))
-        updateUserEnrollmentTable(event, userEnrollmentData, context)
+        updateUserEnrollmentTable(event, userEnrollmentData, context, "")
       } finally {
         cleanUp(uuid, directory)
       }
@@ -173,7 +173,7 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
       val userEnrollmentData = UserEnrollmentData(related.getOrElse(config.BATCH_ID, "").asInstanceOf[String], certModel.identifier,
         related.getOrElse(config.COURSE_ID, "").asInstanceOf[String], event.courseName, event.templateId,
         Certificate(uuid, event.name, "", formatter.format(new Date()), event.svgTemplate, config.rcEntity))
-      updateUserEnrollmentTable(event, userEnrollmentData, context)
+      updateUserEnrollmentTable(event, userEnrollmentData, context, "")
       metrics.incCounter(config.successEventCount)
     })
   }
@@ -301,7 +301,7 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
     }
   }
 
-  def updateUserEnrollmentTable(event: Event, certMetaData: UserEnrollmentData, context: KeyedProcessFunction[String, Event, String]#Context)(implicit metrics: Metrics): Unit = {
+  def updateUserEnrollmentTable(event: Event, certMetaData: UserEnrollmentData, context: KeyedProcessFunction[String, Event, String]#Context, version: String)(implicit metrics: Metrics): Unit = {
     logger.info("updating user enrollment table {}", certMetaData)
     val primaryFields = Map(config.userId.toLowerCase() -> certMetaData.userId, config.batchId.toLowerCase -> certMetaData.batchId, config.courseId.toLowerCase -> certMetaData.courseId)
     val records = getIssuedCertificatesFromUserEnrollmentTable(primaryFields)
@@ -349,6 +349,16 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
             )
           } else {
             logger.info("No Special Certificate")
+            Map[String, String]()
+          }
+        } ++ {
+          if (StringUtils.isNotBlank(version)) {
+            logger.info("The dynamic Certificate generation request")
+            Map[String, String](
+              config.version -> version,
+            )
+          } else {
+            logger.info("Request is not for dynamic certificate Generatiom")
             Map[String, String]()
           }
         }))
@@ -476,7 +486,6 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
         val certificateExtension: CertificateExtension = certificateGenerator.getCertificateExtension(certModel)
         uuid = certificateGenerator.getUUID(certificateExtension)
         val qrMap = certificateGenerator.generateQrCode(uuid, directory, certificateConfig.basePath)
-        val encodedQrCode: String = encodeQrCode(qrMap.qrFile)
         //adding certificate to registryV2
         val addReq = Map[String, AnyRef](JsonKeys.REQUEST -> {Map[String, AnyRef](
           JsonKeys.ID -> uuid,
@@ -490,7 +499,7 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
         val userEnrollmentData = UserEnrollmentData(related.getOrElse(config.BATCH_ID, "").asInstanceOf[String], certModel.identifier,
           related.getOrElse(config.COURSE_ID, "").asInstanceOf[String], event.courseName, event.templateId,
           Certificate(uuid, event.name, qrMap.accessCode, formatter.format(new Date()), "", ""))
-        updateUserEnrollmentTable(event, userEnrollmentData, context)
+        updateUserEnrollmentTable(event, userEnrollmentData, context, "v2")
       } finally {
         cleanUp(uuid, directory)
       }

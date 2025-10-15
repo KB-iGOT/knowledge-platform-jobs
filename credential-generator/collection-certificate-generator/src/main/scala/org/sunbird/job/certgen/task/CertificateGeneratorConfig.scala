@@ -189,4 +189,5 @@ class CertificateGeneratorConfig(override val config: Config) extends BaseJobCon
   val dataRedisPort: Option[Int] = if (config.hasPath("redis.data.port")) Some(config.getInt("redis.data.port")) else None
   val allowedCourseCategoryForCertificteProcesser = if(config.hasPath("allowed.course.category.certificate.processor")) config.getStringList("allowed.course.category.certificate.processor") else util.Arrays.asList("Course","Moderated Course","External Redirect")
   val addCertRegApiV2 = "/certs/v3/registry/add"
+  val version = "version"
 }
