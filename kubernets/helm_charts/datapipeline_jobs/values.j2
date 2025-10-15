@@ -816,7 +816,7 @@ collection-certificate-generator:
     }
     enable.suppress.exception = {{ collection_certificate_generator_enable_suppress_exception | lower }}
     enable.rc.certificate = false
-
+    allowed.course.category.certificate.processor="Course","Moderated Course","External Redirect"
 
   flink-conf: |+
     jobmanager.memory.flink.size: {{ flink_job_names['collection-certificate-generator'].jobmanager_memory }}
