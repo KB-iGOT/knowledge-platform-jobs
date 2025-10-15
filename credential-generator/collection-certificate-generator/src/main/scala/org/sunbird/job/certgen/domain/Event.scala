@@ -76,4 +76,6 @@ class Event(eventMap: java.util.Map[String, Any], partition: Int, offset: Long) 
       case _ => throw new IllegalArgumentException("Unsupported type for edata.reIssueDate")
     }
   }
+
+  def courseCategory: String = readOrDefault[String]("edata.courseCategory", "")
 }

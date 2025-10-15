@@ -20,7 +20,7 @@ import org.sunbird.job.certgen.domain._
 import org.sunbird.job.certgen.exceptions.ServerException
 import org.sunbird.job.certgen.task.CertificateGeneratorConfig
 import org.sunbird.job.exception.InvalidEventException
-import org.sunbird.job.util.{CassandraUtil, ElasticSearchUtil, HttpUtil, ScalaJsonUtil, JSONUtil}
+import org.sunbird.job.util.{CassandraUtil, ElasticSearchUtil, HttpUtil, JSONUtil, ScalaJsonUtil}
 import org.sunbird.job.{BaseProcessKeyedFunction, Metrics}
 
 import java.io.{File, IOException}
@@ -30,7 +30,7 @@ import java.util
 import java.util.stream.Collectors
 import java.util.{Base64, Date, UUID}
 import scala.collection.JavaConverters._
-import org.sunbird.job.certgen.domain.{ BEJobRequestEvent, EventObjectCourseCertificate}
+import org.sunbird.job.certgen.domain.{BEJobRequestEvent, EventObjectCourseCertificate}
 
 class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUtil: HttpUtil, storageService: StorageService, @transient var cassandraUtil: CassandraUtil = null)
   extends BaseProcessKeyedFunction[String, Event, String](config) {
@@ -78,7 +78,11 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
       certValidator.validateGenerateCertRequest(event, config.enableSuppressException)
       if(certValidator.isNotIssued(event)(config, metrics, cassandraUtil)) {
         if(config.enableRcCertificate) generateCertificateUsingRC(event, context)(metrics)
-        else generateCertificate(event, context)(metrics)
+        else if ( config.allowedCourseCategoryForCertificteProcesser.contains(event.courseCategory)) {
+          generateCertificate(event, context)(metrics)
+        } else {
+          generateDynamicCertificateMap(event, context)(metrics)
+        }
       } else {
         metrics.incCounter(config.skippedEventCount)
         logger.info(s"Certificate already issued for: ${event.eData.getOrElse("userId", "")} ${event.related}")
@@ -122,7 +126,7 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
         val userEnrollmentData = UserEnrollmentData(related.getOrElse(config.BATCH_ID, "").asInstanceOf[String], certModel.identifier,
           related.getOrElse(config.COURSE_ID, "").asInstanceOf[String], event.courseName, event.templateId,
           Certificate(uuid, event.name, qrMap.accessCode, formatter.format(new Date()), "", ""))
-        updateUserEnrollmentTable(event, userEnrollmentData, context)
+        updateUserEnrollmentTable(event, userEnrollmentData, context, "")
       } finally {
         cleanUp(uuid, directory)
       }
@@ -169,7 +173,7 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
       val userEnrollmentData = UserEnrollmentData(related.getOrElse(config.BATCH_ID, "").asInstanceOf[String], certModel.identifier,
         related.getOrElse(config.COURSE_ID, "").asInstanceOf[String], event.courseName, event.templateId,
         Certificate(uuid, event.name, "", formatter.format(new Date()), event.svgTemplate, config.rcEntity))
-      updateUserEnrollmentTable(event, userEnrollmentData, context)
+      updateUserEnrollmentTable(event, userEnrollmentData, context, "")
       metrics.incCounter(config.successEventCount)
     })
   }
@@ -297,7 +301,7 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
     }
   }
 
-  def updateUserEnrollmentTable(event: Event, certMetaData: UserEnrollmentData, context: KeyedProcessFunction[String, Event, String]#Context)(implicit metrics: Metrics): Unit = {
+  def updateUserEnrollmentTable(event: Event, certMetaData: UserEnrollmentData, context: KeyedProcessFunction[String, Event, String]#Context, version: String)(implicit metrics: Metrics): Unit = {
     logger.info("updating user enrollment table {}", certMetaData)
     val primaryFields = Map(config.userId.toLowerCase() -> certMetaData.userId, config.batchId.toLowerCase -> certMetaData.batchId, config.courseId.toLowerCase -> certMetaData.courseId)
     val records = getIssuedCertificatesFromUserEnrollmentTable(primaryFields)
@@ -345,6 +349,16 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
             )
           } else {
             logger.info("No Special Certificate")
+            Map[String, String]()
+          }
+        } ++ {
+          if (StringUtils.isNotBlank(version)) {
+            logger.info("The dynamic Certificate generation request")
+            Map[String, String](
+              config.version -> version,
+            )
+          } else {
+            logger.info("Request is not for dynamic certificate Generatiom")
             Map[String, String]()
           }
         }))
@@ -457,5 +471,65 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
     })
   }
 
+  @throws[Exception]
+  def generateDynamicCertificateMap(event: Event, context: KeyedProcessFunction[String, Event, String]#Context)(implicit metrics: Metrics): Unit = {
+    logger.info("Inside Dynamic Certificate method: " + event.userId)
+    val certModelList: List[CertModel] = new CertMapper(certificateConfig).mapReqToCertModel(event)
+    val certificateGenerator = new CertificateGenerator
+    val primaryFields = Map(config.userId.toLowerCase() -> event.userId,
+      config.batchId.toLowerCase -> event.batchId,
+      config.courseId.toLowerCase -> event.courseId)
+    val increaseCertCount: Boolean = getIssuedCertificatesDetailsFromUserEnrollmentTable(primaryFields)
+    certModelList.foreach(certModel => {
+      var uuid: String = null
+      try {
+        val certificateExtension: CertificateExtension = certificateGenerator.getCertificateExtension(certModel)
+        uuid = certificateGenerator.getUUID(certificateExtension)
+        val qrMap = certificateGenerator.generateQrCode(uuid, directory, certificateConfig.basePath)
+        //adding certificate to registryV2
+        val addReq = Map[String, AnyRef](JsonKeys.REQUEST -> {Map[String, AnyRef](
+          JsonKeys.ID -> uuid,
+          JsonKeys.JSON_DATA -> certificateExtension, JsonKeys.ACCESS_CODE -> qrMap.accessCode,
+          JsonKeys.RECIPIENT_NAME -> certModel.recipientName, JsonKeys.RECIPIENT_ID -> certModel.identifier,
+          config.RELATED -> event.related, JsonKeys.DYNAMIC_GENERATION -> "true"
+        ) ++ {if (!event.oldId.isEmpty) Map[String, AnyRef](config.OLD_ID -> event.oldId) else Map[String, AnyRef]()}})
+        addCertToRegistryV2(event, addReq, context)(metrics)
+        //cert-registry v2 end
+        val related = event.related
+        val userEnrollmentData = UserEnrollmentData(related.getOrElse(config.BATCH_ID, "").asInstanceOf[String], certModel.identifier,
+          related.getOrElse(config.COURSE_ID, "").asInstanceOf[String], event.courseName, event.templateId,
+          Certificate(uuid, event.name, qrMap.accessCode, formatter.format(new Date()), "", ""))
+        updateUserEnrollmentTable(event, userEnrollmentData, context, "v2")
+      } finally {
+        cleanUp(uuid, directory)
+      }
+    })
+
+    if (increaseCertCount) {
+      val userId = event.userId
+      val redisKey = "user_wise_certificate_count"
+      val redisUserCertificateCount = dataCache.hget(redisKey,userId)
+      if (redisUserCertificateCount>0) {
+        logger.info("Increasing certificate count for user: " + event.userId)
+        val updatedRedisValue = redisUserCertificateCount + 1
+        dataCache.hsetWithRetry(redisKey,userId, updatedRedisValue.toString)
+      }else {
+        logger.info("Certificate count not found in redis for user: " + event.userId)
+      }
+    }
+
+  }
+
+  def addCertToRegistryV2(certReq: Event, request: Map[String, AnyRef], context: KeyedProcessFunction[String, Event, String]#Context)(implicit metrics: Metrics): Unit = {
+    logger.info("adding certificate to the registryV2")
+    val httpRequest = ScalaModuleJsonUtils.serialize(request)
+    val httpResponse = httpUtil.post(config.certRegistryBaseUrl + config.addCertRegApiV2, httpRequest)
+    if (httpResponse.status == 200) {
+      logger.info("certificate added successfully to the registry v2" + httpResponse.body)
+    } else {
+      logger.error("certificate addition to registry v2 failed: " + httpResponse.status + " :: " + httpResponse.body)
+      throw ServerException("ERR_API_CALL", "Something Went Wrong While Making API Call | Status is v2: " + httpResponse.status + " :: " + httpResponse.body)
+    }
+  }
 
 }
