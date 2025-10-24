@@ -701,7 +701,7 @@ collection-cert-pre-processor:
       port = 6379
     }
     assessment.metrics.supported.contenttype = ["SelfAssess"]
-    allowed.course.category.certificate.processor = ["Course", "Moderated Course", "External Redirect"]
+    allowed.course.category.certificate.processor = ["Course","Moderated Course","Invite-Only Program","Moderated Program","Blended Program","Standalone Assessment","Moderated Assessment","Invite-Only Assessment","External Redirect","Comprehensive Assessment Program","Multilingual Course","Pre Enrolment Assessment"]
 
   flink-conf: |+
     jobmanager.memory.flink.size: {{ flink_job_names['collection-cert-pre-processor'].jobmanager_memory }}
@@ -816,7 +816,7 @@ collection-certificate-generator:
     }
     enable.suppress.exception = {{ collection_certificate_generator_enable_suppress_exception | lower }}
     enable.rc.certificate = false
-    allowed.course.category.certificate.processor = ["Course", "Moderated Course", "External Redirect"]
+    allowed.course.category.certificate.processor = ["Course","Moderated Course","Invite-Only Program","Moderated Program","Blended Program","Standalone Assessment","Moderated Assessment","Invite-Only Assessment","External Redirect","Comprehensive Assessment Program","Multilingual Course","Pre Enrolment Assessment"]
 
   flink-conf: |+
     jobmanager.memory.flink.size: {{ flink_job_names['collection-certificate-generator'].jobmanager_memory }}
