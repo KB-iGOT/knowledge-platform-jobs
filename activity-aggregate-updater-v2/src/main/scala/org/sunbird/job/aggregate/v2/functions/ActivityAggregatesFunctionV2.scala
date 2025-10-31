@@ -139,6 +139,7 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       cassandraUtil.update(updateAggQuery)
     }
     if (config.dedupEnabled) {
+      logger.info("========== Inside dedup block for cert trigger activityAggregatorFunctionV2 ========== ")
       event.contents
         .filter(_.status == 2)
         .map(c => DeDupHelperV2.getMessageId(event.courseId, event.batchId, event.userId, c.contentId, 2, event.language))

@@ -57,6 +57,7 @@ class ProgramProgressCompleteFunction(config: ProgramActivityAggregateUpdaterCon
     logger.info("posting events completed")
     // Create and update the checksum to DeDup store for the input events.
     if (config.dedupEnabled) {
+      logger.info("========== Inside dedup block for cert trigger ProgramProgressCompleteFunction ========== ")
       events.map(cp => cp.inputContents.map(c => DeDupHelper.getMessageId(cp.courseId, cp.batchId, cp.userId, c, 2)))
         .flatten.foreach(checksum => deDupEngine.storeChecksum(checksum))
     }
