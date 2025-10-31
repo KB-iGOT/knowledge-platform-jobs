@@ -79,6 +79,7 @@ class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpd
 
   def discardDuplicates(event: Map[String, AnyRef]): Boolean = {
     if (config.dedupEnabled) {
+      logger.info("========== Inside dedup block for cert trigger ProgramContentConsumptionDeDupFunction ========== ")
       val userId = event.getOrElse(config.userId, "").asInstanceOf[String]
       val courseId = event.getOrElse(config.courseId, "").asInstanceOf[String]
       val batchId = event.getOrElse(config.batchId, "").asInstanceOf[String]
