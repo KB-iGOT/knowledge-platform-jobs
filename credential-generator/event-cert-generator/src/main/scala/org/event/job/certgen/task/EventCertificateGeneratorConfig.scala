@@ -198,4 +198,7 @@ class EventCertificateGeneratorConfig(override val config: Config) extends BaseJ
 
   val dataRedisHost: Option[String] = if (config.hasPath("redis.data.host")) Some(config.getString("redis.data.host")) else None
   val dataRedisPort: Option[Int] = if (config.hasPath("redis.data.port")) Some(config.getInt("redis.data.port")) else None
+  val addCertRegApiV2 = "/certs/v3/registry/add"
+  val dynamicCertificateEnabledForEvent: Boolean = if (config.hasPath("dynamicCertificateEnabledForEvent")) config.getBoolean("dynamicCertificateEnabledForEvent") else true
+  val version = "version"
 }
