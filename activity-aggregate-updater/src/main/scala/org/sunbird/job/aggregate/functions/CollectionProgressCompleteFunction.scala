@@ -27,7 +27,7 @@ class CollectionProgressCompleteFunction(config: ActivityAggregateUpdaterConfig)
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
     cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
-    deDupEngine = new DeDupEngine(config, new RedisConnect(config, Option(config.deDupRedisHost), Option(config.deDupRedisPort)), config.deDupStore, config.deDupExpirySec)
+    deDupEngine = new DeDupEngine(config, new RedisConnect(config, Option(config.deDupRedisHost), Option(config.deDupRedisPort)), config.deDupStore, config.deDupExpirySec, config.deDupRedisHost, config.deDupRedisPort)
     deDupEngine.init()
   }
 
