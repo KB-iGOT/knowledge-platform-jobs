@@ -74,7 +74,11 @@ class CertificateGeneratorFunction(config: CertificateGeneratorConfig, httpUtil:
       certValidator.validateGenerateCertRequest(event, config.enableSuppressException)
       if(certValidator.isNotIssued(event)(config, metrics, cassandraUtil)) {
         if(config.enableRcCertificate) generateCertificateUsingRC(event, context)(metrics)
-        else generateCertificate(event, context)(metrics)
+        else if (config.dynamicCertificateEnabledForExternalContent) {
+          generateDynamicCertificate(event, context)(metrics)
+        } else {
+          generateCertificate(event, context)(metrics)
+        }
       } else {
         metrics.incCounter(config.skippedEventCount)
         logger.info(s"Certificate already issued for: ${event.eData.getOrElse("userId", "")} ${event.related}")
@@ -394,4 +398,111 @@ class CertificateGeneratorFunction(config: CertificateGeneratorConfig, httpUtil:
     context.output(config.generateProgramCertificateOutputTag, event)
   }
   */
+
+  @throws[Exception]
+  def generateDynamicCertificate(event: Event, context: KeyedProcessFunction[String, Event, String]#Context)(implicit metrics: Metrics): Unit = {
+    val certModelList: List[CertModel] = new CertMapper(certificateConfig).mapReqToCertModel(event)
+    val certificateGenerator = new CertificateGenerator
+    certModelList.foreach(certModel => {
+      var uuid: String = null
+      try {
+        val certificateExtension: CertificateExtension = certificateGenerator.getCertificateExtension(certModel)
+        uuid = certificateGenerator.getUUID(certificateExtension)
+        val qrMap = certificateGenerator.generateQrCode(uuid, directory, certificateConfig.basePath)
+        //adding certificate to registry V2
+        val addReq = Map[String, AnyRef](JsonKeys.REQUEST -> {Map[String, AnyRef](
+          JsonKeys.ID -> uuid,
+          JsonKeys.JSON_DATA -> certificateExtension, JsonKeys.ACCESS_CODE -> qrMap.accessCode,
+          JsonKeys.RECIPIENT_NAME -> certModel.recipientName, JsonKeys.RECIPIENT_ID -> certModel.identifier,
+          config.RELATED -> event.related
+        ) ++ {if (!event.oldId.isEmpty) Map[String, AnyRef](config.OLD_ID -> event.oldId) else Map[String, AnyRef]()} ++
+          {
+            if (StringUtils.isNotBlank(config.specialEventCertificateName)) {
+              logger.info("The special Certificate event name is : {}", config.specialEventCertificateName)
+              Map[String, String](
+                config.eventIssueName -> config.specialEventCertificateName,
+              )
+            } else {
+              logger.info("No Special Certificate")
+              Map[String, String]()
+            }
+          }})
+        addCertToRegistryV2(event, addReq, context)(metrics)
+        //cert-registry end
+        val related = event.related
+        val userEnrollmentData = UserEnrollmentData(certModel.identifier,
+          related.getOrElse(config.COURSE_ID, "").asInstanceOf[String], event.courseName, event.templateId,
+          Certificate(uuid, event.name, qrMap.accessCode, formatter.format(new Date()), "", ""))
+        updateUserEnrollmentTableV2(event, userEnrollmentData, context)
+        metrics.incCounter(config.successEventCount)
+      } finally {
+        cleanUp(uuid, directory)
+      }
+    })
+  }
+
+  def addCertToRegistryV2(certReq: Event, request: Map[String, AnyRef], context: KeyedProcessFunction[String, Event, String]#Context)(implicit metrics: Metrics): Unit = {
+    logger.info("adding certificate to the registryV2")
+    val httpRequest = ScalaModuleJsonUtils.serialize(request)
+    val httpResponse = httpUtil.post(config.certRegistryBaseUrl + config.addCertRegApiV2, httpRequest)
+    if (httpResponse.status == 200) {
+      logger.info("certificate added successfully to the registry v2" + httpResponse.body)
+    } else {
+      logger.error("certificate addition to registry v2 failed: " + httpResponse.status + " :: " + httpResponse.body)
+      throw ServerException("ERR_API_CALL", "Something Went Wrong While Making API Call | Status is v2: " + httpResponse.status + " :: " + httpResponse.body)
+    }
+  }
+
+  def updateUserEnrollmentTableV2(event: Event, certMetaData: UserEnrollmentData, context: KeyedProcessFunction[String, Event, String]#Context)(implicit metrics: Metrics): Unit = {
+    logger.info("updating user enrollment table {}", certMetaData)
+    val primaryFields = Map(config.userId.toLowerCase() -> certMetaData.userId, config.courseId.toLowerCase -> certMetaData.courseId)
+    val records = getIssuedCertificatesFromUserEnrollmentTable(primaryFields)
+    if (records.nonEmpty) {
+      records.foreach((row: Row) => {
+        val issuedOn = row.getTimestamp("completedOn")
+        var certificatesList = row.getList(config.issued_certificates, TypeTokens.mapOf(classOf[String], classOf[String]))
+        if (null == certificatesList && certificatesList.isEmpty) {
+          certificatesList = new util.ArrayList[util.Map[String, String]]()
+        }
+        val updatedCerts: util.List[util.Map[String, String]] = certificatesList.stream().filter(cert => !StringUtils.equalsIgnoreCase(certMetaData.certificate.name, cert.get("name"))).collect(Collectors.toList())
+        updatedCerts.add(mapAsJavaMap(Map[String, String](
+          config.name -> certMetaData.certificate.name,
+          config.identifier -> certMetaData.certificate.id,
+          config.token -> certMetaData.certificate.token,
+        ) ++ {if(!certMetaData.certificate.lastIssuedOn.isEmpty) Map[String, String](config.lastIssuedOn -> certMetaData.certificate.lastIssuedOn)
+        else Map[String, String]()}
+          ++ {if(config.enableRcCertificate) Map[String, String](config.templateUrl -> certMetaData.certificate.templateUrl, config.`type`->certMetaData.certificate.`type`)
+        else Map[String, String]()} ++ {
+          logger.info("The dynamic Certificate generation request")
+          Map[String, String](
+            config.version -> "v2",
+          )
+        }
+        ))
+
+        val query = getUpdateIssuedCertQuery(updatedCerts, certMetaData.userId, certMetaData.courseId, config)
+        logger.info("update query {}", query.toString)
+        val result = cassandraUtil.update(query)
+        logger.info("update result {}", result)
+        if (result) {
+          logger.info("issued certificates in user-enrollment table  updated successfully")
+          metrics.incCounter(config.dbUpdateCount)
+          val certificateAuditEvent = generateAuditEvent(certMetaData)
+          logger.info("pushAuditEvent: audit event generated for certificate : " + certificateAuditEvent)
+          val audit = ScalaJsonUtil.serialize(certificateAuditEvent)
+          context.output(config.auditEventOutputTag, audit)
+          logger.info("pushAuditEvent: certificate audit event success {}", audit)
+          if (config.enableUserNotification) {
+            context.output(config.notifierOutputTag, NotificationMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId,
+              certMetaData.templateId, event.partition, event.offset, event.providerName, event.coursePosterImage))
+          }
+          //context.output(config.userFeedOutputTag, UserFeedMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId, event.partition, event.offset))
+        } else {
+          metrics.incCounter(config.failedEventCount)
+          throw new Exception(s"Update certificates to enrolments failed: ${event}")
+        }
+
+      })
+    }
+  }
 }

@@ -183,4 +183,7 @@ class CertificateGeneratorConfig(override val config: Config) extends BaseJobCon
   val enableUserNotification: Boolean = if(config.hasPath("enable.user.email.notification")) config.getBoolean("enable.user.email.notification") else true
   val specialEventCertificateName: String = if(config.hasPath("specialEventCertificateName")) config.getString("specialEventCertificateName") else ""
   val eventIssueName = "eventIssueName"
+  val addCertRegApiV2 = "/certs/v3/registry/add"
+  val dynamicCertificateEnabledForExternalContent: Boolean = if (config.hasPath("dynamicCertificateEnabledForExternalContent")) config.getBoolean("dynamicCertificateEnabledForExternalContent") else true
+  val version = "version"
 }
