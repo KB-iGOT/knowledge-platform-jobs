@@ -148,7 +148,7 @@ activity-aggregate-updater:
       }
     }
     dedup-redis {
-      host = {{ dedup_redis_host }}
+      host = {{ dedup_igot_redis_host }}
       port = 6379
       database.index = {{ activity_agg_dedup_index }}
       database.expiry = {{ activity_agg_dedup_expiry }}
@@ -209,7 +209,7 @@ program-activity-aggregate-updater:
       }
     }
     dedup-redis {
-      host = {{ dedup_redis_host }}
+      host = {{ dedup_igot_redis_host }}
       port = 6379
       database.index = {{ activity_agg_dedup_index }}
       database.expiry = {{ activity_agg_dedup_expiry }}
@@ -270,7 +270,7 @@ activity-aggregate-updater-v2:
       }
     }
     dedup-redis {
-      host = {{ dedup_redis_host }}
+      host = {{ dedup_igot_redis_host }}
       port = 6379
       database.index = {{ activity_agg_v2_dedup_index }}
       database.expiry = {{ activity_agg_v2_dedup_expiry }}

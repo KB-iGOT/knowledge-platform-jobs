@@ -51,7 +51,7 @@ activity_agg_batch_interval: 60
 activity_agg_batch_read_size: 1
 activity_agg_batch_write_size: 10
 activity_agg_window_shards: 1000
-activity_agg_dedup_index: 14
+activity_agg_dedup_index: 3
 activity_agg_dedup_expiry: 600
 activity_module_aggs_enabled: true
 activity_input_dedup_enabled: true
@@ -79,7 +79,7 @@ activity_agg_v2_batch_interval: 60
 activity_agg_v2_batch_read_size: 1
 activity_agg_v2_batch_write_size: 10
 activity_agg_v2_window_shards: 1000
-activity_agg_v2_dedup_index: 14
+activity_agg_v2_dedup_index: 3
 activity_agg_v2_dedup_expiry: 600
 activity_agg_v2_enrolment_filter_processe_enabled: true
 activity_agg_v2_collection_status_cache_expiry_time: 3600
