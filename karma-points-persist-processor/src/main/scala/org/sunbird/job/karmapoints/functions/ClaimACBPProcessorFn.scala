@@ -18,7 +18,7 @@ import scala.collection.convert.ImplicitConversions.`map AsScala`
 
 class ClaimACBPProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: HttpUtil)
                           (implicit val stringTypeInfo: TypeInformation[String],
-                                         @transient var cassandraUtil: CassandraUtil = null)
+                           @transient var cassandraUtil: CassandraUtil = null)
   extends BaseProcessFunction[Event, String](config) {
   private[this] val logger = LoggerFactory.getLogger(classOf[ClaimACBPProcessorFn])
 
@@ -51,7 +51,7 @@ class ClaimACBPProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: HttpUti
   }
 
   private def claimACBPKarmaPoints(userId: String, operationType: String, contextId: String,
-                        config: KarmaPointsProcessorConfig, cassandraUtil: CassandraUtil)(metrics: Metrics): Unit = {
+                                   config: KarmaPointsProcessorConfig, cassandraUtil: CassandraUtil)(metrics: Metrics): Unit = {
     val headers = Map(
       config.HEADER_CONTENT_TYPE_KEY -> config.HEADER_CONTENT_TYPE_JSON,
       config.X_AUTHENTICATED_USER_ORGID -> fetchUserRootOrgId(userId)(config, cassandraUtil),
@@ -71,26 +71,7 @@ class ClaimACBPProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: HttpUti
     }
     val courseName = hierarchy.get(config.name).asInstanceOf[String]
     val res = fetchUserKarmaPointsCreditLookup(userId, contextType, config.OPERATION_COURSE_COMPLETION, contextId)(config, cassandraUtil)
-    if (res == null || res.isEmpty) {
-      logger.info(s"Making new entry for ACBP with userId: $userId, courseId: $contextId")
-       //val addInfoMap = Map(
-      // config.ADDINFO_ACBP -> java.lang.Boolean.TRUE,
-     //  config.OPERATION_COURSE_COMPLETION -> java.lang.Boolean.FALSE,
-    //   config.ADDINFO_COURSENAME -> courseName
-       //  )
-      val addInfoMap = new util.HashMap[String, AnyRef]
-      addInfoMap.put(config.ADDINFO_ACBP, java.lang.Boolean.TRUE)
-      addInfoMap.put(config.OPERATION_COURSE_COMPLETION, java.lang.Boolean.FALSE)
-      addInfoMap.put(config.ADDINFO_COURSENAME, courseName)
-      val addInfo = try mapper.writeValueAsString(addInfoMap) catch {
-        case e: JsonProcessingException =>
-          logger.error("Error serializing addInfoMap", e)
-          return
-      }
-      insertKarmaPoints(userId, contextType, operationType, contextId, config.acbpQuotaKarmaPoints, addInfo)(metrics, config, cassandraUtil)
-      processUserKarmaSummaryUpdate(userId, config.acbpQuotaKarmaPoints, -1)(config, cassandraUtil)
-    } else {
-      logger.info(s"Updating entry for ACBP with userId: $userId, courseId: $contextId")
+    if (res != null || !res.isEmpty) {
       val creditDate = res.get(0).getObject(config.DB_COLUMN_CREDIT_DATE).asInstanceOf[Date]
       val entry = fetchUserKarmaPoints(creditDate, userId, contextType, config.OPERATION_COURSE_COMPLETION, contextId)(config, cassandraUtil)
       var points = entry.get(0).getInt(config.POINTS)
@@ -99,15 +80,18 @@ class ClaimACBPProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: HttpUti
       if (addInfoMap.getOrElse(config.ADDINFO_ACBP, java.lang.Boolean.FALSE.asInstanceOf[Boolean]).asInstanceOf[Boolean]) {
         return
       }
-      addInfoMap(config.ADDINFO_ACBP) = java.lang.Boolean.TRUE
-      val addInfoStr = try mapper.writeValueAsString(addInfoMap) catch {
-        case e: JsonProcessingException =>
-          logger.error("Error serializing addInfoMap", e)
-          return
-      }
-      points = points + config.acbpQuotaKarmaPoints
-      updatePoints(userId, contextType, operationType, contextId, points, addInfoStr, creditDate.getTime)(config, cassandraUtil)
-      processUserKarmaSummaryUpdate(userId, config.acbpQuotaKarmaPoints, -1)(config, cassandraUtil)
     }
+    logger.info(s"Making new entry for ACBP with userId: $userId, courseId: $contextId")
+    val addInfoMap = new util.HashMap[String, AnyRef]
+    addInfoMap.put(config.ADDINFO_ACBP, java.lang.Boolean.TRUE)
+    addInfoMap.put(config.OPERATION_COURSE_COMPLETION, java.lang.Boolean.FALSE)
+    addInfoMap.put(config.ADDINFO_COURSENAME, courseName)
+    val addInfo = try mapper.writeValueAsString(addInfoMap) catch {
+      case e: JsonProcessingException =>
+        logger.error("Error serializing addInfoMap", e)
+        return
+    }
+    insertKarmaPoints(userId, contextType, operationType, contextId, config.acbpQuotaKarmaPoints, addInfo)(metrics, config, cassandraUtil)
+    processUserKarmaSummaryUpdate(userId, config.acbpQuotaKarmaPoints, -1)(config, cassandraUtil)
   }
 }
