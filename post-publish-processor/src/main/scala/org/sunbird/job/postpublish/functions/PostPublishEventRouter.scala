@@ -8,6 +8,7 @@ import org.sunbird.job.cache.{DataCache, RedisConnect}
 import org.sunbird.job.postpublish.domain.Event
 import org.sunbird.job.postpublish.helpers.{BatchCreation, DialHelper, PostPublishRelationUpdater, ShallowCopyPublishing}
 import org.sunbird.job.postpublish.task.PostPublishProcessorConfig
+import org.sunbird.job.postpublish.helpers.SamuhikCharchaEventLinkCourse;
 import org.sunbird.job.util.{CassandraUtil, HttpUtil, Neo4JUtil}
 import org.sunbird.job.{BaseProcessFunction, Metrics}
 
@@ -18,16 +19,20 @@ case class PublishMetadata(identifier: String, contentType: String, mimeType: St
 class PostPublishEventRouter(config: PostPublishProcessorConfig, httpUtil: HttpUtil,
                              @transient var neo4JUtil: Neo4JUtil = null,
                              @transient var cassandraUtil: CassandraUtil = null)
-  extends BaseProcessFunction[Event, String](config) with ShallowCopyPublishing with BatchCreation with DialHelper with PostPublishRelationUpdater {
+  extends BaseProcessFunction[Event, String](config) with ShallowCopyPublishing with BatchCreation with DialHelper with PostPublishRelationUpdater with SamuhikCharchaEventLinkCourse {
 
   private[this] val logger = LoggerFactory.getLogger(classOf[PostPublishEventRouter])
   val mapType: Type = new TypeToken[java.util.Map[String, AnyRef]]() {}.getType
   val contentTypes = List("Course")
+  private var cache: DataCache = _
 
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
     cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
     neo4JUtil = new Neo4JUtil(config.graphRoutePath, config.graphName)
+    val redisConnect = new RedisConnect(config)
+    cache = new DataCache(config, redisConnect, config.contentCacheStore, List())
+    cache.init()
   }
 
   override def close(): Unit = {
@@ -63,6 +68,7 @@ class PostPublishEventRouter(config: PostPublishProcessorConfig, httpUtil: HttpU
       if (!batchDetails.isEmpty) {
         context.output(config.eventBatchCreateOutTag, batchDetails)
       }
+      linkEventDetailsToCourse(identifier)(metrics,config,cache,httpUtil);
     } else {
       metrics.incCounter(config.skippedEventCount)
       logger.info(s"Event not qualified for publishing for Identifier : ${event.collectionId}.")
