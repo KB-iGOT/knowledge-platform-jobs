@@ -361,6 +361,16 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
             logger.info("Request is not for dynamic certificate Generatiom")
             Map[String, String]()
           }
+        } ++ {
+          if (StringUtils.isNotBlank(event.completedLanguage)) {
+            logger.info("The dynamic Certificate generation request and courseCompletionLanguage:" + event.completedLanguage)
+            Map[String, String](
+              config.courseCompletionLanguage -> event.completedLanguage,
+            )
+          } else {
+            logger.info("courseCompletionLanguage is not present ")
+            Map[String, String]()
+          }
         }))
 
         val query = getUpdateIssuedCertQuery(updatedCerts, certMetaData.userId, certMetaData.courseId, certMetaData.batchId, config)
