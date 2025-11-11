@@ -71,14 +71,16 @@ class ClaimACBPProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: HttpUti
     }
     val courseName = hierarchy.get(config.name).asInstanceOf[String]
     val res = fetchUserKarmaPointsCreditLookup(userId, contextType, config.OPERATION_COURSE_COMPLETION, contextId)(config, cassandraUtil)
-    if (res != null || !res.isEmpty) {
+    if (res != null && !res.isEmpty) {
       val creditDate = res.get(0).getObject(config.DB_COLUMN_CREDIT_DATE).asInstanceOf[Date]
       val entry = fetchUserKarmaPoints(creditDate, userId, contextType, config.OPERATION_COURSE_COMPLETION, contextId)(config, cassandraUtil)
-      var points = entry.get(0).getInt(config.POINTS)
-      val addInfo = entry.get(0).getString(config.ADD_INFO)
-      val addInfoMap = JSONUtil.deserialize[java.util.Map[String, Any]](addInfo)
-      if (addInfoMap.getOrElse(config.ADDINFO_ACBP, java.lang.Boolean.FALSE.asInstanceOf[Boolean]).asInstanceOf[Boolean]) {
-        return
+      if (entry != null && !entry.isEmpty) {
+        var points = entry.get(0).getInt(config.POINTS)
+        val addInfo = entry.get(0).getString(config.ADD_INFO)
+        val addInfoMap = JSONUtil.deserialize[java.util.Map[String, Any]](addInfo)
+        if (addInfoMap.getOrElse(config.ADDINFO_ACBP, java.lang.Boolean.FALSE.asInstanceOf[Boolean]).asInstanceOf[Boolean]) {
+          return
+        }
       }
     }
     logger.info(s"Making new entry for ACBP with userId: $userId, courseId: $contextId")
