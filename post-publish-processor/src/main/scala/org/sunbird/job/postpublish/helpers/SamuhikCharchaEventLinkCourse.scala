@@ -1,0 +1,103 @@
+package org.sunbird.job.postpublish.helpers
+
+import org.apache.http.client.methods.HttpPatch
+import org.apache.http.entity.{ContentType, StringEntity}
+import org.apache.http.impl.client.HttpClients
+import org.slf4j.LoggerFactory
+import org.sunbird.job.Metrics
+import org.sunbird.job.cache.DataCache
+import org.sunbird.job.postpublish.task.PostPublishProcessorConfig
+import org.sunbird.job.util.{HttpUtil, JSONUtil, ScalaJsonUtil}
+
+trait SamuhikCharchaEventLinkCourse {
+
+  private[this] val logger = LoggerFactory.getLogger(classOf[SamuhikCharchaEventLinkCourse])
+
+  def linkEventDetailsToCourse(eventId: String)(
+    metrics: Metrics,
+    config: PostPublishProcessorConfig,
+    cache: DataCache,
+    httpUtil: HttpUtil
+  ): Unit = {
+    val courseMetadata = cache.getWithRetry(eventId)
+    val eventDetails =
+      if (courseMetadata == null || courseMetadata.isEmpty) {
+        val url =
+          config.eventReadURL + "/" + eventId + "?fields=courseLinked"
+        processAPICall(url, "event")(config, httpUtil, metrics)
+      } else {
+        courseMetadata
+      }
+    val courseLinked = StringContext
+      .processEscapes(
+        eventDetails.getOrElse("courseLinked", "").asInstanceOf[String]
+      )
+      .filter(_ >= ' ')
+    if (courseLinked.isEmpty) {
+      logger.warn(s"No course linked to the event: $eventId")
+      return
+    }
+    val cachedContentMetadata = cache.getWithRetry(courseLinked)
+    val contentDetails =
+      if (cachedContentMetadata == null || cachedContentMetadata.isEmpty) {
+        val contentUrl =
+          config.contentReadURL + courseLinked + "?fields=versionKey,eventLinked"
+        processAPICall(contentUrl, "content")(config, httpUtil, metrics)
+      } else {
+        cachedContentMetadata
+      }
+    val existingEventLinked = contentDetails.get("eventLinked") match {
+      case Some(list: List[String]) => list
+      case Some(str: String) if str.trim.nonEmpty => List(str)
+      case _ => List.empty[String]
+    }
+    val updatedEventLinked = (existingEventLinked :+ eventId).distinct
+    val updateReq = Map(
+      "request" -> Map(
+        "content" -> Map(
+          "versionKey" -> contentDetails.getOrElse("versionKey", ""),
+          "identifier" -> courseLinked,
+          "eventLinked" -> updatedEventLinked
+        )
+      )
+    )
+    val patchReq = new HttpPatch(config.contentSystemUpdateURL + courseLinked)
+    patchReq.setEntity(new StringEntity(JSONUtil.serialize(updateReq), ContentType.APPLICATION_JSON))
+    val response = HttpClients.createDefault().execute(patchReq)
+    if (response.getStatusLine.getStatusCode == 200) {
+      logger.info(s"Successfully updated event linking for course: $courseLinked")
+    } else {
+      logger.error(s"Failed to update event linking for $courseLinked: ${response.getStatusLine}")
+    }
+  }
+
+  def processAPICall(url: String, responseParam: String)(
+    config: PostPublishProcessorConfig,
+    httpUtil: HttpUtil,
+    metrics: Metrics
+  ): Map[String, AnyRef] = {
+    val response = httpUtil.get(url, config.defaultHeaders)
+    if (200 == response.status) {
+      ScalaJsonUtil
+        .deserialize[Map[String, AnyRef]](response.body)
+        .getOrElse("result", Map[String, AnyRef]())
+        .asInstanceOf[Map[String, AnyRef]]
+        .getOrElse(responseParam, Map[String, AnyRef]())
+        .asInstanceOf[Map[String, AnyRef]]
+    } else if (
+      400 == response.status && response.body.contains(
+        config.userAccBlockedErrCode
+      )
+    ) {
+      metrics.incCounter(config.skippedEventCount)
+      logger.error(
+        s"Error while fetching the details for ${url}: " + response.status + " :: " + response.body
+      )
+      Map[String, AnyRef]()
+    } else {
+      throw new Exception(
+        s"Error from get API : ${url}, with response: ${response}"
+      )
+    }
+  }
+}
