@@ -19,39 +19,50 @@ trait SamuhikCharchaEventLinkCourse {
     cache: DataCache,
     httpUtil: HttpUtil
   ): Unit = {
+    logger.info(s"Starting linkEventDetailsToCourse for eventId: $eventId")
+    
     val courseMetadata = cache.getWithRetry(eventId)
+    logger.info(s"Cache lookup for eventId: $eventId, found: ${courseMetadata != null && courseMetadata.nonEmpty}")
+    
     val eventDetails =
       if (courseMetadata == null || courseMetadata.isEmpty) {
         val url =
           config.eventReadURL + "/" + eventId + "?fields=courseLinked"
+        logger.info(s"Fetching event details from API: $url")
         processAPICall(url, "event")(config, httpUtil, metrics)
       } else {
+        logger.info(s"Using cached event metadata for eventId: $eventId")
         courseMetadata
       }
+    
     val courseLinked = StringContext
       .processEscapes(
         eventDetails.getOrElse("courseLinked", "").asInstanceOf[String]
       )
       .filter(_ >= ' ')
+    logger.info(s"Extracted courseLinked: $courseLinked for eventId: $eventId")
+    
     if (courseLinked.isEmpty) {
       logger.warn(s"No course linked to the event: $eventId")
       return
     }
-    val cachedContentMetadata = cache.getWithRetry(courseLinked)
-    val contentDetails =
-      if (cachedContentMetadata == null || cachedContentMetadata.isEmpty) {
-        val contentUrl =
-          config.contentReadURL + courseLinked + "?fields=versionKey,eventLinked"
-        processAPICall(contentUrl, "content")(config, httpUtil, metrics)
-      } else {
-        cachedContentMetadata
-      }
+    
+    // Always fetch fresh data from API to get the latest eventLinked list
+    val contentUrl =
+      config.contentReadURL + courseLinked + "?fields=versionKey,eventLinked"
+    logger.info(s"Fetching course content details from API: $contentUrl")
+    val contentDetails = processAPICall(contentUrl, "content")(config, httpUtil, metrics)
+    
     val existingEventLinked = contentDetails.get("eventLinked") match {
       case Some(list: List[String]) => list
       case Some(str: String) if str.trim.nonEmpty => List(str)
       case _ => List.empty[String]
     }
+    logger.info(s"Existing eventLinked for course $courseLinked: $existingEventLinked")
+    
     val updatedEventLinked = (existingEventLinked :+ eventId).distinct
+    logger.info(s"Updated eventLinked for course $courseLinked: $updatedEventLinked")
+    
     val updateReq = Map(
       "request" -> Map(
         "content" -> Map(
@@ -61,11 +72,14 @@ trait SamuhikCharchaEventLinkCourse {
         )
       )
     )
+    logger.info(s"Sending PATCH request to update course: $courseLinked with eventLinked: $updatedEventLinked")
+    
     val patchReq = new HttpPatch(config.contentSystemUpdateURL + courseLinked)
     patchReq.setEntity(new StringEntity(JSONUtil.serialize(updateReq), ContentType.APPLICATION_JSON))
     val response = HttpClients.createDefault().execute(patchReq)
+    
     if (response.getStatusLine.getStatusCode == 200) {
-      logger.info(s"Successfully updated event linking for course: $courseLinked")
+      logger.info(s"Successfully updated event linking for course: $courseLinked with events: $updatedEventLinked")
     } else {
       logger.error(s"Failed to update event linking for $courseLinked: ${response.getStatusLine}")
     }
