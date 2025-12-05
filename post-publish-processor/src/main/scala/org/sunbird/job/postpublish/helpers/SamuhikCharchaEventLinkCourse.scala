@@ -22,12 +22,12 @@ trait SamuhikCharchaEventLinkCourse {
     logger.info(s"Starting linkEventDetailsToCourse for eventId: $eventId")
     
     val courseMetadata = cache.getWithRetry(eventId)
-    logger.info(s"Cache lookup for eventId: $eventId, found: ${courseMetadata != null && courseMetadata.nonEmpty}")
+    logger.info(s"Cache lookup for eventId: $eventId, found: $courseMetadata")
     
     val eventDetails =
       if (courseMetadata == null || courseMetadata.isEmpty) {
         val url =
-          config.eventReadURL + "/" + eventId + "?fields=courseLinked"
+          config.eventReadURL + "/" + eventId + config.eventReadFields
         logger.info(s"Fetching event details from API: $url")
         processAPICall(url, "event")(config, httpUtil, metrics)
       } else {
