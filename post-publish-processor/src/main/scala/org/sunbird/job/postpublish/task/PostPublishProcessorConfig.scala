@@ -101,6 +101,8 @@ class PostPublishProcessorConfig(override val config: Config) extends BaseJobCon
   val contentReadURL = contentServiceBase+ "/content/v3/read/"
   val eventReadURL = contentServiceBase+ "/event/v4/read"
   val contentSystemUpdateURL = contentServiceBase+ "/content/v4/system/update/"
+  val eventReadFields = "?fields=courseLinked"
+  val contentReadFields = "?fields=versionKey,eventLinked"
 
   val contentHierarchyTable: String = "content_hierarchy"
   val identifier: String = "identifier"
