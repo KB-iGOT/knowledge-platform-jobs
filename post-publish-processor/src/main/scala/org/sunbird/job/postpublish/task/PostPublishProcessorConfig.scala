@@ -127,5 +127,12 @@ class PostPublishProcessorConfig(override val config: Config) extends BaseJobCon
   val resourceTypeDetails: String = "resourceTypeDetails"
   val rajyaKarmayogiSaptah: String = "Rajya Karmayogi Saptah"
   val certTemplate: String = "certTemplate"
+  val contentVersion: String = "contentVersion"
+  val previousVersionCourseId: String = "previousVersionCourseId"
+  val courseCategory: String = "courseCategory"
+  val status: String = "status"
+  val contentVersionInfo = "contentVersionInfo"
+  val live = "Live"
+
 
 }

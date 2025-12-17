@@ -220,6 +220,39 @@ class PostPublishRelationUpdaterFunction(
         "PostPublishRelationUpdaterFunction as this is not MultiLingual Course:: Nothing to do for ContentId : " + identifier
       )
     }
+    // This logic use for updating versionInfo to old course during retire the course
+    val newCourseInfo = getCourseInfo(identifier)(metrics, config, cache, httpUtil)
+    val previousVersionCourseId = Option(newCourseInfo.get(config.previousVersionCourseId)).map(_.toString).getOrElse("")
+    if (StringUtils.isNotBlank(previousVersionCourseId)) {
+      val oldCourseInfo = getCourseInfo(previousVersionCourseId)(metrics, config, cache, httpUtil)
+
+      val status = Option(oldCourseInfo.get(config.status)).map(_.toString).getOrElse("")
+
+      if (config.live.equalsIgnoreCase(status)) {
+        val primaryCategory = Option(newCourseInfo.get(config.primaryCategory)).map(_.toString).getOrElse("")
+        val courseCategory = Option(newCourseInfo.get(config.courseCategory)).map(_.toString).getOrElse("")
+        if (config.course.equalsIgnoreCase(primaryCategory) && config.course.equalsIgnoreCase(courseCategory)) {
+          metrics.incCounter(config.postPublishRelationUpdateEventCount)
+          logger.info(
+            s"PostPublishRelationUpdaterFunction:: Updating previous version course $previousVersionCourseId for new version $identifier")
+          try {
+            updatePreviousVersionCourse(identifier, previousVersionCourseId, newCourseInfo, oldCourseInfo)(config, httpUtil, metrics)
+            metrics.incCounter(config.postPublishRelationUpdateSuccessCount)
+            logger.info(
+              s"PostPublishRelationUpdaterFunction:: Successfully updated previous version course $previousVersionCourseId"
+            )
+          } catch {
+            case ex: Throwable =>
+              logger.error(
+                s"Error while updating previous version course $previousVersionCourseId for identifier : ${identifier}.",
+                ex
+              )
+              metrics.incCounter(config.postPublishRelationUpdateFailureCount)
+              throw ex
+          }
+        }
+      }
+    }
   }
 
   override def metricsList(): List[String] = {
@@ -394,6 +427,41 @@ class PostPublishRelationUpdaterFunction(
       case Some(Nil)                     => new java.util.ArrayList[String]()
       case Some(seq: Seq[_])             => seq.asJava.asInstanceOf[java.util.List[String]]
       case _                             => new java.util.ArrayList[String]()
+    }
+  }
+
+  private def updatePreviousVersionCourse(newVersionId: String, previousVersionId: String, newVersionMeta: java.util.Map[String, AnyRef],  oldVersionMeta: java.util.Map[String, AnyRef])(
+    implicit config: PostPublishProcessorConfig,
+    httpUtil: HttpUtil,
+    metrics: Metrics
+  ): Unit = {
+    val newVersionKey = newVersionMeta.getOrDefault(config.contentVersion, "").asInstanceOf[String]
+    val versionKey = oldVersionMeta.getOrDefault(config.versionKey, "").asInstanceOf[String]
+    val contentVersionInfo = Map(
+      config.identifier -> newVersionId,
+      config.contentVersion -> newVersionKey
+    )
+    val requestData = Map(
+      "request" -> Map(
+        "content" -> Map(
+          "versionKey" -> versionKey,
+          config.contentVersionInfo -> contentVersionInfo
+        )
+      )
+    )
+    val jsonString = JSONUtil.serialize(requestData)
+    logger.info(s"Updating previous version course $previousVersionId with contentVersionInfo: $jsonString")
+    val patchRequest = new HttpPatch(config.contentSystemUpdatePath + previousVersionId)
+    patchRequest.setEntity(new StringEntity(jsonString, ContentType.APPLICATION_JSON))
+    val httpClient = HttpClients.createDefault()
+    val response = httpClient.execute(patchRequest)
+    val statusLine = response.getStatusLine
+    val statusCode = statusLine.getStatusCode
+    if (statusCode == 200) {
+      logger.info(s"Successfully updated contentVersionInfo for previous version course $previousVersionId")
+    } else {
+      logger.error(s"Failed to update contentVersionInfo for $previousVersionId. Response: ${JSONUtil.serialize(response)}")
+      throw new APIException("ERR_UPDATE_FAILED", new RuntimeException(s"Failed to update contentVersionInfo forprevious version course $previousVersionId"))
     }
   }
 
