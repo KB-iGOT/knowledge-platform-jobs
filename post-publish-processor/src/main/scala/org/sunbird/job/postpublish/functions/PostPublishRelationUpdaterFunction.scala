@@ -224,6 +224,7 @@ class PostPublishRelationUpdaterFunction(
     logger.info("Updating for contentVersionInfo for courseId: " + identifier)
     val newCourseInfo = getCourseInfo(identifier)(metrics, config, cache, httpUtil)
     val previousVersionCourseId = Option(newCourseInfo.get(config.previousVersionCourseId)).map(_.toString).getOrElse("")
+    logger.info("Get course Info and the new previousVersionCourseId: " + previousVersionCourseId)
     if (StringUtils.isNotBlank(previousVersionCourseId)) {
       val oldCourseInfo = getCourseInfo(previousVersionCourseId)(metrics, config, cache, httpUtil)
 
@@ -253,6 +254,8 @@ class PostPublishRelationUpdaterFunction(
           }
         }
       }
+    } else {
+      logger.info("Previous Version CourseId is not present.")
     }
   }
 
