@@ -415,7 +415,10 @@ questionset-publish:
     taskmanager.numberOfTaskSlots: {{ flink_job_names['questionset-publish'].taskslots }}
     parallelism.default: 1
     jobmanager.execution.failover-strategy: region
-    taskmanager.memory.network.fraction: 0.1
+    taskmanager.memory.network.fraction: 0.15
+    execution.checkpointing.timeout: 1800000
+    execution.checkpointing.tolerable-failed-checkpoints: 5
+    execution.checkpointing.max-concurrent-checkpoints: 1
 
 search-indexer:
   search-indexer: |+
