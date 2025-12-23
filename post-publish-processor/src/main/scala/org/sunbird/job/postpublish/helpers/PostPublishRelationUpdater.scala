@@ -125,8 +125,8 @@ trait PostPublishRelationUpdater {
       val courseCategory = courseMetadata.getOrElse("coursecategory", "").asInstanceOf[String]
       val status = courseMetadata
         .getOrElse("status", "").asInstanceOf[String]
-      val previousVersionId = courseMetadata.getOrElse(config.previousVersionCourseId, "").asInstanceOf[String]
-      val contentVersion = courseMetadata.getOrElse(config.contentVersion, "").asInstanceOf[String]
+      val previousVersionId = courseMetadata.getOrElse("previousversioncourseid", "").asInstanceOf[String]
+      val contentVersion = courseMetadata.getOrElse("contentVersion", "").asInstanceOf[String]
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
       courseInfoMap.put("courseId", courseId)
