@@ -221,6 +221,7 @@ class PostPublishRelationUpdaterFunction(
       )
     }
     // This logic use for updating versionInfo to old course during retire the course
+    logger.info("Updating for contentVersionInfo for courseId: " + identifier)
     val newCourseInfo = getCourseInfo(identifier)(metrics, config, cache, httpUtil)
     val previousVersionCourseId = Option(newCourseInfo.get(config.previousVersionCourseId)).map(_.toString).getOrElse("")
     if (StringUtils.isNotBlank(previousVersionCourseId)) {
