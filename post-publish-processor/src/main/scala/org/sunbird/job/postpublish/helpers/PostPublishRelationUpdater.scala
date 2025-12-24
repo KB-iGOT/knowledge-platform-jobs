@@ -54,7 +54,7 @@ trait PostPublishRelationUpdater {
     val courseMetadata = cache.getWithRetry(courseId)
     if (null == courseMetadata || courseMetadata.isEmpty) {
       val url =
-        config.contentReadURL + "/" + courseId + "?fields=identifier,name,versionKey,parentCollections,primaryCategory,languageMapV1,courseCategory,status"
+        config.contentReadURL + "/" + courseId + "?fields=identifier,name,versionKey,parentCollections,primaryCategory,languageMapV1,courseCategory,status,previousVersionCourseId,contentVersion"
       val response = getAPICall(url, "content")(config, httpUtil, metrics)
       logger.info("Content read response" + JSONUtil.serialize(response))
       val courseName = StringContext
@@ -88,6 +88,16 @@ trait PostPublishRelationUpdater {
         .filter(_ >= ' ')
       val status = response
         .getOrElse("status", "").asInstanceOf[String]
+      val previousVersionCourseId = StringContext
+        .processEscapes(
+          response.getOrElse(config.previousVersionCourseId, "").asInstanceOf[String]
+        )
+        .filter(_ >= ' ')
+      val contentVersion = StringContext
+        .processEscapes(
+          response.getOrElse(config.contentVersion, "").asInstanceOf[String]
+        )
+        .filter(_ >= ' ')
 
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
@@ -99,6 +109,8 @@ trait PostPublishRelationUpdater {
       courseInfoMap.put("languageMapV1", languageMapV1)
       courseInfoMap.put("courseCategory", courseCategory)
       courseInfoMap.put("status", status)
+      courseInfoMap.put(config.previousVersionCourseId, previousVersionCourseId)
+      courseInfoMap.put(config.contentVersion, contentVersion)
       courseInfoMap
     } else {
       val name = courseMetadata.getOrElse(config.name, "").asInstanceOf[String]
@@ -113,6 +125,8 @@ trait PostPublishRelationUpdater {
       val courseCategory = courseMetadata.getOrElse("coursecategory", "").asInstanceOf[String]
       val status = courseMetadata
         .getOrElse("status", "").asInstanceOf[String]
+      val previousVersionId = courseMetadata.getOrElse("previousversioncourseid", "").asInstanceOf[String]
+      val contentVersion = courseMetadata.getOrElse("contentversion", "").asInstanceOf[String]
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
       courseInfoMap.put("courseId", courseId)
@@ -123,6 +137,8 @@ trait PostPublishRelationUpdater {
       courseInfoMap.put("languageMapV1", languageMapV1)
       courseInfoMap.put("courseCategory", courseCategory)
       courseInfoMap.put("status", status)
+      courseInfoMap.put(config.previousVersionCourseId, previousVersionId)
+      courseInfoMap.put(config.contentVersion, contentVersion)
       courseInfoMap
     }
 
