@@ -1,5 +1,6 @@
 package org.sunbird.job.aggregate.v2.functions
 
+import com.datastax.driver.core.TypeTokens
 import com.datastax.driver.core.querybuilder.{QueryBuilder, Select, Update}
 import com.google.gson.Gson
 import com.twitter.storehaus.cache.TTLCache
@@ -9,7 +10,7 @@ import org.apache.flink.streaming.api.functions.{KeyedProcessFunction, ProcessFu
 import org.apache.flink.util.Collector
 import org.slf4j.LoggerFactory
 import org.sunbird.job.Metrics
-import org.sunbird.job.aggregate.v2.common.{ContentHelperV2, DeDupHelperV2}
+import org.sunbird.job.aggregate.v2.common.{ContentHelperV2, DeDupHelperV2, JsonKeys}
 import org.sunbird.job.aggregate.v2.domain.{ContentDetail, ContentStatus, Event, UserActivityAgg, UserContentConsumption}
 import org.sunbird.job.aggregate.v2.task.ActivityAggregateUpdaterConfigV2
 import org.sunbird.job.cache.{DataCache, RedisConnect}
@@ -97,8 +98,11 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       val finalLangContentStatus = updateLangContentStatusInUserEnrolment(
         userId, courseId, batchId, language, langContentStatus, updatedLangMap, courseMetadata, statusIsTwo
       )
-
-      triggerCertificateIfRequired(event, courseMetadata, finalLangContentStatus(language), ctx)
+      if (JsonKeys.LEARNING_PATHWAY.equalsIgnoreCase(category)) {
+        evaluateLearnerPathwayCompletion(event, courseMetadata, ctx)
+      } else {
+        triggerCertificateIfRequired(event, courseMetadata, finalLangContentStatus(language), ctx)
+      }
       out.collect(event)
     } catch {
       case ex: Exception =>
@@ -430,4 +434,209 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       .and(QueryBuilder.eq("batchid", batchId))
     cassandraUtil.findOne(selectWhere.toString)
   }
+
+  def evaluateLearnerPathwayCompletion(
+                                        event: Event,
+                                        courseMetadata: Map[String, AnyRef],
+                                        ctx: KeyedProcessFunction[String, Event, Event]#Context
+                                      ): Unit = {
+
+
+    val milestones: List[Map[String, AnyRef]] =
+      courseMetadata
+        .get(JsonKeys.MILESTONES_V1)
+        .collect {
+          case l: List[Map[String, AnyRef]] => l
+          case jl: java.util.List[java.util.Map[String, AnyRef]] =>
+            jl.asScala.map(_.asScala.toMap).toList
+        }
+        .getOrElse(List.empty)
+
+    if (milestones.isEmpty) {
+      logger.info("LP evaluation skipped: milestones_v1 not found")
+      return
+    }
+
+    val lpEnrolmentRow =
+      getEnrolment(event.userId, event.courseId, event.batchId)
+
+    if (lpEnrolmentRow == null) {
+      logger.info("LP enrolment not found, skipping evaluation")
+      return
+    }
+
+    val issuedCertObj = lpEnrolmentRow.getObject(JsonKeys.ISSUED_CERTIFICATES)
+
+    val hasIssuedCertificate = issuedCertObj match {
+      case null => false
+
+      case m: java.util.Map[_, _] =>
+        !m.isEmpty
+
+      case l: java.util.List[_] =>
+        !l.isEmpty
+
+      case _ =>
+        false
+    }
+
+    if (hasIssuedCertificate) {
+      logger.info(
+        s"LP certificate already issued for user ${event.userId}, skipping trigger"
+      )
+      return
+    }
+
+    val langContentStatus: Map[String, Int] = {
+
+      val result = scala.collection.mutable.Map[String, Int]()
+
+      lpEnrolmentRow.getObject(JsonKeys.LANG_CONTENT_STATUS) match {
+
+        case outer: java.util.Map[_, _] =>
+          outer.forEach { (k, v) =>
+            if (k != null && k.toString == event.language) {
+              v match {
+                case inner: java.util.Map[_, _] =>
+                  inner.forEach {
+                    case (ik, iv: Integer) if ik != null =>
+                      result.put(ik.toString, iv.toInt)
+                    case _ =>
+                  }
+                case _ =>
+              }
+            }
+          }
+
+        case _ =>
+      }
+
+      result.toMap
+    }
+
+    val allMilestonesCompleted =
+      milestones.forall { milestone =>
+        isMilestoneCompleted(
+          event.userId,
+          milestone
+        )
+      }
+
+    if (!allMilestonesCompleted) {
+      logger.info(
+        s"LP not completed for user ${event.userId} – milestone courses or assessments pending"
+      )
+      return
+    }
+
+    val isFinalAssessmentCompleted =
+      courseMetadata
+        .get(JsonKeys.ASSESSMENT_ID)
+        .map(_.toString)
+        .forall { assessmentId =>
+          langContentStatus.get(assessmentId).contains(2)
+        }
+
+    if (!isFinalAssessmentCompleted) {
+      logger.info(
+        s"LP not completed for user ${event.userId} – final LP assessment pending"
+      )
+      return
+    }
+
+    createIssueCertEvent(
+      event.userId,
+      event.courseId,
+      event.batchId,
+      event.language,
+      ctx
+    )(metrics)
+
+    markLPCompleted(
+      event.userId,
+      event.courseId,
+      event.batchId
+    )
+  }
+
+
+
+  def isMilestoneCompleted(
+                            userId: String,
+                            milestone: Map[String, AnyRef]
+                          ): Boolean = {
+
+    val courses: List[Map[String, AnyRef]] =
+      milestone
+        .get(JsonKeys.COURSES)
+        .collect {
+          case l: List[Map[String, AnyRef]] => l
+          case jl: java.util.List[java.util.Map[String, AnyRef]] =>
+            jl.asScala.map(_.asScala.toMap).toList
+        }
+        .getOrElse(List.empty)
+
+    val mandatoryCourseIds =
+      courses
+        .filter(_.get(JsonKeys.IS_MANDATORY).contains(true))
+        .map(_(JsonKeys.COURSE_ID).toString)
+    mandatoryCourseIds.isEmpty ||
+      mandatoryCourseIds.forall { courseId =>
+        isCourseCompleted(userId, courseId)
+      }
+  }
+
+
+
+  def isCourseCompleted(
+                         userId: String,
+                         courseId: String
+                       ): Boolean = {
+    val enrolmentRow = getEnrolment(userId, courseId)
+    if (enrolmentRow == null) return false
+    val isCompleted = enrolmentRow.getInt(JsonKeys.STATUS) == 2
+
+    val issuedCerts =
+      enrolmentRow.getList(
+        JsonKeys.ISSUED_CERTIFICATES,
+        TypeTokens.mapOf(classOf[String], classOf[String])
+      )
+
+    val isCertificateIssued =
+      issuedCerts != null && !issuedCerts.isEmpty
+
+    isCompleted && isCertificateIssued
+  }
+
+  def markLPCompleted(
+                       userId: String,
+                       lpId: String,
+                       batchId: String
+                     ): Unit = {
+
+    val updateQuery = QueryBuilder
+      .update(config.dbKeyspace, config.dbUserEnrolmentsTable)
+      .`with`(QueryBuilder.set(JsonKeys.STATUS, 2))
+      .and(QueryBuilder.set(JsonKeys.COMPLETED_ON_KEY, new java.util.Date()))
+      .and(QueryBuilder.set(JsonKeys.DATE_TIME_KEY, System.currentTimeMillis()))
+      .where(QueryBuilder.eq(JsonKeys.USER_ID_KEY, userId))
+      .and(QueryBuilder.eq(JsonKeys.COURSE_ID_KEY, lpId))
+      .and(QueryBuilder.eq(JsonKeys.BATCH_ID_KEY, batchId))
+
+    cassandraUtil.update(updateQuery)
+
+    logger.info(
+      s"LP marked as completed (status=2) for user=$userId, lpId=$lpId, batchId=$batchId"
+    )
+  }
+
+  def getEnrolment(userId: String, courseId: String) = {
+    val selectWhere: Select.Where = QueryBuilder.select().all()
+      .from(config.dbKeyspace, config.dbUserEnrolmentsTable).
+      where()
+    selectWhere.and(QueryBuilder.eq(JsonKeys.USER_ID_KEY, userId))
+      .and(QueryBuilder.eq(JsonKeys.COURSE_ID_KEY, courseId))
+    cassandraUtil.findOne(selectWhere.toString)
+  }
+
 }
