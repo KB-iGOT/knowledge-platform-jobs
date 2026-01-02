@@ -263,6 +263,7 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
                                      courseId: String,
                                      batchId: String,
                                      langMap: Map[String, Map[String, Int]],
+                                     completionPercentage: Int,
                                      progress: Int,
                                      isCompleted: Boolean, isStatusTwo: Boolean
                                    ): Unit = {
@@ -276,6 +277,7 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       .`with`(QueryBuilder.set("lang_contentstatus", mapForCassandra))
       .and(QueryBuilder.set("progress", progress))
       .and(QueryBuilder.set("datetime", System.currentTimeMillis()))
+      .and(QueryBuilder.set("completionPercentage", completionPercentage))
 
     if (!isStatusTwo) {
       assignments = assignments.and(QueryBuilder.set("status", if (isCompleted) 2 else 1))
@@ -395,11 +397,23 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
 
     val progress = completedCount
 
+    val leafNodesCount = translatedLeafNodes.size
+
+    val completionPercentage: Int =
+      if (leafNodesCount > 0) {
+        Math.min(
+          100,
+          Math.round((completedCount.toFloat / leafNodesCount.toFloat) * 100)
+        )
+      } else {
+        0
+      }
+
     val finalLangContentStatus = langContentStatus + (language -> updatedLangMap)
 
     val isCompleted = translatedLeafNodes.nonEmpty && completedCount == translatedLeafNodes.size
 
-    updateUserEnrolmentLangStatus(userId, courseId, batchId, finalLangContentStatus, progress, isCompleted, statusIsTwo)
+    updateUserEnrolmentLangStatus(userId, courseId, batchId, finalLangContentStatus, completionPercentage, progress, isCompleted, statusIsTwo)
 
     finalLangContentStatus
   }

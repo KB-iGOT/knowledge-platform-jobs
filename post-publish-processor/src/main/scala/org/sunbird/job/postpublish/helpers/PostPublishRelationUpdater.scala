@@ -8,6 +8,7 @@ import org.sunbird.job.exception.APIException
 import org.sunbird.job.postpublish.domain.Event
 import org.sunbird.job.postpublish.task.PostPublishProcessorConfig
 import org.sunbird.job.util._
+import scala.collection.JavaConverters._
 
 /** @author
   *   mahesh.vakkund
@@ -54,7 +55,7 @@ trait PostPublishRelationUpdater {
     val courseMetadata = cache.getWithRetry(courseId)
     if (null == courseMetadata || courseMetadata.isEmpty) {
       val url =
-        config.contentReadURL + "/" + courseId + "?fields=identifier,name,versionKey,parentCollections,primaryCategory,languageMapV1,courseCategory,status,previousVersionCourseId,contentVersion"
+        config.contentReadURL + "/" + courseId + "?fields=identifier,name,versionKey,parentCollections,primaryCategory,languageMapV1,courseCategory,status,previousVersionCourseId,contentVersion,milestones_v1,learningPathIds"
       val response = getAPICall(url, "content")(config, httpUtil, metrics)
       logger.info("Content read response" + JSONUtil.serialize(response))
       val courseName = StringContext
@@ -111,6 +112,14 @@ trait PostPublishRelationUpdater {
       courseInfoMap.put("status", status)
       courseInfoMap.put(config.previousVersionCourseId, previousVersionCourseId)
       courseInfoMap.put(config.contentVersion, contentVersion)
+      val milestonesV1 =
+        response
+          .getOrElse("milestones_v1", List.empty[Map[String, AnyRef]])
+          .asInstanceOf[List[Map[String, AnyRef]]]
+      courseInfoMap.put("milestones_v1", milestonesV1.asInstanceOf[AnyRef])
+      val learningPathIds = response
+        .getOrElse("learningPathIds", List.empty[String]).asInstanceOf[List[String]]
+      courseInfoMap.put("learningPathIds", learningPathIds)
       courseInfoMap
     } else {
       val name = courseMetadata.getOrElse(config.name, "").asInstanceOf[String]
@@ -139,6 +148,17 @@ trait PostPublishRelationUpdater {
       courseInfoMap.put("status", status)
       courseInfoMap.put(config.previousVersionCourseId, previousVersionId)
       courseInfoMap.put(config.contentVersion, contentVersion)
+      val milestonesV1 =
+        courseMetadata
+          .getOrElse("milestonesv1", new java.util.ArrayList[java.util.Map[String, AnyRef]]())
+          .asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
+          .asScala
+          .map(_.asScala.toMap)
+          .toList
+      courseInfoMap.put("milestones_v1", milestonesV1.asInstanceOf[AnyRef])
+      val learningPathIds = courseMetadata
+        .getOrElse("learningpathids", new java.util.ArrayList())
+      courseInfoMap.put("learningPathIds", learningPathIds)
       courseInfoMap
     }
 

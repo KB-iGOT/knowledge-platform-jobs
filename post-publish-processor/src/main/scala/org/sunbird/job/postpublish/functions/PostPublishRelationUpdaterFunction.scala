@@ -220,6 +220,12 @@ class PostPublishRelationUpdaterFunction(
         "PostPublishRelationUpdaterFunction as this is not MultiLingual Course:: Nothing to do for ContentId : " + identifier
       )
     }
+    updateCoursesWithLearningPath(identifier)(
+      config,
+      httpUtil,
+      cassandraUtil,
+      metrics
+    )
     // This logic use for updating versionInfo to old course during retire the course
     logger.info("Updating for contentVersionInfo for courseId: " + identifier)
     val newCourseInfo = getCourseInfo(identifier)(metrics, config, cache, httpUtil)
@@ -469,4 +475,140 @@ class PostPublishRelationUpdaterFunction(
     }
   }
 
+  private def updateCoursesWithLearningPath(lpId: String)(
+    implicit
+    config: PostPublishProcessorConfig,
+    httpUtil: HttpUtil,
+    cassandraUtil: CassandraUtil,
+    metrics: Metrics
+  ): Unit = {
+
+    val lpMeta = getCourseInfo(lpId)(metrics, config, cache, httpUtil)
+
+    val courseCategory =
+      Option(lpMeta.get("courseCategory")).map(_.toString).getOrElse("")
+
+    if (!"Learning Pathway".equalsIgnoreCase(courseCategory)) {
+      logger.info(s"$lpId is not a Learning Pathway. Skipping LP mapping.")
+      return
+    }
+
+    val milestones = lpMeta.get("milestones_v1") match {
+      case list: List[_] =>
+        logger.info(s"[LP=$lpId] milestones count=${list.size}")
+        list.asInstanceOf[List[Map[String, AnyRef]]]
+
+      case other =>
+        logger.warn(
+          s"[LP=$lpId] milestones_v1 unexpected type: ${Option(other).map(_.getClass)}"
+        )
+        return
+    }
+
+    milestones.foreach { milestone =>
+      val courses: List[Map[String, AnyRef]] =
+        milestone
+          .get("courses")
+          .collect {
+            case l: List[Map[String, AnyRef]] => l
+            case jl: java.util.List[java.util.Map[String, AnyRef]] =>
+              jl.asScala.map(_.asScala.toMap).toList
+          }
+          .getOrElse(List.empty)
+
+      courses.foreach { courseMap =>
+        val courseId = courseMap("courseId").toString
+        updateCourseWithLp(courseId, lpId)
+      }
+    }
+
+    logger.info(s"Completed LP → Course mapping for LP $lpId")
+  }
+
+  private def updateCourseWithLp(courseId: String, lpId: String)(
+    implicit
+    config: PostPublishProcessorConfig,
+    httpUtil: HttpUtil,
+    cassandraUtil: CassandraUtil,
+    metrics: Metrics
+  ): Unit = {
+
+    val courseMeta =
+      getCourseInfo(courseId)(metrics, config, cache, httpUtil)
+
+    val versionKey =
+      Option(courseMeta.get(config.versionKey)).map(_.toString).getOrElse("")
+
+    if (versionKey.isEmpty) {
+      logger.warn(s"VersionKey missing for course $courseId. Skipping.")
+      return
+    }
+
+    val existingLpIds: List[String] =
+      Option(courseMeta.get("learningPathIds")) match {
+        case Some(list: java.util.List[_]) =>
+          list.asInstanceOf[java.util.List[String]].asScala.toList
+        case Some(list: List[_]) =>
+          list.asInstanceOf[List[String]]
+        case _ =>
+          List.empty
+      }
+
+    if (existingLpIds.contains(lpId)) {
+      logger.info(s"Course $courseId already mapped to LP $lpId")
+      return
+    }
+
+    val updatedLpIds = (existingLpIds :+ lpId).distinct
+
+    logger.info(
+      s"Updating course $courseId with learningPathIds: ${updatedLpIds.mkString(",")}"
+    )
+
+    callSystemUpdateApi(
+      courseId,
+      Map(
+        "versionKey" -> versionKey,
+        "learningPathIds" -> updatedLpIds
+      )
+    )
+  }
+
+  private def callSystemUpdateApi(
+                                   contentId: String,
+                                   requestContent: Map[String, Any]
+                                 )(
+                                   implicit config: PostPublishProcessorConfig
+                                 ): Unit = {
+
+    try {
+      val requestBody = Map(
+        "request" -> Map(
+          "content" -> requestContent
+        )
+      )
+
+      val patchReq = new HttpPatch(config.contentSystemUpdatePath + contentId)
+      patchReq.setEntity(
+        new StringEntity(JSONUtil.serialize(requestBody), ContentType.APPLICATION_JSON)
+      )
+
+      val response = HttpClients.createDefault().execute(patchReq)
+      val statusCode = response.getStatusLine.getStatusCode
+
+      if (statusCode == 200) {
+        logger.info(s"System update successful for contentId=$contentId")
+      } else {
+        logger.error(
+          s"System update failed for contentId=$contentId, status=$statusCode"
+        )
+      }
+    } catch {
+      case ex: Throwable =>
+        logger.error(
+          s"Exception during system update for contentId=$contentId",
+          ex
+        )
+    }
+  }
 }

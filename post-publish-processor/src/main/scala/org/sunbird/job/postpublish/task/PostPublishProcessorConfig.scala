@@ -98,7 +98,7 @@ class PostPublishProcessorConfig(override val config: Config) extends BaseJobCon
   val primaryCategories: util.List[String] = if (config.hasPath("dialcode.linkable.primaryCategory")) config.getStringList("dialcode.linkable.primaryCategory") else util.Arrays.asList("Course") //List[String]("Course")
 
   val contentServiceBase: String = config.getString("service.content.basePath")
-  val contentReadURL = contentServiceBase+ "/content/v3/read/"
+  val contentReadURL = contentServiceBase+ "/content/v3/read"
   val eventReadURL = contentServiceBase+ "/event/v4/read"
   val contentSystemUpdateURL = contentServiceBase+ "/content/v4/system/update/"
   val eventReadFields = "?fields=courseLinked"
