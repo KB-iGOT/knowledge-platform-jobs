@@ -8,6 +8,7 @@ import org.sunbird.job.exception.APIException
 import org.sunbird.job.postpublish.domain.Event
 import org.sunbird.job.postpublish.task.PostPublishProcessorConfig
 import org.sunbird.job.util._
+import scala.collection.JavaConverters._
 
 /** @author
   *   mahesh.vakkund
@@ -54,7 +55,7 @@ trait PostPublishRelationUpdater {
     val courseMetadata = cache.getWithRetry(courseId)
     if (null == courseMetadata || courseMetadata.isEmpty) {
       val url =
-        config.contentReadURL + "/" + courseId + "?fields=identifier,name,versionKey,parentCollections,primaryCategory,languageMapV1,courseCategory,status,previousVersionCourseId,contentVersion"
+        config.contentReadURL + "/" + courseId + "?fields=identifier,name,versionKey,parentCollections,primaryCategory,languageMapV1,courseCategory,status,previousVersionCourseId,contentVersion,milestones_v1"
       val response = getAPICall(url, "content")(config, httpUtil, metrics)
       logger.info("Content read response" + JSONUtil.serialize(response))
       val courseName = StringContext
@@ -111,6 +112,11 @@ trait PostPublishRelationUpdater {
       courseInfoMap.put("status", status)
       courseInfoMap.put(config.previousVersionCourseId, previousVersionCourseId)
       courseInfoMap.put(config.contentVersion, contentVersion)
+      val milestonesV1 =
+        response
+          .getOrElse(config.milestones_v1, List.empty[Map[String, AnyRef]])
+          .asInstanceOf[List[Map[String, AnyRef]]]
+      courseInfoMap.put(config.milestones_v1, milestonesV1.asInstanceOf[AnyRef])
       courseInfoMap
     } else {
       val name = courseMetadata.getOrElse(config.name, "").asInstanceOf[String]
@@ -139,6 +145,14 @@ trait PostPublishRelationUpdater {
       courseInfoMap.put("status", status)
       courseInfoMap.put(config.previousVersionCourseId, previousVersionId)
       courseInfoMap.put(config.contentVersion, contentVersion)
+      val milestonesV1 =
+        courseMetadata
+          .getOrElse(config.milestonesV1Key, new java.util.ArrayList[java.util.Map[String, AnyRef]]())
+          .asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
+          .asScala
+          .map(_.asScala.toMap)
+          .toList
+      courseInfoMap.put(config.milestones_v1, milestonesV1.asInstanceOf[AnyRef])
       courseInfoMap
     }
 

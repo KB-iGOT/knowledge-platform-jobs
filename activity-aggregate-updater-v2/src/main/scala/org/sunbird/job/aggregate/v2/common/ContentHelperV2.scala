@@ -26,7 +26,7 @@ trait ContentHelperV2 {
       )
       //TODO: FETCH LANGUAGE ALSO.
       val url =
-        config.contentReadURL + "/" + courseId + "?fields=identifier,name,versionKey,parentCollections,primaryCategory,courseCategory,languageMapV1,leafNodes,language"
+        config.contentReadURL + "/" + courseId + "?fields=identifier,name,versionKey,parentCollections,primaryCategory,courseCategory,languageMapV1,leafNodes,language,milestones_v1"
       val response = getAPICall(url, "content")(config, httpUtil, metrics)
       val courseName = StringContext
         .processEscapes(
@@ -66,6 +66,11 @@ trait ContentHelperV2 {
       courseInfoMap.put("languageMapV1", languageMapV1.asInstanceOf[AnyRef])
       courseInfoMap.put("leafNodes", leafNodes)
       courseInfoMap.put("language", language)
+      val milestonesV1 =
+        response
+          .getOrElse(JsonKeys.MILESTONES_V1, List.empty[Map[String, AnyRef]])
+          .asInstanceOf[List[Map[String, AnyRef]]]
+      courseInfoMap.put(JsonKeys.MILESTONES_V1, milestonesV1.asInstanceOf[AnyRef])
       courseInfoMap
     } else {
       val courseName = StringContext
@@ -109,6 +114,14 @@ trait ContentHelperV2 {
         .asInstanceOf[java.util.ArrayList[String]]
       courseInfoMap.put("leafNodes", leafNodes)
       courseInfoMap.put("language", language)
+      val milestonesV1 =
+        courseMetadata
+          .getOrElse(JsonKeys.MILESTONES_V1_KEY, new java.util.ArrayList[java.util.Map[String, AnyRef]]())
+          .asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
+          .asScala
+          .map(_.asScala.toMap)
+          .toList
+      courseInfoMap.put(JsonKeys.MILESTONES_V1, milestonesV1.asInstanceOf[AnyRef])
       courseInfoMap
     }
 

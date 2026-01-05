@@ -98,7 +98,7 @@ class PostPublishProcessorConfig(override val config: Config) extends BaseJobCon
   val primaryCategories: util.List[String] = if (config.hasPath("dialcode.linkable.primaryCategory")) config.getStringList("dialcode.linkable.primaryCategory") else util.Arrays.asList("Course") //List[String]("Course")
 
   val contentServiceBase: String = config.getString("service.content.basePath")
-  val contentReadURL = contentServiceBase+ "/content/v3/read/"
+  val contentReadURL = contentServiceBase+ "/content/v3/read"
   val eventReadURL = contentServiceBase+ "/event/v4/read"
   val contentSystemUpdateURL = contentServiceBase+ "/content/v4/system/update/"
   val eventReadFields = "?fields=courseLinked"
@@ -112,6 +112,13 @@ class PostPublishProcessorConfig(override val config: Config) extends BaseJobCon
   val versionKey: String = "versionKey"
   val course: String = "Course"
   val parentCollections: String="parentCollections"
+  val courses: String = "courses"
+  val courseId: String = "courseId"
+  val milestones_v1: String = "milestones_v1"
+  val learningPathway: String = "Learning Pathway"
+  val request: String = "request"
+  val content: String = "content"
+  val milestonesV1Key: String = "milestonesv1"
 
   val contentSystemUpdatePath = learningBaseUrl + "/system/v3/content/update/"
   val defaultHeaders = Map[String, String] ("Content-Type" -> "application/json")
