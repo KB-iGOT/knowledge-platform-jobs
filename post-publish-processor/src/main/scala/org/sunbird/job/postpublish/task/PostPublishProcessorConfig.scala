@@ -112,6 +112,13 @@ class PostPublishProcessorConfig(override val config: Config) extends BaseJobCon
   val versionKey: String = "versionKey"
   val course: String = "Course"
   val parentCollections: String="parentCollections"
+  val courses: String = "courses"
+  val courseId: String = "courseId"
+  val milestones_v1: String = "milestones_v1"
+  val learningPathway: String = "Learning Pathway"
+  val request: String = "request"
+  val content: String = "content"
+  val milestonesV1Key: String = "milestonesv1"
 
   val contentSystemUpdatePath = learningBaseUrl + "/system/v3/content/update/"
   val defaultHeaders = Map[String, String] ("Content-Type" -> "application/json")

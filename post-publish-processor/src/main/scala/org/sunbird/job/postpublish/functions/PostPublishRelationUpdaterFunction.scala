@@ -486,14 +486,14 @@ class PostPublishRelationUpdaterFunction(
     val lpMeta = getCourseInfo(lpId)(metrics, config, cache, httpUtil)
 
     val courseCategory =
-      Option(lpMeta.get("courseCategory")).map(_.toString).getOrElse("")
+      Option(lpMeta.get(config.courseCategory)).map(_.toString).getOrElse("")
 
-    if (!"Learning Pathway".equalsIgnoreCase(courseCategory)) {
+    if (!config.learningPathway.equalsIgnoreCase(courseCategory)) {
       logger.info(s"$lpId is not a Learning Pathway. Skipping LP mapping.")
       return
     }
 
-    val milestones = lpMeta.get("milestones_v1") match {
+    val milestones = lpMeta.get(config.milestones_v1) match {
       case list: List[_] =>
         logger.info(s"[LP=$lpId] milestones count=${list.size}")
         list.asInstanceOf[List[Map[String, AnyRef]]]
@@ -508,7 +508,7 @@ class PostPublishRelationUpdaterFunction(
     milestones.foreach { milestone =>
       val courses: List[Map[String, AnyRef]] =
         milestone
-          .get("courses")
+          .get(config.courses)
           .collect {
             case l: List[Map[String, AnyRef]] => l
             case jl: java.util.List[java.util.Map[String, AnyRef]] =>
@@ -517,7 +517,7 @@ class PostPublishRelationUpdaterFunction(
           .getOrElse(List.empty)
 
       courses.foreach { courseMap =>
-        val courseId = courseMap("courseId").toString
+        val courseId = courseMap(config.courseId).toString
         updateCourseWithLp(courseId, lpId)
       }
     }
@@ -545,7 +545,7 @@ class PostPublishRelationUpdaterFunction(
     }
 
     val existingLpIds: List[String] =
-      Option(courseMeta.get("learningPathIds")) match {
+      Option(courseMeta.get(config.parentCollections)) match {
         case Some(list: java.util.List[_]) =>
           list.asInstanceOf[java.util.List[String]].asScala.toList
         case Some(list: List[_]) =>
@@ -568,8 +568,8 @@ class PostPublishRelationUpdaterFunction(
     callSystemUpdateApi(
       courseId,
       Map(
-        "versionKey" -> versionKey,
-        "learningPathIds" -> updatedLpIds
+        config.versionKey -> versionKey,
+        config.parentCollections -> updatedLpIds
       )
     )
   }
@@ -583,8 +583,8 @@ class PostPublishRelationUpdaterFunction(
 
     try {
       val requestBody = Map(
-        "request" -> Map(
-          "content" -> requestContent
+        config.request -> Map(
+          config.content -> requestContent
         )
       )
 

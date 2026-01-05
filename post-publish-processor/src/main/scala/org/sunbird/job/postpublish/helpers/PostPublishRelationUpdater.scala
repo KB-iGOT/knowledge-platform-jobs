@@ -55,7 +55,7 @@ trait PostPublishRelationUpdater {
     val courseMetadata = cache.getWithRetry(courseId)
     if (null == courseMetadata || courseMetadata.isEmpty) {
       val url =
-        config.contentReadURL + "/" + courseId + "?fields=identifier,name,versionKey,parentCollections,primaryCategory,languageMapV1,courseCategory,status,previousVersionCourseId,contentVersion,milestones_v1,learningPathIds"
+        config.contentReadURL + "/" + courseId + "?fields=identifier,name,versionKey,parentCollections,primaryCategory,languageMapV1,courseCategory,status,previousVersionCourseId,contentVersion,milestones_v1"
       val response = getAPICall(url, "content")(config, httpUtil, metrics)
       logger.info("Content read response" + JSONUtil.serialize(response))
       val courseName = StringContext
@@ -114,12 +114,9 @@ trait PostPublishRelationUpdater {
       courseInfoMap.put(config.contentVersion, contentVersion)
       val milestonesV1 =
         response
-          .getOrElse("milestones_v1", List.empty[Map[String, AnyRef]])
+          .getOrElse(config.milestones_v1, List.empty[Map[String, AnyRef]])
           .asInstanceOf[List[Map[String, AnyRef]]]
-      courseInfoMap.put("milestones_v1", milestonesV1.asInstanceOf[AnyRef])
-      val learningPathIds = response
-        .getOrElse("learningPathIds", List.empty[String]).asInstanceOf[List[String]]
-      courseInfoMap.put("learningPathIds", learningPathIds)
+      courseInfoMap.put(config.milestones_v1, milestonesV1.asInstanceOf[AnyRef])
       courseInfoMap
     } else {
       val name = courseMetadata.getOrElse(config.name, "").asInstanceOf[String]
@@ -150,15 +147,12 @@ trait PostPublishRelationUpdater {
       courseInfoMap.put(config.contentVersion, contentVersion)
       val milestonesV1 =
         courseMetadata
-          .getOrElse("milestonesv1", new java.util.ArrayList[java.util.Map[String, AnyRef]]())
+          .getOrElse(config.milestonesV1Key, new java.util.ArrayList[java.util.Map[String, AnyRef]]())
           .asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
           .asScala
           .map(_.asScala.toMap)
           .toList
-      courseInfoMap.put("milestones_v1", milestonesV1.asInstanceOf[AnyRef])
-      val learningPathIds = courseMetadata
-        .getOrElse("learningpathids", new java.util.ArrayList())
-      courseInfoMap.put("learningPathIds", learningPathIds)
+      courseInfoMap.put(config.milestones_v1, milestonesV1.asInstanceOf[AnyRef])
       courseInfoMap
     }
 
