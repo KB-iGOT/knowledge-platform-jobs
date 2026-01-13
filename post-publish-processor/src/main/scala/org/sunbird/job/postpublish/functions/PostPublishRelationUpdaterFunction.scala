@@ -517,7 +517,7 @@ class PostPublishRelationUpdaterFunction(
           .getOrElse(List.empty)
 
       courses.foreach { courseMap =>
-        val courseId = courseMap(config.courseId).toString
+        val courseId = courseMap(config.identifier).toString
         updateCourseWithLp(courseId, lpId)
       }
     }
