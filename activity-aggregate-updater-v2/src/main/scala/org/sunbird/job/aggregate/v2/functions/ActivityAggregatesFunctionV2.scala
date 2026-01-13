@@ -532,7 +532,8 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       milestones.forall { milestone =>
         isMilestoneCompleted(
           event.userId,
-          milestone
+          milestone,
+          langContentStatus
         )
       }
 
@@ -595,12 +596,13 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
     )
   }
 
-
-
   def isMilestoneCompleted(
                             userId: String,
-                            milestone: Map[String, AnyRef]
+                            milestone: Map[String, AnyRef],
+                            langContentStatus: Map[String, Int]
                           ): Boolean = {
+
+    val milestoneId = milestone.getOrElse("id","")
 
     val courses: List[Map[String, AnyRef]] =
       milestone
@@ -615,14 +617,53 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
     val mandatoryCourseIds =
       courses
         .filter(_.get(JsonKeys.IS_MANDATORY).contains(true))
-        .map(_(JsonKeys.COURSE_ID).toString)
-    mandatoryCourseIds.isEmpty ||
-      mandatoryCourseIds.forall { courseId =>
-        isCourseCompleted(userId, courseId)
+        .map(_(JsonKeys.IDENTIFIER).toString)
+
+    if (mandatoryCourseIds.isEmpty) {
+      logger.info(s"Milestone [$milestoneId] has no mandatory courses")
+    }
+
+    val areMandatoryCoursesCompleted =
+      mandatoryCourseIds.isEmpty ||
+        mandatoryCourseIds.forall { courseId =>
+          val completed = isCourseCompleted(userId, courseId)
+          logger.info(
+            s"Milestone [$milestoneId] course [$courseId] completed = $completed"
+          )
+          completed
+        }
+
+    if (!areMandatoryCoursesCompleted) {
+      logger.info(s"Milestone [$milestoneId] mandatory courses not completed")
+      return false
+    }
+
+    val milestoneAssessmentId: Option[String] =
+      milestone
+        .get(JsonKeys.ASSESSMENT_DETAILS)
+        .flatMap {
+          case m: java.util.Map[_, _] =>
+            Option(m.get(JsonKeys.IDENTIFIER)).map(_.toString)
+          case _ =>
+            None
+        }
+
+
+    val isMilestoneAssessmentCompleted =
+      milestoneAssessmentId.forall { id =>
+        langContentStatus.get(id).contains(2)
       }
+
+    if (!isMilestoneAssessmentCompleted) {
+      logger.info(
+        s"Milestone [$milestoneId] assessment not completed"
+      )
+      return false
+    }
+
+    logger.info(s"Milestone [$milestoneId] completed successfully")
+    true
   }
-
-
 
   def isCourseCompleted(
                          userId: String,
