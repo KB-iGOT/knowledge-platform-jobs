@@ -144,6 +144,8 @@ class ActivityAggregateUpdaterConfigV2(override val config: Config) extends Base
   val courseCategory = "courseCategory"
   val caseStudy = "Case Study"
   val coursecategory = "coursecategory"
+  val preliminaryAssessment = "preliminaryAssessment"
+  val preliminary_Assessment_Key = "preliminaryassessment"
 
   val excludedCategories: Set[String] =
     if (config.hasPath("activity.aggregate.excluded.primaryCategories"))

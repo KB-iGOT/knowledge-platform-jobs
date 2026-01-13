@@ -26,7 +26,7 @@ trait ContentHelperV2 {
       )
       //TODO: FETCH LANGUAGE ALSO.
       val url =
-        config.contentReadURL + "/" + courseId + "?fields=identifier,name,versionKey,parentCollections,primaryCategory,courseCategory,languageMapV1,leafNodes,language,milestones_v1"
+        config.contentReadURL + "/" + courseId + "?fields=identifier,name,versionKey,parentCollections,primaryCategory,courseCategory,languageMapV1,leafNodes,language,milestones_v1,preliminaryAssessment"
       val response = getAPICall(url, "content")(config, httpUtil, metrics)
       val courseName = StringContext
         .processEscapes(
@@ -66,6 +66,12 @@ trait ContentHelperV2 {
       courseInfoMap.put("languageMapV1", languageMapV1.asInstanceOf[AnyRef])
       courseInfoMap.put("leafNodes", leafNodes)
       courseInfoMap.put("language", language)
+      val preliminaryAssessment = StringContext
+        .processEscapes(
+          response.getOrElse(config.preliminaryAssessment, "").asInstanceOf[String]
+        )
+        .filter(_ >= ' ')
+      courseInfoMap.put(config.preliminaryAssessment, preliminaryAssessment)
       val milestonesV1 =
         response
           .getOrElse(JsonKeys.MILESTONES_V1, List.empty[Map[String, AnyRef]])
@@ -100,12 +106,18 @@ trait ContentHelperV2 {
         .asInstanceOf[java.util.ArrayList[String]]
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
+      val preliminaryAssessment = StringContext
+        .processEscapes(
+          courseMetadata.getOrElse(config.preliminary_Assessment_Key, "").asInstanceOf[String]
+        )
+        .filter(_ >= ' ')
       courseInfoMap.put("courseId", courseId)
       courseInfoMap.put("courseName", courseName)
       courseInfoMap.put("parentCollections", parentCollections)
       courseInfoMap.put("primaryCategory", primaryCategory)
       courseInfoMap.put("versionKey", versionKey)
       courseInfoMap.put(config.courseCategory, courseCateogry)
+      courseInfoMap.put(config.preliminaryAssessment, preliminaryAssessment)
       val languageMapV1: Map[String, Map[String, AnyRef]] =
         toScalaNestedMap(courseMetadata.getOrElse("languagemapv1", new java.util.HashMap[String, Object]()))
       courseInfoMap.put("languageMapV1", languageMapV1.asInstanceOf[AnyRef])
