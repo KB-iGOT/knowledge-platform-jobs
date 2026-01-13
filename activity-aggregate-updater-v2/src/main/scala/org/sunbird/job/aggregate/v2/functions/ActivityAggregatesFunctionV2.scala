@@ -543,17 +543,39 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       return
     }
 
-    val isFinalAssessmentCompleted =
+    val areMilestoneAssessmentsCompleted =
+      milestones.forall { milestone =>
+        milestone
+          .get(JsonKeys.ASSESSMENT_DETAILS)
+          .collect {
+            case m: Map[String, AnyRef] =>
+              m.get(JsonKeys.IDENTIFIER).map(_.toString)
+          }
+          .flatten
+          .forall { assessmentId =>
+            langContentStatus.get(assessmentId).contains(2)
+          }
+      }
+
+    if (!areMilestoneAssessmentsCompleted) {
+      logger.info(
+        s"LP not completed for user ${event.userId} – milestone assessment pending"
+      )
+      return
+    }
+
+    val isPreEnrolmentAssessmentCompleted: Boolean =
       courseMetadata
-        .get(JsonKeys.ASSESSMENT_ID)
-        .map(_.toString)
-        .forall { assessmentId =>
-          langContentStatus.get(assessmentId).contains(2)
+        .get(JsonKeys.PRE_LIMINARY_ASSESSMENT)
+        .collect { case id: String => id }
+        .exists { id =>
+          langContentStatus.get(id).contains(2)
         }
 
-    if (!isFinalAssessmentCompleted) {
+
+    if (!isPreEnrolmentAssessmentCompleted) {
       logger.info(
-        s"LP not completed for user ${event.userId} – final LP assessment pending"
+        s"LP not completed for user ${event.userId} – pre-enrolment assessment pending"
       )
       return
     }
