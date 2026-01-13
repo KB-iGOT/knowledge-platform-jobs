@@ -23,4 +23,7 @@ object JsonKeys {
   val BATCH_ID_KEY = "batchid"
   val DATE_TIME_KEY = "datetime"
   val COMPLETED_ON_KEY     = "completedon"
+  val ASSESSMENT_DETAILS = "assessmentDetail"
+  val IDENTIFIER = "identifier"
+  val PRE_LIMINARY_ASSESSMENT = "preliminaryAssessment"
 }
