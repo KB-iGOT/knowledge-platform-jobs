@@ -68,16 +68,25 @@ class CourseCompletionProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: 
 
 
     val contextType = hierarchy.get(config.PRIMARY_CATEGORY).asInstanceOf[String]
+    val courseCategory = hierarchy.getOrDefault(config.courseCategory, "").asInstanceOf[String]
     val headers = Map[String, String](
       config.HEADER_CONTENT_TYPE_KEY -> config.HEADER_CONTENT_TYPE_JSON
       , config.X_AUTHENTICATED_USER_ORGID-> fetchUserRootOrgId(userId)(config, cassandraUtil)
       , config.X_AUTHENTICATED_USER_ID -> userId)
     val acbpExpiry = doesCourseBelongsToACBPPlan(headers)(metrics, config, httpUtil).get(contextId) match { case Some(value) => value case _ => "" }
-    if(!passThroughValidation(contextType, contextId, userId, config, cassandraUtil, metrics,acbpExpiry))
+    
+    // Determine operation type based on course category
+    val operationType = if (config.LEARNING_PATHWAY.equals(courseCategory)) {
+      config.OPERATION_LEARNING_PATHWAY_COMPLETION
+    } else {
+      config.OPERATION_COURSE_COMPLETION
+    }
+    if(!passThroughValidation(contextType, contextId, userId, operationType, config, cassandraUtil, metrics, acbpExpiry))
       return
-    kpOnCourseCompletion(userId, contextType,config.OPERATION_COURSE_COMPLETION,contextId, hierarchy,config, httpUtil, cassandraUtil,acbpExpiry)(metrics)
+    
+    kpOnCourseCompletion(userId, contextType, courseCategory, operationType, contextId, hierarchy, config, httpUtil, cassandraUtil, acbpExpiry)(metrics)
   }
-  private def kpOnCourseCompletion(userId : String, contextType : String, operationType:String,
+  private def kpOnCourseCompletion(userId : String, contextType : String, courseCategory : String, operationType:String,
                            contextId:String, hierarchy:java.util.Map[String, AnyRef],
                            config: KarmaPointsProcessorConfig,
                            httpUtil: HttpUtil, cassandraUtil: CassandraUtil,acbpExpiry:String)(metrics: Metrics) :Unit = {
@@ -87,7 +96,12 @@ class CourseCompletionProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: 
     addInfoMap.put(config.ADDINFO_ACBP, java.lang.Boolean.FALSE)
     addInfoMap.put(config.OPERATION_COURSE_COMPLETION, java.lang.Boolean.TRUE)
     addInfoMap.put(config.ADDINFO_COURSENAME, hierarchy.get(config.name))
-    var points : Int = config.courseCompletionQuotaKarmaPoints
+    var points : Int = if (config.LEARNING_PATHWAY.equals(courseCategory)) {
+      logger.info(s"Awarding Learning Pathway completion karma points for userId: $userId, contextId: $contextId, courseCategory: $courseCategory")
+      config.learningPathwayCompletionQuotaKarmaPoints
+    } else {
+      config.courseCompletionQuotaKarmaPoints
+    }
     val assessmentIdentifier = doesAssessmentExistInHierarchy(hierarchy)(metrics, config)
     if(!StringUtils.isEmpty(assessmentIdentifier)) {
       val assessmentResponse = fetchUserAssessmentResult(userId,assessmentIdentifier)(config, cassandraUtil)
@@ -134,12 +148,12 @@ class CourseCompletionProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: 
     insertKarmaPoints(userId, contextType,operationType,contextId,points, addInfo)(metrics,config, cassandraUtil)
     processUserKarmaSummaryUpdate(userId, points, nonACBPCount)(config, cassandraUtil)
   }
-  private def passThroughValidation(contextType:String, contextId : String, userId: String,
+  private def passThroughValidation(contextType:String, contextId : String, userId: String, operationType: String,
                                     config: KarmaPointsProcessorConfig,
                                     cassandraUtil: CassandraUtil, metrics: Metrics,acbpExpiry:String): Boolean = {
     if(!config.COURSE.equals(contextType) ||
       (StringUtils.isEmpty(acbpExpiry) && hasReachedNonACBPMonthlyCutOff(userId)(metrics, config, cassandraUtil)) ||
-      doesEntryExist(userId, contextType, config.OPERATION_COURSE_COMPLETION, contextId)( metrics,config, cassandraUtil))
+      doesEntryExist(userId, contextType, operationType, contextId)( metrics,config, cassandraUtil))
       return java.lang.Boolean.FALSE
     else
       return java.lang.Boolean.TRUE

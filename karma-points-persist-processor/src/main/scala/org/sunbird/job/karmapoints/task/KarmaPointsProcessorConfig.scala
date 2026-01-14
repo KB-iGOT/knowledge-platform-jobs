@@ -68,6 +68,7 @@ class KarmaPointsProcessorConfig(override val config: Config) extends BaseJobCon
   val name: String = "name"
   val identifier: String = "identifier"
   val primaryCategory: String = "primaryCategory"
+  val courseCategory: String = "courseCategory"
   val cbPlanBase: String = config.getString("service.cbplan.basePath")
 
   val cbPlanReadUser = cbPlanBase + "cbplan/v1/private/user/list"
@@ -81,6 +82,7 @@ class KarmaPointsProcessorConfig(override val config: Config) extends BaseJobCon
   val userAccBlockedErrCode = "UOS_USRRED0006"
   val acbpQuotaKarmaPoints = config.getInt("karmapoints.acbpQuotaKarmaPoints")
   val courseCompletionQuotaKarmaPoints = config.getInt("karmapoints.courseCompletionQuotaKarmaPoints")
+  val learningPathwayCompletionQuotaKarmaPoints = config.getInt("karmapoints.learningPathwayCompletionQuotaKarmaPoints")
   val assessmentQuotaKarmaPoints = config.getInt("karmapoints.assessmentQuotaKarmaPoints")
   val ratingQuotaKarmaPoints = config.getInt("karmapoints.ratingQuotaKarmaPoints")
   val firstLoginQuotaKarmaPoints = config.getInt("karmapoints.firstLoginQuotaKarmaPoints")
@@ -127,6 +129,7 @@ class KarmaPointsProcessorConfig(override val config: Config) extends BaseJobCon
   val OPERATION_TYPE_FIRST_LOGIN ="FIRST_LOGIN"
   val OPERATION_TYPE_ENROLMENT:String ="FIRST_ENROLMENT"
   val OPERATION_COURSE_COMPLETION = "COURSE_COMPLETION"
+  val OPERATION_LEARNING_PATHWAY_COMPLETION = "LEARNING_PATHWAY_COMPLETION"
   val OPERATION_TYPE_EVENT ="EVENT_ATTENDED"
   val CONTEXT_TYPE_EVENT ="EVENT"
   val ADDINFO_ASSESSMENT="ASSESSMENT"
@@ -155,6 +158,7 @@ class KarmaPointsProcessorConfig(override val config: Config) extends BaseJobCon
   val YYYY_PIPE_MM = "yyyy|MM"
   val EMPTY =""
   val COURSE = "Course"
+  val LEARNING_PATHWAY = "Learning Pathway"
   val ROOT_ORG_ID ="rootorgid"
   val USER_UNDERSCORE_ID ="user_id"
   val cacheDbId: Int = if(config.hasPath("redis.database.karmaPointCache.id")) config.getInt("redis.database.karmaPointCache.id") else 0
