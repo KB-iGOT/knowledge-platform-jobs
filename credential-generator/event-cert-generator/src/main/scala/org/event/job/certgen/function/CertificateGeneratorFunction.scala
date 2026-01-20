@@ -341,13 +341,24 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
           if (config.enableRcCertificate) Map[String, String](config.templateUrl -> certMetaData.certificate.templateUrl, config.`type` -> certMetaData.certificate.`type`)
           else Map[String, String]()
         } ++ {
-          if (StringUtils.isNotBlank(config.specialEventCertificateName)) {
-            logger.info("The special Certificate event name is : {}", config.specialEventCertificateName)
-            Map[String, String](
-              config.eventIssueName -> config.specialEventCertificateName,
-            )
+          if (!config.specialEventCertificateExceptionEvents.contains(event.primaryCategory)) {
+            if (StringUtils.isNotBlank(config.specialEventCertificateName)) {
+              logger.info(
+                "The special Certificate event name is : {}",
+                config.specialEventCertificateName
+              )
+              Map[String, String](
+                config.eventIssueName -> config.specialEventCertificateName
+              )
+            } else {
+              logger.info("No Special Certificate")
+              Map[String, String]()
+            }
           } else {
-            logger.info("No Special Certificate")
+            logger.info(
+              "Skipping special certificate for primaryCategory: {}",
+              event.primaryCategory
+            )
             Map[String, String]()
           }
         }
@@ -595,13 +606,21 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
           if (config.enableRcCertificate) Map[String, String](config.templateUrl -> certMetaData.certificate.templateUrl, config.`type` -> certMetaData.certificate.`type`)
           else Map[String, String]()
         } ++ {
-          if (StringUtils.isNotBlank(config.specialEventCertificateName)) {
-            logger.info("The special Certificate event name is : {}", config.specialEventCertificateName)
-            Map[String, String](
-              config.eventIssueName -> config.specialEventCertificateName,
-            )
+          if (!config.specialEventCertificateExceptionEvents.contains(event.primaryCategory)) {
+            if (StringUtils.isNotBlank(config.specialEventCertificateName)) {
+              logger.info("The special Certificate event name is : {}", config.specialEventCertificateName)
+              Map[String, String](
+                config.eventIssueName -> config.specialEventCertificateName,
+              )
+            } else {
+              logger.info("No Special Certificate")
+              Map[String, String]()
+            }
           } else {
-            logger.info("No Special Certificate")
+            logger.info(
+              "Skipping special certificate for primaryCategory: {}",
+              event.primaryCategory
+            )
             Map[String, String]()
           }
         } ++ {
