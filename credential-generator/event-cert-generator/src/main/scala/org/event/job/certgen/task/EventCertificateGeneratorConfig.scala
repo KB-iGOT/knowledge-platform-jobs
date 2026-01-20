@@ -201,5 +201,5 @@ class EventCertificateGeneratorConfig(override val config: Config) extends BaseJ
   val addCertRegApiV2 = "/certs/v3/registry/add"
   val dynamicCertificateEnabledForEvent: Boolean = if (config.hasPath("dynamicCertificateEnabledForEvent")) config.getBoolean("dynamicCertificateEnabledForEvent") else true
   val version = "version"
-  val specialEventCertificateExceptionEvents: String = if(config.hasPath("specialEventCertificateExceptionEvents")) config.getString("specialEventCertificateExceptionEvents") else ""
+  val specialEventCertificateExceptionEvents: util.List[String]  = if(config.hasPath("specialEventCertificateExceptionEvents")) config.getString("specialEventCertificateExceptionEvents") else ""
 }
