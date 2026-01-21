@@ -116,4 +116,6 @@ class ContentPublishConfig(override val config: Config) extends PublishConfig(co
 
   val defaultCompatibilityLevel: Int =
     if (config.hasPath("defaultCompatibilityLevel")) config.getInt("defaultCompatibilityLevel") else 4
+
+  val LEARNING_PATHWAY = "Learning Pathway"
 }

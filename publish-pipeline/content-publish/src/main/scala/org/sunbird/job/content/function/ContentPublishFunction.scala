@@ -99,10 +99,11 @@ class ContentPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil,
           metrics.incCounter(config.contentPublishSuccessEventCount)
           logger.info("Content publishing completed successfully for : " + data.identifier)
           logger.info("Notification started successfully")
+          val courseCategory = Option(enrichedObj.metadata.getOrElse("courseCategory", null))
           val resourceCategoryOpt = getStringValue(enrichedObj.metadata, "resourceCategory")
           val primaryCategoryOpt  = getStringValue(enrichedObj.metadata, "primaryCategory")
           val categoryToCheck = resourceCategoryOpt.filter(_.nonEmpty).orElse(primaryCategoryOpt).getOrElse("")
-          if (!categoryToCheck.equalsIgnoreCase("Learning Resource")) {
+          if (!categoryToCheck.equalsIgnoreCase("Learning Resource") && !courseCategory.exists(_.toString.equalsIgnoreCase(config.LEARNING_PATHWAY))) {
             try {
               logger.info("Node metadata is {}", obj.metadata)
               new NotificationManager(config.notificationUrl, httpUtil).sendNotification(
@@ -117,7 +118,6 @@ class ContentPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil,
             }
           }
          logger.info("Course publish notification started successfully for : " + data.identifier)
-         val courseCategory = Option(enrichedObj.metadata.getOrElse("courseCategory", null))
          if (courseCategory.exists(cat =>
            cat.toString.equalsIgnoreCase("Course") ||
            cat.toString.equalsIgnoreCase("Moderated Course") ||
