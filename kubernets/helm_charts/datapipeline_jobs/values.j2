@@ -114,7 +114,6 @@ base_config: |
       }
     }
     specialEventCertificateName = "{{ special_event_certificatename | default('RepublicDay_2025') }}"
-    specialEventCertificateExceptionEvents = ["Karmayogi Talks", "Karmayogi Saptah", "Rajya Karmayogi Saptah"]
 
 activity-aggregate-updater:
   activity-aggregate-updater: |+
@@ -892,6 +891,7 @@ event-cert-generator:
     
     enable.suppress.exception = {{ event_cert_generator_enable_suppress_exception | lower }}
     enable.rc.certificate = false
+    specialEventCertificateExceptionEvents = ["Karmayogi Talks", "Karmayogi Saptah", "Rajya Karmayogi Saptah"]
 
 
   flink-conf: |+
