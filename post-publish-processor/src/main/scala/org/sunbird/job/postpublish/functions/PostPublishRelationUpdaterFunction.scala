@@ -226,6 +226,9 @@ class PostPublishRelationUpdaterFunction(
       cassandraUtil,
       metrics
     )
+
+    invalidateExtendedReadContent(identifier)
+
     // This logic use for updating versionInfo to old course during retire the course
     logger.info("Updating for contentVersionInfo for courseId: " + identifier)
     val newCourseInfo = getCourseInfo(identifier)(metrics, config, cache, httpUtil)
@@ -610,5 +613,11 @@ class PostPublishRelationUpdaterFunction(
           ex
         )
     }
+  }
+
+  private def invalidateExtendedReadContent(contentId: String): Unit = {
+    val cacheKey = s"extended_read_content_$contentId"
+    cache.del(cacheKey)
+    logger.info(s"Invalidated extended read cache for key=$cacheKey")
   }
 }
