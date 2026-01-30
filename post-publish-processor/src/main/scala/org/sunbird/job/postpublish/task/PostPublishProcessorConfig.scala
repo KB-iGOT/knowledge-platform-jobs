@@ -140,6 +140,7 @@ class PostPublishProcessorConfig(override val config: Config) extends BaseJobCon
   val status: String = "status"
   val contentVersionInfo = "contentVersionInfo"
   val live = "Live"
+  val preliminaryAssessment = "preliminaryAssessment"
 
 
 }
