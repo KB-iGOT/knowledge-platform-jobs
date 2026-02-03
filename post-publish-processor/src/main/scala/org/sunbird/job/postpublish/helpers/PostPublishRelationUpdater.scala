@@ -55,7 +55,7 @@ trait PostPublishRelationUpdater {
     val courseMetadata = cache.getWithRetry(courseId)
     if (null == courseMetadata || courseMetadata.isEmpty) {
       val url =
-        config.contentReadURL + "/" + courseId + "?fields=identifier,name,versionKey,parentCollections,primaryCategory,languageMapV1,courseCategory,status,previousVersionCourseId,contentVersion,milestones_v1"
+        config.contentReadURL + "/" + courseId + "?fields=identifier,name,versionKey,parentCollections,primaryCategory,languageMapV1,courseCategory,status,previousVersionCourseId,contentVersion,milestones_v1,preliminaryAssessment"
       val response = getAPICall(url, "content")(config, httpUtil, metrics)
       logger.info("Content read response" + JSONUtil.serialize(response))
       val courseName = StringContext
@@ -117,6 +117,12 @@ trait PostPublishRelationUpdater {
           .getOrElse(config.milestones_v1, List.empty[Map[String, AnyRef]])
           .asInstanceOf[List[Map[String, AnyRef]]]
       courseInfoMap.put(config.milestones_v1, milestonesV1.asInstanceOf[AnyRef])
+      val preliminaryAssessment = StringContext
+        .processEscapes(
+          response.getOrElse(config.preliminaryAssessment, "").asInstanceOf[String]
+        )
+        .filter(_ >= ' ')
+      courseInfoMap.put(config.preliminaryAssessment, preliminaryAssessment)
       courseInfoMap
     } else {
       val name = courseMetadata.getOrElse(config.name, "").asInstanceOf[String]
@@ -153,6 +159,8 @@ trait PostPublishRelationUpdater {
           .map(_.asScala.toMap)
           .toList
       courseInfoMap.put(config.milestones_v1, milestonesV1.asInstanceOf[AnyRef])
+      val preliminaryAssessment = courseMetadata.getOrElse("preliminaryassessment", "").asInstanceOf[String]
+      courseInfoMap.put(config.preliminaryAssessment, preliminaryAssessment)
       courseInfoMap
     }
 

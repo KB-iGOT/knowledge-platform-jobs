@@ -226,6 +226,7 @@ class PostPublishRelationUpdaterFunction(
       cassandraUtil,
       metrics
     )
+
     // This logic use for updating versionInfo to old course during retire the course
     logger.info("Updating for contentVersionInfo for courseId: " + identifier)
     val newCourseInfo = getCourseInfo(identifier)(metrics, config, cache, httpUtil)
@@ -523,6 +524,8 @@ class PostPublishRelationUpdaterFunction(
     }
 
     logger.info(s"Completed LP → Course mapping for LP $lpId")
+
+    invalidateLpExtendedReadCaches(lpId, lpMeta);
   }
 
   private def updateCourseWithLp(courseId: String, lpId: String)(
@@ -611,4 +614,62 @@ class PostPublishRelationUpdaterFunction(
         )
     }
   }
+
+  private def invalidateLpExtendedReadCaches(
+                                              lpId: String,
+                                              lpMeta: java.util.Map[String, AnyRef]
+                                            ): Unit = {
+
+    val lpCacheKey = s"extended_read_content_$lpId"
+    cache.del(lpCacheKey)
+    logger.info(s"Invalidated cache key=$lpCacheKey")
+
+    val assessmentIds = scala.collection.mutable.ListBuffer[String]()
+
+    Option(lpMeta.get("preliminaryAssessment"))
+      .collect { case id: String => assessmentIds += id }
+
+    Option(lpMeta.get(config.milestones_v1))
+      .collect { case milestones: List[_] => milestones }
+      .getOrElse(List.empty)
+      .foreach { milestone =>
+
+        milestone match {
+          case m: Map[_, _] =>
+            val milestoneMap = m.asInstanceOf[Map[String, AnyRef]]
+
+            milestoneMap.get("assessmentDetail").foreach {
+              case ad: Map[_, _] =>
+                val adMap = ad.asInstanceOf[Map[String, AnyRef]]
+                adMap.get("identifier")
+                  .map(_.toString)
+                  .filter(_.nonEmpty)
+                  .foreach { id =>
+                    assessmentIds += id
+                    logger.info(s"Found milestone assessmentId=$id")
+                  }
+
+              case ad: java.util.Map[_, _] =>
+                Option(ad.get("identifier"))
+                  .map(_.toString)
+                  .filter(_.nonEmpty)
+                  .foreach { id =>
+                    assessmentIds += id
+                    logger.info(s"Found milestone assessmentId=$id")
+                  }
+
+              case _ =>
+            }
+
+          case _ =>
+        }
+      }
+
+    assessmentIds.distinct.foreach { assessmentId =>
+      val assessmentCacheKey = s"extended_read_assessment_$assessmentId"
+      cache.del(assessmentCacheKey)
+      logger.info(s"Invalidated cache key=$assessmentCacheKey")
+    }
+  }
+
 }
