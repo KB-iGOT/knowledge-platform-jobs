@@ -414,7 +414,7 @@ class CertificateGeneratorFunction(config: CertificateGeneratorConfig, httpUtil:
           JsonKeys.ID -> uuid,
           JsonKeys.JSON_DATA -> certificateExtension, JsonKeys.ACCESS_CODE -> qrMap.accessCode,
           JsonKeys.RECIPIENT_NAME -> certModel.recipientName, JsonKeys.RECIPIENT_ID -> certModel.identifier,
-          config.RELATED -> event.related
+          config.RELATED -> event.related, JsonKeys.DYNAMIC_GENERATION -> "true"
         ) ++ {if (!event.oldId.isEmpty) Map[String, AnyRef](config.OLD_ID -> event.oldId) else Map[String, AnyRef]()} ++
           {
             if (StringUtils.isNotBlank(config.specialEventCertificateName)) {
