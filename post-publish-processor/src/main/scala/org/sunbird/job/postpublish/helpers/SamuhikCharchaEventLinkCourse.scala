@@ -49,7 +49,7 @@ trait SamuhikCharchaEventLinkCourse {
     
     // Always fetch fresh data from API to get the latest eventLinked list
     val contentUrl =
-      config.contentReadURL + courseLinked + config.contentReadFields
+      config.contentReadURL + "/" + courseLinked + config.contentReadFields
     logger.info(s"Fetching course content details from API: $contentUrl")
     val contentDetails = processAPICall(contentUrl, "content")(config, httpUtil, metrics)
     
