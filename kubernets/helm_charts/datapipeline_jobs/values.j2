@@ -891,6 +891,7 @@ event-cert-generator:
     
     enable.suppress.exception = {{ event_cert_generator_enable_suppress_exception | lower }}
     enable.rc.certificate = false
+    specialEventCertificateExceptionEvents = ["Karmayogi Talks", "Karmayogi Saptah", "Rajya Karmayogi Saptah"]
 
 
   flink-conf: |+
@@ -988,7 +989,6 @@ karma-points-persist-processor:
       firstEnrolmentQuotaKarmaPoints = 5
       nonAcbpCourseQuota = 4
       eventQuotaKarmaPoints = 10
-      learningPathwayCompletionQuotaKarmaPoints = 25
     }
     cassandra {
       sunbird.keyspace = "sunbird"

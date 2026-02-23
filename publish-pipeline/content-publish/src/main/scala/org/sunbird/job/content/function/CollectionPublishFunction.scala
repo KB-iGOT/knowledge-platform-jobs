@@ -126,21 +126,23 @@ class CollectionPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil
           if (!isCollectionShallowCopy) syncNodes(successObj, updatedChildren, unitNodes)(esUtil, neo4JUtil, cassandraUtil, readerConfig, definition, config)
           pushPostProcessEvent(successObj, context)(metrics)
           metrics.incCounter(config.collectionPublishSuccessEventCount)
+          val courseCategory = Option(enrichedObj.metadata.getOrElse("courseCategory", null))
           logger.info("CollectionPublishFunction:: Collection publishing completed successfully for : " + data.identifier)
           try {
             logger.info("Node metadata is {}", obj.metadata)
-            new NotificationManager(config.notificationUrl, httpUtil).sendNotification(
-              "CONTENT_PUBLISHED",
-              "UPDATE",
-              List(obj.metadata("createdBy").asInstanceOf[String]),
-              obj.metadata("name").asInstanceOf[String],
-              Map[String, Any]("id" -> obj.identifier)
-            )
+            if (!courseCategory.exists(_.toString.equalsIgnoreCase(config.LEARNING_PATHWAY))) {
+              new NotificationManager(config.notificationUrl, httpUtil).sendNotification(
+                "CONTENT_PUBLISHED",
+                "UPDATE",
+                List(obj.metadata("createdBy").asInstanceOf[String]),
+                obj.metadata("name").asInstanceOf[String],
+                Map[String, Any]("id" -> obj.identifier)
+              )
+            }
           } catch {
             case e: Exception => logger.info("Error in sending notification ", e)
           }
            logger.info("Course publish notification started successfully for Collection : " + data.identifier)
-            val courseCategory = Option(enrichedObj.metadata.getOrElse("courseCategory", null))
             if (courseCategory.exists(cat =>
              cat.toString.equalsIgnoreCase("Course") ||
              cat.toString.equalsIgnoreCase("Moderated Course") ||
