@@ -6,62 +6,64 @@ import org.slf4j.LoggerFactory
 
 import java.util
 
-class CassandraUtil(host: String, port: Int) {
+class CassandraUtil(host: String,
+                    port: Int,
+                    readTimeoutMs: Int = 5000,
+                    connectTimeoutMs: Int = 3000,
+                    maxRetries: Int = 3) {
 
   private[this] val logger = LoggerFactory.getLogger("CassandraUtil")
 
-  val cluster = {
+  val cluster: Cluster = {
     Cluster.builder()
       .addContactPoints(host)
       .withPort(port)
       .withoutJMXReporting()
+      .withSocketOptions(
+        new SocketOptions()
+          .setReadTimeoutMillis(readTimeoutMs)
+          .setConnectTimeoutMillis(connectTimeoutMs)
+      )
       .build()
   }
-  var session = cluster.connect()
 
+  var session: Session = cluster.connect()
+
+  // ── Public API ──────────────────────────────────────────────────────────────
+
+  /** Execute a plain CQL string at the default (LOCAL_ONE) consistency level. */
   def findOne(query: String): Row = {
-    try {
-      val rs: ResultSet = session.execute(query)
-      rs.one
-    } catch {
-      case ex: DriverException =>
-        logger.error(s"findOne - Error while executing query $query :: ", ex)
-        this.reconnect()
-        this.findOne(query)
-    }
+    executeWithRetry(new SimpleStatement(query)).one()
   }
 
+  /**
+   * Execute a pre-built Statement (allows caller to set a custom ConsistencyLevel,
+   * e.g. LOCAL_QUORUM, before passing it in).
+   */
+  def findOneWithStatement(stmt: Statement): Row = {
+    executeWithRetry(stmt).one()
+  }
+
+  /** Execute a plain CQL string and return all rows at default consistency. */
   def find(query: String): util.List[Row] = {
-    try {
-      val rs: ResultSet = session.execute(query)
-      rs.all
-    } catch {
-      case ex: DriverException =>
-        this.reconnect()
-        this.find(query)
-    }
+    executeWithRetry(new SimpleStatement(query)).all()
   }
 
   def upsert(query: String): Boolean = {
     val rs: ResultSet = session.execute(query)
-    rs.wasApplied
+    rs.wasApplied()
   }
 
-  def getUDTType(keyspace: String, typeName: String): UserType = session.getCluster.getMetadata.getKeyspace(keyspace).getUserType(typeName)
+  def getUDTType(keyspace: String, typeName: String): UserType =
+    session.getCluster.getMetadata.getKeyspace(keyspace).getUserType(typeName)
 
-  def reconnect(): Unit = {
-    this.session.close()
-    val cluster: Cluster = Cluster.builder.addContactPoint(host).withPort(port).build
-    this.session = cluster.connect
-  }
-
-  def close(): Unit = {
-    this.session.close()
-  }
-
+  /**
+   * Execute an update Statement.
+   * Callers may set ConsistencyLevel on the Statement before calling this,
+   * e.g. stmt.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM).
+   */
   def update(query: Statement): Boolean = {
-    val rs: ResultSet = session.execute(query)
-    rs.wasApplied
+    executeWithRetry(query).wasApplied()
   }
 
   def executePreparedStatement(query: String, params: Object*): util.List[Row] = {
@@ -69,4 +71,49 @@ class CassandraUtil(host: String, port: Int) {
     rs.all()
   }
 
+  def close(): Unit = {
+    this.session.close()
+  }
+
+  // ── Internal ────────────────────────────────────────────────────────────────
+
+  /**
+   * Execute a Statement with bounded retries.
+   *
+   * On [[DriverException]], the call is retried up to `maxRetries` times
+   * (with a reconnect between attempts).  After exhausting all retries,
+   * the last exception is re-thrown so that the caller (e.g. a Flink
+   * processElement) receives it and lets Flink trigger a task restart.
+   */
+  private def executeWithRetry(stmt: Statement): ResultSet = {
+    var attempt = 0
+    var lastEx: DriverException = null
+    while (attempt < maxRetries) {
+      try {
+        return session.execute(stmt)
+      } catch {
+        case ex: DriverException =>
+          attempt += 1
+          lastEx = ex
+          logger.warn(s"Cassandra execute attempt $attempt/$maxRetries failed: ${ex.getMessage}")
+          if (attempt < maxRetries) reconnect()
+      }
+    }
+    // All retries exhausted — propagate to Flink so it can restart the job
+    throw lastEx
+  }
+
+  def reconnect(): Unit = {
+    this.session.close()
+    val newCluster: Cluster = Cluster.builder()
+      .addContactPoint(host)
+      .withPort(port)
+      .withSocketOptions(
+        new SocketOptions()
+          .setReadTimeoutMillis(readTimeoutMs)
+          .setConnectTimeoutMillis(connectTimeoutMs)
+      )
+      .build()
+    this.session = newCluster.connect()
+  }
 }
