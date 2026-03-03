@@ -38,6 +38,7 @@
     <module>framework-search-indexer</module>
     <module>activity-aggregate-updater-v2</module>
     <module>user-competency-processor</module>
+    <module>user-competency-updater</module>
   </modules>
 
   <properties>
