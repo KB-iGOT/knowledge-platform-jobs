@@ -365,8 +365,21 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     val userCompetencyTable = config.userCompetencyTable
     val extContentReadUrl = config.extContentUrl
     val contentUrl = s"$extContentReadUrl$courseId"
-    val response = getExtContentAPICall(contentUrl)(config, httpUtil, metrics)
-    val raw = response.get("competencies_v6")
+    val courseMetadata = cache.getWithRetry(courseId)
+    val raw =
+      if (courseMetadata != null && courseMetadata.contains("content")) {
+        val contentMap =
+          courseMetadata("content").asInstanceOf[java.util.Map[String, AnyRef]]
+        if (contentMap.containsKey("competencies_v6")) {
+          contentMap.get("competencies_v6")
+        } else {
+          val response = getExtContentAPICall(contentUrl)(config, httpUtil, metrics)
+          response.get("competencies_v6")
+        }
+      } else {
+        val response = getExtContentAPICall(contentUrl)(config, httpUtil, metrics)
+        response.get("competencies_v6")
+      }
     val competencies: java.util.List[java.util.Map[String, AnyRef]] = raw match {
       case null => new java.util.ArrayList[java.util.Map[String, AnyRef]]()
       case jl: java.util.List[_] =>
@@ -432,17 +445,20 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       var competencyDetails: Map[String, List[Map[String, String]]] = Map()
       if (existingRows != null && !existingRows.isEmpty) {
         val row = existingRows.get(0)
-        val detailsObjRaw = row.getMap("competency_details", classOf[String], classOf[java.util.List[_]])
-        if (detailsObjRaw != null) {
+
+        import com.google.common.reflect.TypeToken
+
+        val typeToken =
+          new TypeToken[java.util.Map[String,
+            java.util.List[java.util.Map[String, String]]]]() {}
+
+        val detailsObj =
+          row.get("competency_details", typeToken)
+
+        if (detailsObj != null) {
           competencyDetails =
-            detailsObjRaw.asScala.map { case (k, v) =>
-              val listOfMaps = v.asScala.toList.map {
-                case m: java.util.Map[_, _] =>
-                  m.asInstanceOf[java.util.Map[String, String]].asScala.toMap
-                case other =>
-                  throw new RuntimeException(s"Unexpected type in list: $other")
-              }
-              k -> listOfMaps
+            detailsObj.asScala.map { case (k, v) =>
+              k -> v.asScala.toList.map(_.asScala.toMap)
             }.toMap
         }
       }
