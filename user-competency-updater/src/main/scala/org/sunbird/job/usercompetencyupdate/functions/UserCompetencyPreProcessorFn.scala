@@ -43,7 +43,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     try {
       val contextType = event.contextType
       if (contextType == "achievement") {
-//        processAchievementEventById(event, metrics)
+        processAchievementEventById(event, metrics)
       } else if (contextType == "iGOTCourses") {
         processIGOTCourses(event, metrics)
       } else if (contextType == "extCourses") {
@@ -54,60 +54,6 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       case ex: Exception =>
         metrics.incCounter(config.failedEventCount)
         logger.error("Error processing event: " + ex.getMessage, ex)
-    }
-  }
-
-  // New function for processing user-competency-mapping-event
-  private def processAchievementEvent(event: Event, metrics: Metrics): Unit = {
-    val userId = event.userId
-    val achievementTable = config.learnerAchievementTable
-    val userCompetencyTable = config.userCompetencyTable
-    val query = s"SELECT * FROM $achievementTable WHERE userid='$userId' AND contexttype='achievements';"
-    val rows = cassandraUtil.find(query)
-    if (rows != null && !rows.isEmpty) {
-      for (row <- rows.asScala) {
-        val contextDataJson = row.getString("contextdata")
-        val contextData = org.sunbird.job.util.ScalaJsonUtil.deserialize[Map[String, AnyRef]](contextDataJson)
-        val competencies = contextData.get("competencies_v6") match {
-          case Some(list: java.util.List[_]) => list.asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]].asScala.toList.map(_.asScala.toMap)
-          case Some(list: List[_]) => list.asInstanceOf[List[Map[String, AnyRef]]]
-          case _ => List.empty[Map[String, AnyRef]]
-        }
-        competencies.foreach { comp =>
-          val areaId = comp.getOrElse("competencyAreaIdentifier", "").toString
-          val themeId = comp.getOrElse("competencyThemeIdentifier", "").toString
-          val subthemeId = comp.getOrElse("competencySubThemeIdentifier", "").toString
-          val detailsMap = Map(
-            "acquiredContextId" -> event.contentId,
-            "certificateId" -> row.getString("id"),
-            "acquired_at" -> Option(row.getTimestamp("createdon")).map(_.toString).getOrElse("")
-          )
-          // Fetch existing competency_details
-          val selectQuery = s"SELECT competency_details FROM $userCompetencyTable WHERE user_id='$userId' AND competency_area_id='$areaId' AND competency_theme_id='$themeId' AND competency_subtheme_id='$subthemeId';"
-          val existingRows = cassandraUtil.find(selectQuery)
-          var competencyDetails: Map[String, List[Map[String, String]]] = Map()
-          if (existingRows != null && !existingRows.isEmpty) {
-            val detailsObj = existingRows.get(0).getMap("competency_details", classOf[String], classOf[java.util.List[java.util.Map[String, String]]])
-            if (detailsObj != null) {
-              // Convert Java Map[String, List[Java Map[String, String]]] to Scala Map[String, List[Map[String, String]]]
-              competencyDetails = detailsObj.asScala.map { case (k, v) =>
-                k -> v.asScala.toList.map(_.asScala.toMap)
-              }.toMap
-            }
-          }
-          // Append new details
-          val updatedList = competencyDetails.getOrElse("selfAchievemt", List()) :+ detailsMap
-          val updatedDetails = competencyDetails + ("selfAchievemt" -> updatedList)
-          // Upsert into Cassandra
-          val upsertQuery = s"INSERT INTO $userCompetencyTable (user_id, competency_area_id, competency_theme_id, competency_subtheme_id, competency_details) VALUES ('$userId', '$areaId', '$themeId', '$subthemeId', '${org.sunbird.job.util.ScalaJsonUtil.serialize(updatedDetails)}');"
-          cassandraUtil.upsert(upsertQuery)
-          metrics.incCounter(config.dbUpdateCount)
-          logger.info(s"Upserted achievement competency for userId=$userId, areaId=$areaId, themeId=$themeId, subthemeId=$subthemeId")
-        }
-      }
-    } else {
-      metrics.incCounter(config.failedEventCount)
-      logger.warn(s"No achievement data found for userId=$userId")
     }
   }
 
@@ -502,7 +448,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       }
       val updatedList =
         competencyDetails
-          .getOrElse("iGOTCourses", List())
+          .getOrElse("extCourses", List())
           .filterNot(_("acquiredContextId") == courseId) :+ newDetail
       val updatedDetails =
         competencyDetails + ("extCourses" -> updatedList)
