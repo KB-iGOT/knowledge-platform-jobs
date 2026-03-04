@@ -1,5 +1,6 @@
 package org.sunbird.job.usercompetencyupdate.functions
 
+import com.google.common.reflect.TypeToken
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction
@@ -46,7 +47,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
 //        processAchievementEventById(event, metrics)
       } else if (contextType == "iGOTCourses") {
         processIGOTCourses(event, metrics)
-      } else if (contextType == "extCourses") {
+      } else if (contextType != null && contextType.equalsIgnoreCase(config.extCoursesContextType)) {
         processExtCourses(event, metrics)
       }
       // No generic upsert logic for other types
@@ -202,8 +203,8 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     val response = httpUtil.get(url, config.defaultHeaders)
     if (200 == response.status) {
       val result = JSONUtil.deserialize[Map[String, AnyRef]](response.body)
-      if (result.contains("content")) {
-        val scalaMap = result("content").asInstanceOf[Map[String, AnyRef]]
+      if (result.contains(config.extContentResponseKey)) {
+        val scalaMap = result(config.extContentResponseKey).asInstanceOf[Map[String, AnyRef]]
         new java.util.HashMap[String, AnyRef](scalaMap.asJava)
       } else {
         new java.util.HashMap[String, AnyRef]()
@@ -218,9 +219,6 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
   }
 
   private def processIGOTCourses(event: Event, metrics: Metrics): Unit = {
-
-    import scala.collection.JavaConverters._
-    import com.google.common.reflect.TypeToken
 
     val userId = event.userId
     val courseId = event.contentId
@@ -293,7 +291,6 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     }
 
     // Process each competency object
-    import scala.collection.JavaConverters._
     competencies.asScala.foreach { comp =>
       val areaId = comp.getOrDefault("competencyAreaIdentifier", "").toString
       val themeId = comp.getOrDefault("competencyThemeIdentifier", "").toString
@@ -420,19 +417,34 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     val extContentReadUrl = config.extContentUrl
     val contentUrl = s"$extContentReadUrl$courseId"
     val courseMetadata = cache.getWithRetry(courseId)
+    import scala.collection.JavaConverters._
     val raw =
-      if (courseMetadata != null && courseMetadata.contains("content")) {
+      if (courseMetadata != null && courseMetadata.contains(config.extContentResponseKey)) {
         val contentMap =
-          courseMetadata("content").asInstanceOf[java.util.Map[String, AnyRef]]
-        if (contentMap.containsKey("competencies_v6")) {
-          contentMap.get("competencies_v6")
-        } else {
-          val response = getExtContentAPICall(contentUrl)(config, httpUtil, metrics)
-          response.get("competencies_v6")
+          courseMetadata(config.extContentResponseKey).asInstanceOf[java.util.Map[String, AnyRef]]
+        val competenciesValue = contentMap.get(config.competenciesV6Key)
+        competenciesValue match {
+          case javaCompetenciesList: java.util.List[_] =>
+            javaCompetenciesList
+          case scalaCompetenciesSeq: scala.collection.Seq[_] =>
+            scalaCompetenciesSeq.asJava
+          case null =>
+            logger.warn(
+              s"Key '${config.competenciesV6Key}' found but value is null for courseId=$courseId"
+            )
+            new java.util.ArrayList[java.util.Map[String, AnyRef]]()
+          case other =>
+            logger.warn(
+              s"Key '${config.competenciesV6Key}' found but value type is invalid: ${other.getClass.getName} for courseId=$courseId"
+            )
+            new java.util.ArrayList[java.util.Map[String, AnyRef]]()
         }
       } else {
+        logger.warn(
+          s"Key '${config.extContentResponseKey}' not found in courseMetadata for courseId=$courseId. Falling back to API call."
+        )
         val response = getExtContentAPICall(contentUrl)(config, httpUtil, metrics)
-        response.get("competencies_v6")
+        response.get(config.competenciesV6Key)
       }
     val competencies: java.util.List[java.util.Map[String, AnyRef]] = raw match {
       case null => new java.util.ArrayList[java.util.Map[String, AnyRef]]()
@@ -451,10 +463,12 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       return
     }
     // Fetch issued_certificates from user_external_enrolments
+    val externalEnrolDb = config.extContentUserExternalEnrolmentsDb
+    val externalEnrolTable = config.extContentUserExternalEnrolmentsTable
     val externalEnrolQuery =
       s"""
          SELECT issued_certificates
-         FROM sunbird_courses.user_external_enrolments
+         FROM $externalEnrolDb.$externalEnrolTable
          WHERE userid='$userId'
          AND courseid='$courseId';
        """
@@ -464,25 +478,26 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     var issuedCertificates: List[java.util.Map[String, String]] = List.empty
     if (enrolmentRows != null && !enrolmentRows.isEmpty) {
       val row = enrolmentRows.get(0)
-      val certsRaw = row.getObject("issued_certificates").asInstanceOf[java.util.List[java.util.Map[String, String]]]
+      val issuedCertificatesKey = config.extContentUserExternalEnrolmentsIssuedCertificatesKey
+      val certsRaw = row.getObject(issuedCertificatesKey).asInstanceOf[java.util.List[java.util.Map[String, String]]]
       if (certsRaw != null) {
         issuedCertificates ++= certsRaw.asScala.toList
       }
     }
     // Add logic to pick version v2 if present, else first
     val certMapOpt =
-      issuedCertificates.find(c => Option(c.get("version")).exists(_.equalsIgnoreCase("v2")))
+      issuedCertificates.find(c => Option(c.get(config.enrolmentsCertificateVersionKey)).exists(_.equalsIgnoreCase(config.certificateVersion2Value)))
         .orElse(issuedCertificates.headOption)
-    val certificateId = certMapOpt.flatMap(c => Option(c.get("certificateId")).orElse(Option(c.get("identifier")))).getOrElse("")
-    val issuedDate = certMapOpt.flatMap(c => Option(c.get("lastIssuedOn"))).getOrElse("")
+    val certificateId = certMapOpt.flatMap(c => Option(c.get(config.certificateIdKey)).orElse(Option(c.get(config.identifierKey)))).getOrElse("")
+    val issuedDate = certMapOpt.flatMap(c => Option(c.get(config.lastIssuedOnKey))).getOrElse("")
     competencies.asScala.foreach { comp =>
-      val areaId = comp.getOrDefault("competencyAreaIdentifier", "").toString
-      val themeId = comp.getOrDefault("competencyThemeIdentifier", "").toString
-      val subthemeId = comp.getOrDefault("competencySubThemeIdentifier", "").toString
+      val areaId = comp.getOrDefault(config.competencyAreaIdentifierKey, "").toString
+      val themeId = comp.getOrDefault(config.competencyThemeIdentifierKey, "").toString
+      val subthemeId = comp.getOrDefault(config.competencySubThemeIdentifierKey, "").toString
       val newDetail: Map[String, String] = Map(
-        "acquiredContextId" -> courseId,
-        "certificateId"     -> certificateId,
-        "acquired_at"       -> issuedDate
+        config.acquiredContextIdKey -> courseId,
+        config.certificateIdKey     -> certificateId,
+        config.acquiredAt       -> issuedDate
       )
       val dbName = config.dbName
       val userCompetencyTableFull = if (userCompetencyTable.contains(".")) userCompetencyTable else s"$dbName.$userCompetencyTable"
@@ -507,7 +522,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
             java.util.List[java.util.Map[String, String]]]]() {}
 
         val detailsObj =
-          row.get("competency_details", typeToken)
+          row.get(config.competencyDetails, typeToken)
 
         if (detailsObj != null) {
           competencyDetails =
@@ -518,10 +533,10 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       }
       val updatedList =
         competencyDetails
-          .getOrElse("extCourses", List())
-          .filterNot(_("acquiredContextId") == courseId) :+ newDetail
+          .getOrElse(config.extCoursesContextType, List())
+          .filterNot(_(config.acquiredContextIdKey) == courseId) :+ newDetail
       val updatedDetails =
-        competencyDetails + ("extCourses" -> updatedList)
+        competencyDetails + (config.extCoursesContextType-> updatedList)
       val cqlDetails = toCqlMap(updatedDetails)
       val upsertQuery =
         s"""
