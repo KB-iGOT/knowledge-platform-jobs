@@ -1,5 +1,6 @@
 package org.sunbird.job.usercompetencyupdate.functions
 
+import com.google.common.reflect.TypeToken
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction
@@ -46,6 +47,8 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
 //        processAchievementEventById(event, metrics)
       } else if (contextType == "iGOTCourses") {
         processIGOTCourses(event, metrics)
+      } else if (contextType != null && contextType.equalsIgnoreCase(config.extCoursesContextType)) {
+        processExtCourses(event, metrics)
       }
       // No generic upsert logic for other types
     } catch {
@@ -195,10 +198,27 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     }
   }
 
-  private def processIGOTCourses(event: Event, metrics: Metrics): Unit = {
+  // Helper for API call for extcontent, returns the required response map or throws on error
+  private def getExtContentAPICall(url: String)(config: UserCompetencyUpdaterConfig, httpUtil: HttpUtil, metrics: Metrics): java.util.Map[String, AnyRef] = {
+    val response = httpUtil.get(url, config.defaultHeaders)
+    if (200 == response.status) {
+      val result = JSONUtil.deserialize[Map[String, AnyRef]](response.body)
+      if (result.contains(config.extContentResponseKey)) {
+        val scalaMap = result(config.extContentResponseKey).asInstanceOf[Map[String, AnyRef]]
+        new java.util.HashMap[String, AnyRef](scalaMap.asJava)
+      } else {
+        new java.util.HashMap[String, AnyRef]()
+      }
+    } else if (400 == response.status && response.body.contains(config.userAccBlockedErrCode)) {
+      metrics.incCounter(config.skippedEventCount)
+      logger.error(s"Error while fetching extcontent details for ${url}: " + response.status + " :: " + response.body)
+      new java.util.HashMap[String, AnyRef]()
+    } else {
+      throw new Exception(s"Error from extcontent get API : ${url}, with response: ${response}")
+    }
+  }
 
-    import scala.collection.JavaConverters._
-    import com.google.common.reflect.TypeToken
+  private def processIGOTCourses(event: Event, metrics: Metrics): Unit = {
 
     val userId = event.userId
     val courseId = event.contentId
@@ -271,7 +291,6 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     }
 
     // Process each competency object
-    import scala.collection.JavaConverters._
     competencies.asScala.foreach { comp =>
       val areaId = comp.getOrDefault("competencyAreaIdentifier", "").toString
       val themeId = comp.getOrDefault("competencyThemeIdentifier", "").toString
@@ -388,5 +407,149 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     }
     courseInfoMap.put("competencies_v6", competencies)
     courseInfoMap
+  }
+
+  // Add new method for extCourses
+  private def processExtCourses(event: Event, metrics: Metrics): Unit = {
+    val userId = event.userId
+    val courseId = event.contentId
+    val userCompetencyTable = config.userCompetencyTable
+    val extContentReadUrl = config.extContentUrl
+    val contentUrl = s"$extContentReadUrl$courseId"
+    val courseMetadata = cache.getWithRetry(courseId)
+    import scala.collection.JavaConverters._
+    val raw =
+      if (courseMetadata != null && courseMetadata.contains(config.extContentResponseKey)) {
+        val contentMap =
+          courseMetadata(config.extContentResponseKey).asInstanceOf[java.util.Map[String, AnyRef]]
+        val competenciesValue = contentMap.get(config.competenciesV6Key)
+        competenciesValue match {
+          case javaCompetenciesList: java.util.List[_] =>
+            javaCompetenciesList
+          case scalaCompetenciesSeq: scala.collection.Seq[_] =>
+            scalaCompetenciesSeq.asJava
+          case null =>
+            logger.warn(
+              s"Key '${config.competenciesV6Key}' found but value is null for courseId=$courseId"
+            )
+            new java.util.ArrayList[java.util.Map[String, AnyRef]]()
+          case other =>
+            logger.warn(
+              s"Key '${config.competenciesV6Key}' found but value type is invalid: ${other.getClass.getName} for courseId=$courseId"
+            )
+            new java.util.ArrayList[java.util.Map[String, AnyRef]]()
+        }
+      } else {
+        logger.warn(
+          s"Key '${config.extContentResponseKey}' not found in courseMetadata for courseId=$courseId. Falling back to API call."
+        )
+        val response = getExtContentAPICall(contentUrl)(config, httpUtil, metrics)
+        response.get(config.competenciesV6Key)
+      }
+    val competencies: java.util.List[java.util.Map[String, AnyRef]] = raw match {
+      case null => new java.util.ArrayList[java.util.Map[String, AnyRef]]()
+      case jl: java.util.List[_] =>
+        jl.asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
+      case s: Seq[_] =>
+        s.map {
+          case jm: java.util.Map[_, _] => jm.asInstanceOf[java.util.Map[String, AnyRef]]
+          case sm: Map[_, _] => sm.asJava.asInstanceOf[java.util.Map[String, AnyRef]]
+          case other => other.asInstanceOf[java.util.Map[String, AnyRef]]
+        }.toList.asJava
+      case _ => new java.util.ArrayList[java.util.Map[String, AnyRef]]()
+    }
+    if (competencies.isEmpty) {
+      logger.warn(s"No competencies found for extCourseId=$courseId")
+      return
+    }
+    // Fetch issued_certificates from user_external_enrolments
+    val externalEnrolDb = config.extContentUserExternalEnrolmentsDb
+    val externalEnrolTable = config.extContentUserExternalEnrolmentsTable
+    val externalEnrolQuery =
+      s"""
+         SELECT issued_certificates
+         FROM $externalEnrolDb.$externalEnrolTable
+         WHERE userid='$userId'
+         AND courseid='$courseId';
+       """
+    import scala.collection.JavaConverters._
+    import com.google.common.reflect.TypeToken
+    val enrolmentRows = cassandraUtil.find(externalEnrolQuery)
+    var issuedCertificates: List[java.util.Map[String, String]] = List.empty
+    if (enrolmentRows != null && !enrolmentRows.isEmpty) {
+      val row = enrolmentRows.get(0)
+      val issuedCertificatesKey = config.extContentUserExternalEnrolmentsIssuedCertificatesKey
+      val certsRaw = row.getObject(issuedCertificatesKey).asInstanceOf[java.util.List[java.util.Map[String, String]]]
+      if (certsRaw != null) {
+        issuedCertificates ++= certsRaw.asScala.toList
+      }
+    }
+    // Add logic to pick version v2 if present, else first
+    val certMapOpt =
+      issuedCertificates.find(c => Option(c.get(config.enrolmentsCertificateVersionKey)).exists(_.equalsIgnoreCase(config.certificateVersion2Value)))
+        .orElse(issuedCertificates.headOption)
+    val certificateId = certMapOpt.flatMap(c => Option(c.get(config.certificateIdKey)).orElse(Option(c.get(config.identifierKey)))).getOrElse("")
+    val issuedDate = certMapOpt.flatMap(c => Option(c.get(config.lastIssuedOnKey))).getOrElse("")
+    competencies.asScala.foreach { comp =>
+      val areaId = comp.getOrDefault(config.competencyAreaIdentifierKey, "").toString
+      val themeId = comp.getOrDefault(config.competencyThemeIdentifierKey, "").toString
+      val subthemeId = comp.getOrDefault(config.competencySubThemeIdentifierKey, "").toString
+      val newDetail: Map[String, String] = Map(
+        config.acquiredContextIdKey -> courseId,
+        config.certificateIdKey     -> certificateId,
+        config.acquiredAt       -> issuedDate
+      )
+      val dbName = config.dbName
+      val userCompetencyTableFull = if (userCompetencyTable.contains(".")) userCompetencyTable else s"$dbName.$userCompetencyTable"
+      val selectQuery =
+        s"""
+           SELECT competency_details
+           FROM $userCompetencyTableFull
+           WHERE user_id='$userId'
+           AND competency_area_id='$areaId'
+           AND competency_theme_id='$themeId'
+           AND competency_subtheme_id='$subthemeId';
+         """
+      val existingRows = cassandraUtil.find(selectQuery)
+      var competencyDetails: Map[String, List[Map[String, String]]] = Map()
+      if (existingRows != null && !existingRows.isEmpty) {
+        val row = existingRows.get(0)
+
+        import com.google.common.reflect.TypeToken
+
+        val typeToken =
+          new TypeToken[java.util.Map[String,
+            java.util.List[java.util.Map[String, String]]]]() {}
+
+        val detailsObj =
+          row.get(config.competencyDetails, typeToken)
+
+        if (detailsObj != null) {
+          competencyDetails =
+            detailsObj.asScala.map { case (k, v) =>
+              k -> v.asScala.toList.map(_.asScala.toMap)
+            }.toMap
+        }
+      }
+      val updatedList =
+        competencyDetails
+          .getOrElse(config.extCoursesContextType, List())
+          .filterNot(_(config.acquiredContextIdKey) == courseId) :+ newDetail
+      val updatedDetails =
+        competencyDetails + (config.extCoursesContextType-> updatedList)
+      val cqlDetails = toCqlMap(updatedDetails)
+      val upsertQuery =
+        s"""
+           INSERT INTO $userCompetencyTableFull
+           (user_id, competency_area_id, competency_theme_id,
+            competency_subtheme_id, competency_details)
+           VALUES
+           ('$userId', '$areaId', '$themeId',
+            '$subthemeId', $cqlDetails);
+         """
+      cassandraUtil.upsert(upsertQuery)
+      metrics.incCounter(config.dbUpdateCount)
+      logger.info(s"Processing extCourse competency: areaId=$areaId, themeId=$themeId, subthemeId=$subthemeId")
+    }
   }
 }
