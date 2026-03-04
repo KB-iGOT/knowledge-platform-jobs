@@ -58,4 +58,5 @@ class UserCompetencyUpdaterConfig(override val config: Config) extends BaseJobCo
   val competencies: String = config.getString("content.competencies")
   val certificatePreProcessorConsumer: String = config.getString("certificate.preprocessor.consumer")
   val dbName: String = config.getString("lms-cassandra.sunbird.db")
+  val extContentUrl: String = config.getString("extcontent.read.url")
 }
