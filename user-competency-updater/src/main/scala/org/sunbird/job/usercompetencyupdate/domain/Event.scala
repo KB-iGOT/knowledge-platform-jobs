@@ -9,5 +9,9 @@ class Event(eventMap: java.util.Map[String, Any], partition: Int, offset: Long)
   def contentId: String = readOrDefault[String]("edata.contentId", "")
   def batchId: String = readOrDefault[String]("edata.batchId", "")
   def contextType: String = readOrDefault[String]("edata.contextType", "")
+  def action: String = readOrDefault[String]("edata.action", "")
+  def competencyIds: List[Map[String, AnyRef]] =
+    readOrDefault[List[Map[String, AnyRef]]]("edata.competencyIds", List.empty)
   def payload: java.util.Map[String, Any] = eventMap
+
 }
