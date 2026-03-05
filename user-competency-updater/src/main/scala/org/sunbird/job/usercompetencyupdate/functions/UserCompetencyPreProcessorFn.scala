@@ -105,7 +105,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
         upsertUserCompetency(userId, areaId, themeId, subthemeId, detailsMap, userCompetencyTable, metrics)
       }
     }
-    else if (event.action.equalsIgnoreCase("UPDATE ")) {
+    else if (event.action.equalsIgnoreCase(config.update)) {
       val competencyIds = event.competencyIds
       competencyIds.foreach { comp =>
 
@@ -121,8 +121,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
         val action =
           comp.getOrElse(config.action, "").toString.trim.toLowerCase
 
-        if (action == "removed") {
-
+        if (action == config.removed) {
           removeAchievementFromCompetency(
             userId,
             areaId,
@@ -131,8 +130,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
             event.contentId,
             userCompetencyTable
           )
-
-        } else if (action == "added") {
+        } else if (action == config.added) {
 
           upsertUserCompetency(
             userId,
@@ -146,7 +144,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
         }
       }
     }
-    else if (event.action.equalsIgnoreCase("DELETE")) {
+    else if (event.action.equalsIgnoreCase(config.delete)) {
       val competencyIds = event.competencyIds
 
       competencyIds.foreach { comp =>

@@ -86,4 +86,8 @@ class UserCompetencyUpdaterConfig(override val config: Config) extends BaseJobCo
   val  competencySubThemeId: String = config.getString("extcontent.compSubThemeId")
   val  action: String = config.getString("extcontent.action")
   val uploadedDocumentUrl: String = config.getString("extcontent.uploadedDocumentUrl")
+  val update: String = config.getString("extcontent.update")
+  val delete: String = config.getString("extcontent.delete")
+  val removed: String = config.getString("extcontent.removed")
+  val added: String = config.getString("extcontent.added")
 }
