@@ -193,6 +193,10 @@ assessment_public_certificate_generator_enable_rc_certificate: true
 registry_sunbird_keyspace: "sunbird"
 cert_registry_table: "cert_registry"
 
+######user-competency-updater######
+user_competency_updater_consumer_parallelism: 1
+user_competency_updater_parallelism: 1
+
 ### to be removed
 job_classname: ""
 
@@ -349,6 +353,13 @@ flink_job_names:
 
   assessment-public-certificate-generator:
     job_class_name: 'org.sunbird.job.certpublic.task.AssessmentPublicCertificateGeneratorStreamTask'
+    replica: 1
+    jobmanager_memory: 1024m
+    taskmanager_memory: 1024m
+    taskslots: 1
+    cpu_requests: 0.3
+  user-competency-updater:
+    job_class_name: 'org.sunbird.job.aggregate.task.UserCompetencyUpdaterStreamTask'
     replica: 1
     jobmanager_memory: 1024m
     taskmanager_memory: 1024m
