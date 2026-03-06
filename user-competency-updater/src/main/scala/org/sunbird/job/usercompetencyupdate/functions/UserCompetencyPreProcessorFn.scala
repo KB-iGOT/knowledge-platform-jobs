@@ -85,8 +85,10 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       if (rows == null || rows.isEmpty) hasMore = false
       else {
         val enrolments = rows.asScala.map(rowToMap).toList
-        enrolments.filter(_(config.status).toString.toInt == 2).foreach(e => processCourse(userId,e,metrics))
-        val lastRow = rows.get(rows.size()-1)
+        enrolments
+          .filter(_(config.status).toString.toInt == 2)
+          .foreach(e => processCourse(userId, e, metrics))
+        val lastRow = rows.get(rows.size() - 1)
         lastCourseId = lastRow.getString(config.courseid)
         lastBatchId = lastRow.getString(config.batchid)
         if (rows.size() < batchSize) hasMore = false
@@ -241,12 +243,12 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       val userId = event.userId
       val achievementId = event.contentId
       val dbName = config.dbName
-      val achievementTable = dbName + "." + config.learnerAchievementTable
-      val userCompetencyTable = dbName + "." + config.userCompetencyTable
+      val achievementTable = s"$dbName.${config.learnerAchievementTable}"
+      val userCompetencyTable = s"$dbName.${config.userCompetencyTable}"
       val query =
         s"SELECT * FROM $achievementTable WHERE userid='$userId' AND id='$achievementId' AND contexttype='achievements';"
       val rows =
-        if (event.action == null || event.action.isEmpty || event.action.equalsIgnoreCase("UPDATE"))
+        if (event.action == null || event.action.isEmpty || event.action.equalsIgnoreCase(config.update))
           cassandraUtil.find(query)
         else
           null
@@ -257,46 +259,31 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
         contextData = ScalaJsonUtil.deserialize[Map[String, AnyRef]](contextDataJson)
       }
       val detailsMap = Map(
-        config.acquiredContextIdKey ->
-          contextData.getOrElse(config.acquiredContextIdKey, event.contentId).toString,
-        config.certificateIdKey ->
-          contextData.getOrElse(config.uploadedDocumentUrl, "").toString,
-        config.acquiredAt ->
-          contextData.getOrElse(config.issuedOn, "").toString
+        config.acquiredContextIdKey -> contextData.getOrElse(config.acquiredContextIdKey, event.contentId).toString,
+        config.certificateIdKey -> contextData.getOrElse(config.uploadedDocumentUrl, "").toString,
+        config.acquiredAt -> contextData.getOrElse(config.issuedOn, "").toString
       )
       if (event.action == null || event.action.isEmpty) {
-        val competencies =
-          contextData.get(config.competenciesV6Key) match {
-            case Some(list: java.util.List[_]) =>
-              list.asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
-                .asScala.toList.map(_.asScala.toMap)
-            case Some(list: List[_]) =>
-              list.asInstanceOf[List[Map[String, AnyRef]]]
-            case _ => List.empty[Map[String, AnyRef]]
-          }
+        val competencies = contextData.get(config.competenciesV6Key) match {
+          case Some(list: java.util.List[_]) =>
+            list.asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]].asScala.toList.map(_.asScala.toMap)
+          case Some(list: List[_]) =>
+            list.asInstanceOf[List[Map[String, AnyRef]]]
+          case _ => List.empty[Map[String, AnyRef]]
+        }
         competencies.foreach { comp =>
           val areaId = comp.getOrElse(config.competencyAreaIdentifierKey, "").toString
           val themeId = comp.getOrElse(config.competencyThemeIdentifierKey, "").toString
           val subthemeId = comp.getOrElse(config.competencySubThemeIdentifierKey, "").toString
           upsertUserCompetency(userId, areaId, themeId, subthemeId, detailsMap, userCompetencyTable, metrics)
         }
-      }
-      else if (event.action.equalsIgnoreCase(config.update)) {
-        val competencyIds = event.competencyIds
+      } else if (event.action.equalsIgnoreCase(config.update)) {
+        val competencyIds = event.competencyIds.asInstanceOf[List[Map[String, AnyRef]]]
         competencyIds.foreach { comp =>
-
-          val areaId =
-            comp.getOrElse(config.competencyAreaIdentifierKey, "").toString
-
-          val themeId =
-            comp.getOrElse(config.competencyThemeIdentifierKey, "").toString
-
-          val subthemeId =
-            comp.getOrElse(config.competencySubThemeIdentifierKey, "").toString
-
-          val action =
-            comp.getOrElse(config.action, "").toString.trim.toLowerCase
-
+          val areaId = comp.getOrElse(config.competencyAreaIdentifierKey, "").toString
+          val themeId = comp.getOrElse(config.competencyThemeIdentifierKey, "").toString
+          val subthemeId = comp.getOrElse(config.competencySubThemeIdentifierKey, "").toString
+          val action = comp.getOrElse(config.action, "").toString.trim.toLowerCase
           if (action == config.removed) {
             removeAchievementFromCompetency(
               userId,
@@ -307,7 +294,6 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
               userCompetencyTable
             )
           } else if (action == config.added) {
-
             upsertUserCompetency(
               userId,
               areaId,
@@ -319,15 +305,12 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
             )
           }
         }
-      }
-      else if (event.action.equalsIgnoreCase(config.delete)) {
+      } else if (event.action.equalsIgnoreCase(config.delete)) {
         val competencyIds = event.competencyIds
-
         competencyIds.foreach { comp =>
           val areaId = comp(config.competencyAreaIdentifierKey).toString
           val themeId = comp(config.competencyThemeIdentifierKey).toString
           val subthemeId = comp(config.competencySubThemeIdentifierKey).toString
-
           removeAchievementFromCompetency(
             userId,
             areaId,
