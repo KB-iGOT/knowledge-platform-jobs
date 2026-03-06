@@ -196,7 +196,7 @@ cert_registry_table: "cert_registry"
 ######user-competency-updater######
 user_competency_updater_consumer_parallelism: 1
 user_competency_updater_parallelism: 1
-
+user_competency_updater_restart_strategy_delay: 240000
 ### to be removed
 job_classname: ""
 
