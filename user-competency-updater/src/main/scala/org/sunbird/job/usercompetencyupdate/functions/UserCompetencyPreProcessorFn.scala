@@ -565,7 +565,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       val newDetail: Map[String, String] = Map(
         "acquiredContextId" -> courseId,
         "certificateId"     -> certificateId,
-        "acquired_at"       -> issuedDate
+        config.acquiredAt       -> issuedDate
       )
       // Ensure userCompetencyTable is fully qualified with DB name from config
       val dbName = config.dbName // assuming config.dbName is set to "sunbird"
