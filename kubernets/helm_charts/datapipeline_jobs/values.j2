@@ -1204,8 +1204,10 @@ user-competency-updater:
       restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
       restart-strategy.delay = {{ user_competency_updater_restart_strategy_delay }} # in milli-seconds # on max restarts (3) within 4 min the job will fail.
       consumer.parallelism = {{ user_competency_updater_consumer_parallelism }}
-      checkpointing.interval = {{ user_competency_updater_v2_checkpointing_interval }}
-      checkpointing.pause.between.seconds = {{ user_competency_updater_v2_checkpointing_pause_interval }}
+      parallelism = {{ user_competency_updater_parallelism }}
+
+      checkpointing.interval = {{ user_competency_updater_checkpointing_interval }}
+      checkpointing.pause.between.seconds = {{ user_competency_updater_checkpointing_pause_interval }}
     }
     lms-cassandra {
       keyspace = "sunbird"
