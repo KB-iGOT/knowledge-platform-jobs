@@ -20,7 +20,7 @@ class UserCompetencyPreUpdaterTask(config: UserCompetencyUpdaterConfig, kafkaCon
     def process(): Unit = {
         // For local IDE execution, use local Flink environment
         import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
-        implicit val env: StreamExecutionEnvironment = FlinkUtil.getExecutionContext(config)
+        implicit val env: StreamExecutionEnvironment = StreamExecutionEnvironment.createLocalEnvironment()
         implicit val eventTypeInfo: TypeInformation[Event] = TypeExtractor.getForClass(classOf[Event])
         implicit val stringTypeInfo: TypeInformation[String] = TypeExtractor.getForClass(classOf[String])
         val source = kafkaConnector.kafkaJobRequestSource[Event](config.kafkaInputTopic)

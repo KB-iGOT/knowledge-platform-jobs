@@ -1,5 +1,6 @@
 package org.sunbird.job.usercompetencyupdate.functions
 
+import com.datastax.driver.core.Row
 import com.google.common.reflect.TypeToken
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.configuration.Configuration
@@ -10,6 +11,7 @@ import org.sunbird.job.usercompetencyupdate.domain.Event
 import org.sunbird.job.usercompetencyupdate.task.UserCompetencyUpdaterConfig
 import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil, ScalaJsonUtil}
 import org.sunbird.job.{BaseProcessKeyedFunction, Metrics}
+
 import scala.collection.JavaConverters._
 import org.sunbird.job.util.ScalaJsonUtil
 
@@ -44,15 +46,18 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
                               context: KeyedProcessFunction[String, Event, String]#Context,
                               metrics: Metrics): Unit = {
     try {
-      val contextType = event.contextType
-      if (contextType == config.achievements) {
-        processAchievementEvent(event, metrics)
-      } else if (contextType == "iGOTCourses") {
-        processIGOTCourses(event, metrics)
-      } else if (contextType != null && contextType.equalsIgnoreCase(config.extCoursesContextType)) {
-        processExtCourses(event, metrics)
+      if (event.isFirstTimeUser != null && event.isFirstTimeUser) {
+        processFirstTimeUser(event, metrics)
+      } else {
+        val contextType = event.contextType
+        if (contextType == config.achievements) {
+          processAchievementEvent(event, metrics)
+        } else if (contextType == "iGOTCourses") {
+          processIGOTCourses(event, metrics)
+        } else if (contextType != null && contextType.equalsIgnoreCase(config.extCoursesContextType)) {
+          processExtCourses(event, metrics)
+        }
       }
-      // No generic upsert logic for other types
     } catch {
       case ex: Exception =>
         metrics.incCounter(config.failedEventCount)
@@ -60,152 +65,87 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     }
   }
 
-  // New function for processing user-competency-mapping-event
-  private def processAchievementEvent(event: Event, metrics: Metrics): Unit = {
+  private def processFirstTimeUser(event: Event, metrics: Metrics): Unit = {
     val userId = event.userId
-    val achievementId = event.contentId
-    val dbName = config.dbName
-    val achievementTable = dbName + "." + config.learnerAchievementTable
-    val userCompetencyTable = dbName + "." + config.userCompetencyTable
-    val query =
-      s"SELECT * FROM $achievementTable WHERE userid='$userId' AND id='$achievementId' AND contexttype='achievements';"
-    val rows =
-      if (event.action == null || event.action.isEmpty || event.action.equalsIgnoreCase("UPDATE"))
-        cassandraUtil.find(query)
+    fetchUserEnrollments(userId, metrics)
+    processUserExtCourses(userId, metrics)
+  }
+
+  private def fetchUserEnrollments(userId: String, metrics: Metrics): Unit = {
+    val batchSize = config.firstTimeUserFetchLimit
+    var lastCourseId: String = null
+    var lastBatchId: String = null
+    var hasMore = true
+    while (hasMore) {
+      val query = if (lastCourseId == null)
+        s"SELECT courseid,batchid,status,issued_certificates FROM ${config.coursesdb}.${config.enrolmentTable} WHERE userid='$userId' LIMIT $batchSize;"
       else
-        null
-    var contextData: Map[String, AnyRef] = Map()
-    if (rows != null && !rows.isEmpty) {
-      val row = rows.get(0)
-      val contextDataJson = row.getString(config.contextData)
-      contextData = ScalaJsonUtil.deserialize[Map[String, AnyRef]](contextDataJson)
-    }
-    val detailsMap = Map(
-      config.acquiredContextIdKey ->
-        contextData.getOrElse(config.acquiredContextIdKey, event.contentId).toString,
-      config.certificateIdKey ->
-        contextData.getOrElse(config.uploadedDocumentUrl, "").toString,
-      config.acquiredAt ->
-        contextData.getOrElse(config.issuedOn, "").toString
-    )
-    if (event.action == null || event.action.isEmpty) {
-      val competencies =
-        contextData.get(config.competenciesV6Key) match {
-          case Some(list: java.util.List[_]) =>
-            list.asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
-              .asScala.toList.map(_.asScala.toMap)
-          case Some(list: List[_]) =>
-            list.asInstanceOf[List[Map[String, AnyRef]]]
-          case _ => List.empty[Map[String, AnyRef]]
-        }
-      competencies.foreach { comp =>
-        val areaId = comp.getOrElse(config.competencyAreaIdentifierKey, "").toString
-        val themeId = comp.getOrElse(config.competencyThemeIdentifierKey, "").toString
-        val subthemeId = comp.getOrElse(config.competencySubThemeIdentifierKey, "").toString
-        upsertUserCompetency(userId, areaId, themeId, subthemeId, detailsMap, userCompetencyTable, metrics)
-      }
-    }
-    else if (event.action.equalsIgnoreCase(config.update)) {
-      val competencyIds = event.competencyIds
-      competencyIds.foreach { comp =>
-
-        val areaId =
-          comp.getOrElse(config.competencyAreaIdentifierKey, "").toString
-
-        val themeId =
-          comp.getOrElse(config.competencyThemeIdentifierKey, "").toString
-
-        val subthemeId =
-          comp.getOrElse(config.competencySubThemeIdentifierKey, "").toString
-
-        val action =
-          comp.getOrElse(config.action, "").toString.trim.toLowerCase
-
-        if (action == config.removed) {
-          removeAchievementFromCompetency(
-            userId,
-            areaId,
-            themeId,
-            subthemeId,
-            event.contentId,
-            userCompetencyTable
-          )
-        } else if (action == config.added) {
-
-          upsertUserCompetency(
-            userId,
-            areaId,
-            themeId,
-            subthemeId,
-            detailsMap,
-            userCompetencyTable,
-            metrics
-          )
-        }
-      }
-    }
-    else if (event.action.equalsIgnoreCase(config.delete)) {
-      val competencyIds = event.competencyIds
-
-      competencyIds.foreach { comp =>
-        val areaId = comp(config.competencyAreaIdentifierKey).toString
-        val themeId = comp(config.competencyThemeIdentifierKey).toString
-        val subthemeId = comp(config.competencySubThemeIdentifierKey).toString
-
-        removeAchievementFromCompetency(
-          userId,
-          areaId,
-          themeId,
-          subthemeId,
-          event.contentId,
-          userCompetencyTable
-        )
+        s"SELECT courseid,batchid,status,issued_certificates FROM ${config.coursesdb}.${config.enrolmentTable} WHERE userid='$userId' AND (courseid,batchid) > ('$lastCourseId','$lastBatchId') LIMIT $batchSize;"
+      val rows = cassandraUtil.find(query)
+      if (rows == null || rows.isEmpty) hasMore = false
+      else {
+        val enrolments = rows.asScala.map(rowToMap).toList
+        enrolments
+          .filter(_(config.status).toString.toInt == 2)
+          .foreach(e => processCourse(userId, e, metrics))
+        val lastRow = rows.get(rows.size() - 1)
+        lastCourseId = lastRow.getString(config.courseid)
+        lastBatchId = lastRow.getString(config.batchid)
+        if (rows.size() < batchSize) hasMore = false
       }
     }
   }
 
-  private def upsertUserCompetency(
-                                    userId: String,
-                                    areaId: String,
-                                    themeId: String,
-                                    subthemeId: String,
-                                    detailsMap: Map[String, String],
-                                    userCompetencyTable: String,
-                                    metrics: Metrics
-                                  ): Unit = {
+  private def processCourse(userId: String,enrolment: Map[String,AnyRef],metrics: Metrics): Unit = {
+    import scala.collection.JavaConverters._
+    val courseId = enrolment(config.courseid).toString
+    val courseInfo = getCourseInfo(courseId)(metrics,config,cache,httpUtil)
+    val competencies = courseInfo.get(config.competenciesV6Key).asInstanceOf[java.util.List[java.util.Map[String,AnyRef]]].asScala.toList.map(_.asScala.toMap)
+    var certificateId = ""
+    var acquiredAt = ""
+    val certs = enrolment.get(config.issuedCertificatesKey).map(_.asInstanceOf[java.util.List[java.util.Map[String,String]]])
+    certs.foreach(l => if (!l.isEmpty) { val c=l.get(0); certificateId=c.getOrDefault(config.identifierKey,""); acquiredAt=c.getOrDefault(config.lastIssuedOnKey,"") })
+    val detailsMap = Map(config.acquiredContextIdKey->courseId,config.certificateIdKey->certificateId,config.acquiredAt->acquiredAt)
+    competencies.foreach { comp =>
+      val areaId = comp.getOrElse(config.competencyAreaIdentifierKey,"").toString
+      val themeId = comp.getOrElse(config.competencyThemeIdentifierKey,"").toString
+      val subthemeId = comp.getOrElse(config.competencySubThemeIdentifierKey,"").toString
+      upsertUserCompetencyByContext(userId, areaId, themeId, subthemeId, detailsMap, config.iGOTCourses, config.dbName + "." + config.userCompetencyTable, metrics)
+    }
+  }
 
+  private def upsertUserCompetencyByContext(
+                                             userId: String,
+                                             areaId: String,
+                                             themeId: String,
+                                             subthemeId: String,
+                                             detailsMap: Map[String, String],
+                                             competencyKey: String,
+                                             userCompetencyTable: String,
+                                             metrics: Metrics
+                                           ): Unit = {
     val selectQuery =
       s"SELECT competency_details FROM $userCompetencyTable WHERE user_id='$userId' AND competency_area_id='$areaId' AND competency_theme_id='$themeId' AND competency_subtheme_id='$subthemeId';"
     val existingRows = cassandraUtil.find(selectQuery)
     var competencyDetails: Map[String, List[Map[String, String]]] = Map()
-
     if (existingRows != null && !existingRows.isEmpty) {
-
-      import com.google.common.reflect.TypeToken
-      import scala.collection.JavaConverters._
-
       val typeToken =
         new TypeToken[java.util.Map[String, java.util.List[java.util.Map[String, String]]]]() {}
-
       val detailsObj =
         existingRows.get(0).get(config.competencyDetails, typeToken)
-
       if (detailsObj != null) {
-
         competencyDetails =
           detailsObj.asScala.map { case (k, v) =>
             k -> v.asScala.toList.map(_.asScala.toMap)
           }.toMap
-
       }
     }
     val updatedList =
       competencyDetails
-        .getOrElse(config.selfAchievement, List())
+        .getOrElse(competencyKey, List())
         .filterNot(_(config.acquiredContextIdKey) == detailsMap(config.acquiredContextIdKey)) :+ detailsMap
-
     val updatedDetails =
-      competencyDetails + (config.selfAchievement -> updatedList)
+      competencyDetails + (competencyKey -> updatedList)
     val cqlDetails = toCqlMap(updatedDetails)
     val upsertQuery =
       s"""
@@ -219,68 +159,287 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     metrics.incCounter(config.dbUpdateCount)
   }
 
-  private def removeAchievementFromCompetency(
-                                               userId: String,
-                                               areaId: String,
-                                               themeId: String,
-                                               subthemeId: String,
-                                               contentId: String,
-                                               userCompetencyTable: String
-                                             ): Unit = {
-    val selectQuery =
-      s"SELECT competency_details FROM $userCompetencyTable WHERE user_id='$userId' AND competency_area_id='$areaId' AND competency_theme_id='$themeId' AND competency_subtheme_id='$subthemeId';"
-    val existingRows = cassandraUtil.find(selectQuery)
-    var competencyDetails: Map[String, List[Map[String, String]]] = Map()
-    if (existingRows != null && !existingRows.isEmpty) {
-      val typeToken =
-        new TypeToken[java.util.Map[String,
-          java.util.List[java.util.Map[String, String]]]]() {}
+  private def rowToMap(row: Row): Map[String, AnyRef] = {
+    row.getColumnDefinitions.asList().asScala.map(c => c.getName -> row.getObject(c.getName)).toMap
+  }
 
-      val detailsObj =
-        existingRows.get(0).get(config.competencyDetails, typeToken)
-
-      if (detailsObj != null) {
-        competencyDetails =
-          detailsObj.asScala.map { case (k, v) =>
-            k -> v.asScala.toList.map(_.asScala.toMap)
-          }.toMap
-      }
-      if (detailsObj != null) {
-        val competencyDetails =
-          detailsObj.asScala.map { case (k, v) =>
-            k -> v.asScala.toList.map(_.asScala.toMap)
-          }.toMap
-        val updatedList =
-          competencyDetails
-            .getOrElse(config.selfAchievement, List())
-            .filterNot(_(config.acquiredContextIdKey) == contentId)
-        if (updatedList.isEmpty) {
-          val deleteQuery =
-            s"""
-             DELETE FROM $userCompetencyTable
-             WHERE user_id='$userId'
-             AND competency_area_id='$areaId'
-             AND competency_theme_id='$themeId'
-             AND competency_subtheme_id='$subthemeId';
-           """
-          cassandraUtil.upsert(deleteQuery)
-        } else {
-          val updatedDetails =
-            competencyDetails + (config.selfAchievement -> updatedList)
-          val cqlDetails = toCqlMap(updatedDetails)
-          val upsertQuery =
-            s"""
-             INSERT INTO $userCompetencyTable
-             (user_id, competency_area_id, competency_theme_id,
-              competency_subtheme_id, competency_details)
-             VALUES
-             ('$userId', '$areaId', '$themeId', '$subthemeId', $cqlDetails);
-           """
-          cassandraUtil.upsert(upsertQuery)
+  private def processUserExtCourses(userId: String, metrics: Metrics): Unit = {
+    val query =
+      s"SELECT courseid,status,issued_certificates FROM ${config.extContentUserExternalEnrolmentsDb}.${config.extContentUserExternalEnrolmentsTable} WHERE userid='$userId';"
+    val rows = cassandraUtil.find(query)
+    if (rows != null && !rows.isEmpty) {
+      rows.asScala.foreach { row =>
+        if (row.getInt(config.status) == 2) {
+          val courseId = row.getString(config.courseid)
+          val issuedCertificates =
+            row.getObject(config.extContentUserExternalEnrolmentsIssuedCertificatesKey)
+              .asInstanceOf[java.util.List[java.util.Map[String, String]]]
+          processExtCourseForFirstTimeUser(
+            userId,
+            courseId,
+            issuedCertificates,
+            metrics
+          )
         }
       }
     }
   }
+
+  private def processExtCourseForFirstTimeUser(
+                                                userId: String,
+                                                courseId: String,
+                                                issuedCertificates: java.util.List[java.util.Map[String, String]],
+                                                metrics: Metrics
+                                              ): Unit = {
+    val contentUrl = config.extContentUrl + courseId
+    val courseMetadata = cache.getWithRetry(courseId)
+    val raw =
+      if (courseMetadata != null && courseMetadata.contains(config.extContentResponseKey)) {
+        val contentMap =
+          courseMetadata(config.extContentResponseKey).asInstanceOf[java.util.Map[String, AnyRef]]
+        contentMap.get(config.competenciesV6Key)
+      } else {
+        val response = getExtContentAPICall(contentUrl)(config, httpUtil, metrics)
+        response.get(config.competenciesV6Key)
+      }
+    if (raw == null) return
+    val competencies =
+      raw.asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]].asScala
+    val cert =
+      if (issuedCertificates != null && !issuedCertificates.isEmpty)
+        issuedCertificates.get(0)
+      else
+        new java.util.HashMap[String, String]()
+    val certificateId =
+      Option(cert.get(config.certificateIdKey))
+        .orElse(Option(cert.get(config.identifierKey)))
+        .getOrElse("")
+    val issuedDate =
+      Option(cert.get(config.lastIssuedOnKey)).getOrElse("")
+    competencies.foreach { comp =>
+      val areaId = comp.getOrDefault(config.competencyAreaIdentifierKey, "").toString
+      val themeId = comp.getOrDefault(config.competencyThemeIdentifierKey, "").toString
+      val subthemeId = comp.getOrDefault(config.competencySubThemeIdentifierKey, "").toString
+      val detailsMap = Map(
+        config.acquiredContextIdKey -> courseId,
+        config.certificateIdKey -> certificateId,
+        config.acquiredAt -> issuedDate
+      )
+      upsertUserCompetencyByContext(
+        userId,
+        areaId,
+        themeId,
+        subthemeId,
+        detailsMap,
+        config.extCoursesContextType,
+        config.dbName + "." + config.userCompetencyTable,
+        metrics
+      )
+    }
+  }
+
+  // New function for processing user-competency-mapping-event
+    private def processAchievementEvent(event: Event, metrics: Metrics): Unit = {
+      val userId = event.userId
+      val achievementId = event.contentId
+      val dbName = config.dbName
+      val achievementTable = s"$dbName.${config.learnerAchievementTable}"
+      val userCompetencyTable = s"$dbName.${config.userCompetencyTable}"
+      val query =
+        s"SELECT * FROM $achievementTable WHERE userid='$userId' AND id='$achievementId' AND contexttype='achievements';"
+      val rows =
+        if (event.action == null || event.action.isEmpty || event.action.equalsIgnoreCase(config.update))
+          cassandraUtil.find(query)
+        else
+          null
+      var contextData: Map[String, AnyRef] = Map()
+      if (rows != null && !rows.isEmpty) {
+        val row = rows.get(0)
+        val contextDataJson = row.getString(config.contextData)
+        contextData = ScalaJsonUtil.deserialize[Map[String, AnyRef]](contextDataJson)
+      }
+      val detailsMap = Map(
+        config.acquiredContextIdKey -> contextData.getOrElse(config.acquiredContextIdKey, event.contentId).toString,
+        config.certificateIdKey -> contextData.getOrElse(config.uploadedDocumentUrl, "").toString,
+        config.acquiredAt -> contextData.getOrElse(config.issuedOn, "").toString
+      )
+      if (event.action == null || event.action.isEmpty) {
+        val competencies = contextData.get(config.competenciesV6Key) match {
+          case Some(list: java.util.List[_]) =>
+            list.asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]].asScala.toList.map(_.asScala.toMap)
+          case Some(list: List[_]) =>
+            list.asInstanceOf[List[Map[String, AnyRef]]]
+          case _ => List.empty[Map[String, AnyRef]]
+        }
+        competencies.foreach { comp =>
+          val areaId = comp.getOrElse(config.competencyAreaIdentifierKey, "").toString
+          val themeId = comp.getOrElse(config.competencyThemeIdentifierKey, "").toString
+          val subthemeId = comp.getOrElse(config.competencySubThemeIdentifierKey, "").toString
+          upsertUserCompetency(userId, areaId, themeId, subthemeId, detailsMap, userCompetencyTable, metrics)
+        }
+      } else if (event.action.equalsIgnoreCase(config.update)) {
+        val competencyIds = event.competencyIds.asInstanceOf[List[Map[String, AnyRef]]]
+        competencyIds.foreach { comp =>
+          val areaId = comp.getOrElse(config.competencyAreaIdentifierKey, "").toString
+          val themeId = comp.getOrElse(config.competencyThemeIdentifierKey, "").toString
+          val subthemeId = comp.getOrElse(config.competencySubThemeIdentifierKey, "").toString
+          val action = comp.getOrElse(config.action, "").toString.trim.toLowerCase
+          if (action == config.removed) {
+            removeAchievementFromCompetency(
+              userId,
+              areaId,
+              themeId,
+              subthemeId,
+              event.contentId,
+              userCompetencyTable
+            )
+          } else if (action == config.added) {
+            upsertUserCompetency(
+              userId,
+              areaId,
+              themeId,
+              subthemeId,
+              detailsMap,
+              userCompetencyTable,
+              metrics
+            )
+          }
+        }
+      } else if (event.action.equalsIgnoreCase(config.delete)) {
+        val competencyIds = event.competencyIds
+        competencyIds.foreach { comp =>
+          val areaId = comp(config.competencyAreaIdentifierKey).toString
+          val themeId = comp(config.competencyThemeIdentifierKey).toString
+          val subthemeId = comp(config.competencySubThemeIdentifierKey).toString
+          removeAchievementFromCompetency(
+            userId,
+            areaId,
+            themeId,
+            subthemeId,
+            event.contentId,
+            userCompetencyTable
+          )
+        }
+      }
+    }
+
+    private def upsertUserCompetency(
+                                      userId: String,
+                                      areaId: String,
+                                      themeId: String,
+                                      subthemeId: String,
+                                      detailsMap: Map[String, String],
+                                      userCompetencyTable: String,
+                                      metrics: Metrics
+                                    ): Unit = {
+
+      val selectQuery =
+        s"SELECT competency_details FROM $userCompetencyTable WHERE user_id='$userId' AND competency_area_id='$areaId' AND competency_theme_id='$themeId' AND competency_subtheme_id='$subthemeId';"
+      val existingRows = cassandraUtil.find(selectQuery)
+      var competencyDetails: Map[String, List[Map[String, String]]] = Map()
+
+      if (existingRows != null && !existingRows.isEmpty) {
+
+        import com.google.common.reflect.TypeToken
+        import scala.collection.JavaConverters._
+
+        val typeToken =
+          new TypeToken[java.util.Map[String, java.util.List[java.util.Map[String, String]]]]() {}
+
+        val detailsObj =
+          existingRows.get(0).get(config.competencyDetails, typeToken)
+
+        if (detailsObj != null) {
+
+          competencyDetails =
+            detailsObj.asScala.map { case (k, v) =>
+              k -> v.asScala.toList.map(_.asScala.toMap)
+            }.toMap
+
+        }
+      }
+      val updatedList =
+        competencyDetails
+          .getOrElse(config.selfAchievement, List())
+          .filterNot(_(config.acquiredContextIdKey) == detailsMap(config.acquiredContextIdKey)) :+ detailsMap
+
+      val updatedDetails =
+        competencyDetails + (config.selfAchievement -> updatedList)
+      val cqlDetails = toCqlMap(updatedDetails)
+      val upsertQuery =
+        s"""
+         INSERT INTO $userCompetencyTable
+         (user_id, competency_area_id, competency_theme_id,
+          competency_subtheme_id, competency_details)
+         VALUES
+         ('$userId', '$areaId', '$themeId', '$subthemeId', $cqlDetails);
+       """
+      cassandraUtil.upsert(upsertQuery)
+      metrics.incCounter(config.dbUpdateCount)
+    }
+
+    private def removeAchievementFromCompetency(
+                                                 userId: String,
+                                                 areaId: String,
+                                                 themeId: String,
+                                                 subthemeId: String,
+                                                 contentId: String,
+                                                 userCompetencyTable: String
+                                               ): Unit = {
+      val selectQuery =
+        s"SELECT competency_details FROM $userCompetencyTable WHERE user_id='$userId' AND competency_area_id='$areaId' AND competency_theme_id='$themeId' AND competency_subtheme_id='$subthemeId';"
+      val existingRows = cassandraUtil.find(selectQuery)
+      var competencyDetails: Map[String, List[Map[String, String]]] = Map()
+      if (existingRows != null && !existingRows.isEmpty) {
+        val typeToken =
+          new TypeToken[java.util.Map[String,
+            java.util.List[java.util.Map[String, String]]]]() {}
+
+        val detailsObj =
+          existingRows.get(0).get(config.competencyDetails, typeToken)
+
+        if (detailsObj != null) {
+          competencyDetails =
+            detailsObj.asScala.map { case (k, v) =>
+              k -> v.asScala.toList.map(_.asScala.toMap)
+            }.toMap
+        }
+        if (detailsObj != null) {
+          val competencyDetails =
+            detailsObj.asScala.map { case (k, v) =>
+              k -> v.asScala.toList.map(_.asScala.toMap)
+            }.toMap
+          val updatedList =
+            competencyDetails
+              .getOrElse(config.selfAchievement, List())
+              .filterNot(_(config.acquiredContextIdKey) == contentId)
+          if (updatedList.isEmpty) {
+            val deleteQuery =
+              s"""
+               DELETE FROM $userCompetencyTable
+               WHERE user_id='$userId'
+               AND competency_area_id='$areaId'
+               AND competency_theme_id='$themeId'
+               AND competency_subtheme_id='$subthemeId';
+             """
+            cassandraUtil.upsert(deleteQuery)
+          } else {
+            val updatedDetails =
+              competencyDetails + (config.selfAchievement -> updatedList)
+            val cqlDetails = toCqlMap(updatedDetails)
+            val upsertQuery =
+              s"""
+               INSERT INTO $userCompetencyTable
+               (user_id, competency_area_id, competency_theme_id,
+                competency_subtheme_id, competency_details)
+               VALUES
+               ('$userId', '$areaId', '$themeId', '$subthemeId', $cqlDetails);
+             """
+            cassandraUtil.upsert(upsertQuery)
+          }
+        }
+      }
+    }
 
 
 
