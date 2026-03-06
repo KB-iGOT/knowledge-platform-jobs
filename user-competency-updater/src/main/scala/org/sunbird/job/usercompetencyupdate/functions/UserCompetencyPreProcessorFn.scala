@@ -558,9 +558,9 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
 
     // Process each competency object
     competencies.asScala.foreach { comp =>
-      val areaId = comp.getOrDefault("competencyAreaIdentifier", "").toString
-      val themeId = comp.getOrDefault("competencyThemeIdentifier", "").toString
-      val subthemeId = comp.getOrDefault("competencySubThemeIdentifier", "").toString
+      val areaId = comp.getOrDefault(config.competencyAreaIdentifierKey, "").toString
+      val themeId = comp.getOrDefault(config.competencyThemeIdentifierKey, "").toString
+      val subthemeId = comp.getOrDefault(config.competencySubThemeIdentifierKey, "").toString
       val description = comp.getOrDefault("competencyAreaDescription", "").toString
       val newDetail: Map[String, String] = Map(
         "acquiredContextId" -> courseId,
