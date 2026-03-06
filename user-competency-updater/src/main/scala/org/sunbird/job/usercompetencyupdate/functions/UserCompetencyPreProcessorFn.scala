@@ -87,7 +87,15 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
         val enrolments = rows.asScala.map(rowToMap).toList
         enrolments
           .filter(_(config.status).toString.toInt == 2)
-          .foreach(e => processCourse(userId, e, metrics))
+          .foreach { e =>
+            try {
+              processCourse(userId, e, metrics)
+            } catch {
+              case ex: Exception =>
+                metrics.incCounter(config.failedEventCount)
+                logger.error(s"Error processing course for firstTimeUser userId=$userId courseId=${e(config.courseid)}", ex)
+            }
+          }
         val lastRow = rows.get(rows.size() - 1)
         lastCourseId = lastRow.getString(config.courseid)
         lastBatchId = lastRow.getString(config.batchid)
@@ -258,10 +266,22 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
         val contextDataJson = row.getString(config.contextData)
         contextData = ScalaJsonUtil.deserialize[Map[String, AnyRef]](contextDataJson)
       }
-      val detailsMap = Map(
-        config.acquiredContextIdKey -> contextData.getOrElse(config.acquiredContextIdKey, event.contentId).toString,
-        config.certificateIdKey -> contextData.getOrElse(config.uploadedDocumentUrl, "").toString,
-        config.acquiredAt -> contextData.getOrElse(config.issuedOn, "").toString
+      val uploadedDocUrl =
+        contextData.getOrElse(config.uploadedDocumentUrl, "").toString
+      val externallyUploaded =
+        if (uploadedDocUrl.nonEmpty) config.trueValue else config.falseValue
+      val certificateId =
+        if (uploadedDocUrl.nonEmpty)
+          uploadedDocUrl
+        else
+          contextData.getOrElse(config.url, "").toString
+      val detailsMap: Map[String, String] = Map(
+        config.acquiredContextIdKey ->
+          contextData.getOrElse(config.acquiredContextIdKey, event.contentId).toString,
+        config.certificateIdKey -> certificateId,
+        config.acquiredAt ->
+          contextData.getOrElse(config.issuedOn, "").toString,
+        config.externallyUploaded -> externallyUploaded
       )
       if (event.action == null || event.action.isEmpty) {
         val competencies = contextData.get(config.competenciesV6Key) match {
