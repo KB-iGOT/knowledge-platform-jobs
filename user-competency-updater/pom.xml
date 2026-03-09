@@ -9,7 +9,7 @@
   </parent>
   <groupId>org.sunbird</groupId>
   <artifactId>user-competency-updater</artifactId>
-  <version>1.0-SNAPSHOT</version>
+  <version>1.0.0</version>
   <name>user-competency-updater</name>
   <url>http://maven.apache.org</url>
 <properties>
