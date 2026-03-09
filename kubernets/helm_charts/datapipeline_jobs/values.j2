@@ -448,6 +448,7 @@ search-indexer:
     cloud_storage_secret="{{ cloud_storage_secret | replace('\n', '\\n') }}"
     cloud_storage_container="{{ cloud_storage_content_bucketname }}"
     cloud_storage_endpoint="{{ cloud_storage_endpoint }}"
+    course_content_allowed_fields=badgeDetails_v1
 
   flink-conf: |+
     jobmanager.memory.flink.size: {{ flink_job_names['search-indexer'].jobmanager_memory }}
@@ -1184,6 +1185,7 @@ content-publish:
     service {
       print.basePath = "{{ kp_print_service_base_url }}"
     }
+    course_content_allowed_fields=badgeDetails_v1
 
   flink-conf: |+
     jobmanager.memory.flink.size: {{ flink_job_names['content-publish'].jobmanager_memory }}
