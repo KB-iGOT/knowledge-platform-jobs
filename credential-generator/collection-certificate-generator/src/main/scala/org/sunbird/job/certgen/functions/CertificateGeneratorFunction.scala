@@ -379,6 +379,15 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
             context.output(config.notifierOutputTag, NotificationMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId,
               certMetaData.batchId, certMetaData.templateId, event.partition, event.offset, event.providerName, event.coursePosterImage))
           }
+          // Validate certificate is actually persisted in enrollment table before firing competency event
+          if (isCertificateIssuedInEnrollmentTable(certMetaData.userId, certMetaData.courseId, certMetaData.batchId)) {
+            val competencyEvent = buildCompetencyAcquiredEvent(certMetaData.userId, certMetaData.courseId, certMetaData.batchId)
+            logger.info("Firing competency mapping event for user: {} course: {} batch: {}", certMetaData.userId, certMetaData.courseId, certMetaData.batchId)
+            context.output(config.competencyMappingOutputTag, competencyEvent)
+            logger.info("Competency mapping event fired successfully: {}", competencyEvent)
+          } else {
+            logger.warn(s"Certificate not found in enrollment table after update, skipping competency mapping event for user: ${certMetaData.userId} course: ${certMetaData.courseId}")
+          }
           //context.output(config.userFeedOutputTag, UserFeedMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId, event.partition, event.offset))
         } else {
           metrics.incCounter(config.failedEventCount)
@@ -530,6 +539,44 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
       logger.error("certificate addition to registry v2 failed: " + httpResponse.status + " :: " + httpResponse.body)
       throw ServerException("ERR_API_CALL", "Something Went Wrong While Making API Call | Status is v2: " + httpResponse.status + " :: " + httpResponse.body)
     }
+  }
+
+  /**
+   * Re-reads the enrollment table to confirm the certificate is actually persisted
+   * for the given userId, courseId, batchId.
+   * Returns true only if issued_certificates is non-null and non-empty.
+   */
+  private def isCertificateIssuedInEnrollmentTable(userId: String, courseId: String, batchId: String): Boolean = {
+    logger.info("Validating certificate persistence in enrollment table for user: {} course: {} batch: {}", userId, courseId, batchId)
+    val selectWhere = QueryBuilder.select("issued_certificates")
+      .from(config.dbKeyspace, config.dbEnrollmentTable)
+      .where()
+      .and(QueryBuilder.eq(config.userId.toLowerCase, userId))
+      .and(QueryBuilder.eq(config.courseId.toLowerCase, courseId))
+      .and(QueryBuilder.eq(config.batchId.toLowerCase, batchId))
+    logger.info("isCertificateIssuedInEnrollmentTable select query {}", selectWhere.toString)
+    val records = cassandraUtil.find(selectWhere.toString).asScala.toList
+    records.exists(row => {
+      val certificates = row.getObject("issued_certificates")
+        .asInstanceOf[java.util.List[java.util.Map[String, String]]]
+      certificates != null && !certificates.isEmpty
+    })
+  }
+
+  /**
+   * Builds a serialized JSON string for the COMPETENCY_ACQUIRED Kafka event.
+   * Shape: { "edata": { "eventType": "COMPETENCY_ACQUIRED", "userId": "...",
+   *                     "contentId": "...", "batchId": "...", "contextType": "iGOTCourses" } }
+   */
+  private def buildCompetencyAcquiredEvent(userId: String, contentId: String, batchId: String): String = {
+    val edata = Map[String, AnyRef](
+      config.eventType   -> "COMPETENCY_ACQUIRED",
+      config.userId     -> userId,
+      config.contentId -> contentId,
+      config.batchId     -> batchId,
+      config.contextType -> "iGOTCourses"
+    )
+    ScalaJsonUtil.serialize(Map[String, AnyRef]("edata" -> edata))
   }
 
 }
