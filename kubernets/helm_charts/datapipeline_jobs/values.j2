@@ -448,7 +448,6 @@ search-indexer:
     cloud_storage_secret="{{ cloud_storage_secret | replace('\n', '\\n') }}"
     cloud_storage_container="{{ cloud_storage_content_bucketname }}"
     cloud_storage_endpoint="{{ cloud_storage_endpoint }}"
-    course_content_allowed_fields=badgeDetails_v1
 
   flink-conf: |+
     jobmanager.memory.flink.size: {{ flink_job_names['search-indexer'].jobmanager_memory }}
@@ -480,7 +479,7 @@ framework-search-indexer:
     dialcode.index.name = "dialcode"
     dailcodemetrics.index.name = "dialcodemetrics"
     restrict.metadata.objectTypes = []
-    nested.fields = ["badgeAssertions", "targets", "badgeAssociations", "plugins", "me_totalTimeSpent", "me_totalPlaySessionCount", "me_totalTimeSpentInSec", "batches", "trackable", "credentials", "discussionForum", "provider", "osMetadata", "actions", "transcripts", "accessibility", "taxonomyPaths_v2", "competencies_v3", "test_competencies_v2", "competencies_v2", "secureSettings", "test_competencies_v4", "competencies_v5", "test_secureSettings", "competencies_v6", "referenceNodes", "resourceTypeDetails", "sectorDetails_v1", "preEnrolmentResources", "languageMapV1", "milestones_v1"]
+    nested.fields = ["badgeAssertions", "targets", "badgeAssociations", "plugins", "me_totalTimeSpent", "me_totalPlaySessionCount", "me_totalTimeSpentInSec", "batches", "trackable", "credentials", "discussionForum", "provider", "osMetadata", "actions", "transcripts", "accessibility", "taxonomyPaths_v2", "competencies_v3", "test_competencies_v2", "competencies_v2", "secureSettings", "test_competencies_v4", "competencies_v5", "test_secureSettings", "competencies_v6", "referenceNodes", "resourceTypeDetails", "sectorDetails_v1", "preEnrolmentResources", "languageMapV1", "milestones_v1","badgeDetails_test"]
     schema.definition_cache.expiry = {{ schema_definition_cache_expiry_in_sec }}
     restrict.objectTypes = ["EventSet", "Questionnaire", "Misconception", "FrameworkType", "EventSetImage", "EventImage"]
     ignored.fields={{ framework_search_indexer_ignored_fields | to_json }}
@@ -1102,7 +1101,7 @@ content-publish:
         full = ["appIcon", "grayScaleAppIcon", "artifactUrl", "itemSetPreviewUrl", "media"]
       }
 
-      nested.fields = ["badgeAssertions", "targets", "badgeAssociations", "plugins", "me_totalTimeSpent", "me_totalPlaySessionCount", "me_totalTimeSpentInSec", "batches", "trackable", "credentials", "discussionForum", "provider", "osMetadata", "actions", "taxonomyPaths_v2", "competencies_v3", "test_competencies_v2", "competencies_v2", "secureSettings", "test_competencies_v4", "competencies_v5", "test_secureSettings", "competencies_v6", "referenceNodes", "sectorDetails_v1", "preEnrolmentResources", "languageMapV1", "milestones_v1"]
+      nested.fields = ["badgeAssertions", "targets", "badgeAssociations", "plugins", "me_totalTimeSpent", "me_totalPlaySessionCount", "me_totalTimeSpentInSec", "batches", "trackable", "credentials", "discussionForum", "provider", "osMetadata", "actions", "taxonomyPaths_v2", "competencies_v3", "test_competencies_v2", "competencies_v2", "secureSettings", "test_competencies_v4", "competencies_v5", "test_secureSettings", "competencies_v6", "referenceNodes", "sectorDetails_v1", "preEnrolmentResources", "languageMapV1", "milestones_v1","badgeDetails_test"]
       restrict.objectTypes = ["EventSet", "Questionnaire", "Misconception", "FrameworkType", "EventSetImage", "EventImage", "resourceTypeDetails"]
     }
     cloud_storage {
@@ -1185,7 +1184,6 @@ content-publish:
     service {
       print.basePath = "{{ kp_print_service_base_url }}"
     }
-    course_content_allowed_fields=badgeDetails_v1
 
   flink-conf: |+
     jobmanager.memory.flink.size: {{ flink_job_names['content-publish'].jobmanager_memory }}
