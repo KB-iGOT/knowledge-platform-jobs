@@ -46,6 +46,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
                               context: KeyedProcessFunction[String, Event, String]#Context,
                               metrics: Metrics): Unit = {
     try {
+      logger.info(s"processElement - received event: userId=${event.userId}, contextType=${event.contextType}, contentId=${event.contentId}")
       if (event.isFirstTimeUser != null && event.isFirstTimeUser) {
         processFirstTimeUser(event, metrics)
       } else {
@@ -67,6 +68,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
 
   private def processFirstTimeUser(event: Event, metrics: Metrics): Unit = {
     val userId = event.userId
+    logger.info(s"processFirstTimeUser - starting for userId=$userId")
     fetchUserEnrollments(userId, metrics)
     processUserExtCourses(userId, metrics)
   }
@@ -76,14 +78,17 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     var lastCourseId: String = null
     var lastBatchId: String = null
     var hasMore = true
+    logger.info(s"fetchUserEnrollments - userId=$userId batchSize=$batchSize")
     while (hasMore) {
       val query = if (lastCourseId == null)
         s"SELECT courseid,batchid,status,issued_certificates FROM ${config.coursesdb}.${config.enrolmentTable} WHERE userid='$userId' LIMIT $batchSize;"
       else
         s"SELECT courseid,batchid,status,issued_certificates FROM ${config.coursesdb}.${config.enrolmentTable} WHERE userid='$userId' AND (courseid,batchid) > ('$lastCourseId','$lastBatchId') LIMIT $batchSize;"
       val rows = cassandraUtil.find(query)
-      if (rows == null || rows.isEmpty) hasMore = false
-      else {
+      if (rows == null || rows.isEmpty) {
+        logger.debug(s"fetchUserEnrollments - no rows for userId=$userId lastCourseId=$lastCourseId lastBatchId=$lastBatchId")
+        hasMore = false
+      } else {
         val enrolments = rows.asScala.map(rowToMap).toList
         enrolments
           .filter(_(config.status).toString.toInt == 2)
@@ -99,6 +104,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
         val lastRow = rows.get(rows.size() - 1)
         lastCourseId = lastRow.getString(config.courseid)
         lastBatchId = lastRow.getString(config.batchid)
+        logger.debug(s"fetchUserEnrollments - processed batch size=${rows.size()} lastCourseId=$lastCourseId lastBatchId=$lastBatchId")
         if (rows.size() < batchSize) hasMore = false
       }
     }
@@ -107,6 +113,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
   private def processCourse(userId: String,enrolment: Map[String,AnyRef],metrics: Metrics): Unit = {
     import scala.collection.JavaConverters._
     val courseId = enrolment(config.courseid).toString
+    logger.info(s"processCourse - userId=$userId courseId=$courseId")
     val courseInfo = getCourseInfo(courseId)(metrics,config,cache,httpUtil)
     val competencies = courseInfo.get(config.competenciesV6Key).asInstanceOf[java.util.List[java.util.Map[String,AnyRef]]].asScala.toList.map(_.asScala.toMap)
     var certificateId = ""
@@ -114,6 +121,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     val certs = enrolment.get(config.issuedCertificatesKey).map(_.asInstanceOf[java.util.List[java.util.Map[String,String]]])
     certs.foreach(l => if (!l.isEmpty) { val c=l.get(0); certificateId=c.getOrDefault(config.identifierKey,""); acquiredAt=c.getOrDefault(config.lastIssuedOnKey,"") })
     val detailsMap = Map(config.acquiredContextIdKey->courseId,config.certificateIdKey->certificateId,config.acquiredAt->acquiredAt)
+    logger.debug(s"processCourse - competencies count=${competencies.size} for courseId=$courseId")
     competencies.foreach { comp =>
       val areaId = comp.getOrElse(config.competencyAreaIdentifierKey,"").toString
       val themeId = comp.getOrElse(config.competencyThemeIdentifierKey,"").toString
@@ -132,6 +140,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
                                              userCompetencyTable: String,
                                              metrics: Metrics
                                            ): Unit = {
+    logger.debug(s"upsertUserCompetencyByContext - reading competency_details for userId=$userId area=$areaId theme=$themeId subtheme=$subthemeId key=$competencyKey")
     val selectQuery =
       s"SELECT competency_details FROM $userCompetencyTable WHERE user_id='$userId' AND competency_area_id='$areaId' AND competency_theme_id='$themeId' AND competency_subtheme_id='$subthemeId';"
     val existingRows = cassandraUtil.find(selectQuery)
@@ -163,6 +172,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
        VALUES
        ('$userId', '$areaId', '$themeId', '$subthemeId', $cqlDetails);
      """
+    logger.info(s"upsertUserCompetencyByContext - upserting competency for userId=$userId area=$areaId theme=$themeId subtheme=$subthemeId key=$competencyKey")
     cassandraUtil.upsert(upsertQuery)
     metrics.incCounter(config.dbUpdateCount)
   }
@@ -172,6 +182,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
   }
 
   private def processUserExtCourses(userId: String, metrics: Metrics): Unit = {
+    logger.info(s"processUserExtCourses - starting for userId=$userId")
     val query =
       s"SELECT courseid,status,issued_certificates FROM ${config.extContentUserExternalEnrolmentsDb}.${config.extContentUserExternalEnrolmentsTable} WHERE userid='$userId';"
     val rows = cassandraUtil.find(query)
@@ -210,7 +221,10 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
         val response = getExtContentAPICall(contentUrl)(config, httpUtil, metrics)
         response.get(config.competenciesV6Key)
       }
-    if (raw == null) return
+    if (raw == null) {
+      logger.warn(s"processExtCourseForFirstTimeUser - no competencies found for ext courseId=$courseId")
+      return
+    }
     val competencies =
       raw.asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]].asScala
     val cert =
@@ -249,6 +263,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
   // New function for processing user-competency-mapping-event
     private def processAchievementEvent(event: Event, metrics: Metrics): Unit = {
       val userId = event.userId
+      logger.info(s"processAchievementEvent - userId=$userId achievementId=${event.contentId} action=${event.action}")
       val achievementId = event.contentId
       val dbName = config.dbName
       val achievementTable = s"$dbName.${config.learnerAchievementTable}"
@@ -353,6 +368,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
                                       metrics: Metrics
                                     ): Unit = {
 
+      logger.debug(s"upsertUserCompetency - selecting competency_details for userId=$userId areaId=$areaId themeId=$themeId subthemeId=$subthemeId")
       val selectQuery =
         s"SELECT competency_details FROM $userCompetencyTable WHERE user_id='$userId' AND competency_area_id='$areaId' AND competency_theme_id='$themeId' AND competency_subtheme_id='$subthemeId';"
       val existingRows = cassandraUtil.find(selectQuery)
@@ -394,6 +410,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
          VALUES
          ('$userId', '$areaId', '$themeId', '$subthemeId', $cqlDetails);
        """
+      logger.info(s"upsertUserCompetency - upserting selfAchievement for userId=$userId areaId=$areaId themeId=$themeId subthemeId=$subthemeId")
       cassandraUtil.upsert(upsertQuery)
       metrics.incCounter(config.dbUpdateCount)
     }
@@ -406,6 +423,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
                                                  contentId: String,
                                                  userCompetencyTable: String
                                                ): Unit = {
+      logger.debug(s"removeAchievementFromCompetency - selecting competency_details for userId=$userId areaId=$areaId themeId=$themeId subthemeId=$subthemeId")
       val selectQuery =
         s"SELECT competency_details FROM $userCompetencyTable WHERE user_id='$userId' AND competency_area_id='$areaId' AND competency_theme_id='$themeId' AND competency_subtheme_id='$subthemeId';"
       val existingRows = cassandraUtil.find(selectQuery)
@@ -442,6 +460,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
                AND competency_theme_id='$themeId'
                AND competency_subtheme_id='$subthemeId';
              """
+            logger.info(s"removeAchievementFromCompetency - deleting competency row for userId=$userId areaId=$areaId themeId=$themeId subthemeId=$subthemeId")
             cassandraUtil.upsert(deleteQuery)
           } else {
             val updatedDetails =
@@ -455,6 +474,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
                VALUES
                ('$userId', '$areaId', '$themeId', '$subthemeId', $cqlDetails);
              """
+            logger.info(s"removeAchievementFromCompetency - updating competency_details for userId=$userId areaId=$areaId themeId=$themeId subthemeId=$subthemeId")
             cassandraUtil.upsert(upsertQuery)
           }
         }
