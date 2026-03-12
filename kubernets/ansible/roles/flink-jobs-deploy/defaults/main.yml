@@ -445,6 +445,7 @@ cb_ext_service_base_url: http://sb-cb-ext-service.{{ core_namespace }}.svc.clust
 cb_ext_course_service_base_url: http://cb-ext-course-service.{{ core_namespace }}.svc.cluster.local:7005/
 core_content_service_base_url: http://content-service.{{ core_namespace }}.svc.cluster.local:9000/
 cb_notification_wrapper_service_base_url: http://cb-notification-wrapper-service.{{ core_namespace }}.svc.cluster.local:8081
+cb_pores_service_base_url: http://cb-pores-service.{{ core_namespace }}.svc.cluster.local:7001/
 
 ###  Notification Job related Vars
 notification_job_consumer_parallelism: 1
