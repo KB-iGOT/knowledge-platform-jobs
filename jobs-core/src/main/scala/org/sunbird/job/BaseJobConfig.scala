@@ -36,6 +36,9 @@ class BaseJobConfig(val config: Config, val jobName: String) extends Serializabl
   // LMS Cassandra DB Config
   val lmsDbHost: String = config.getString("lms-cassandra.host")
   val lmsDbPort: Int = config.getInt("lms-cassandra.port")
+  val cassandraReadTimeoutMs: Int    = if (config.hasPath("lms-cassandra.read.timeout.ms"))    config.getInt("lms-cassandra.read.timeout.ms")    else 5000
+  val cassandraConnectTimeoutMs: Int = if (config.hasPath("lms-cassandra.connect.timeout.ms")) config.getInt("lms-cassandra.connect.timeout.ms") else 3000
+  val cassandraMaxRetries: Int       = if (config.hasPath("lms-cassandra.max.retries"))        config.getInt("lms-cassandra.max.retries")        else 3
 
   def kafkaConsumerProperties: Properties = {
     val properties = new Properties()
