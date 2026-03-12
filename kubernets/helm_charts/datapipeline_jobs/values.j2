@@ -772,7 +772,7 @@ collection-certificate-generator:
       output.audit.topic = {{ env_name }}.telemetry.raw
       groupId = {{ env_name }}-certificate-generator-group
       program.cert.output.topic= {{ env_name }}.issue.program.certificate.request
-      output.competency.topic = {{ env_name }}.user.competency.mapping.event
+      output.competency.topic = "{{env_name}}.user.competency.mapping.event"
     }
     task {
       restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
@@ -1243,7 +1243,7 @@ user-competency-updater:
         table = "content_hierarchy"
       }
       read {
-        url = "{{core_content_service_base_url}}api/content/v1/read/"
+        url = "{{core_content_service_base_url}}/content/v1/read/"
       }
       competencies = "competencies_v6"
     }
@@ -1303,7 +1303,11 @@ user-competency-updater:
       trueValue = "true"
       falseValue = "false"
       uploadedDocumentUrl = "uploadedDocumentUrl"
-
+      externalTraining = "externalTraining"
+      userEntityEnrolmentsTable = "user_external_training_enrolments"
+      competencyAreaIdentifier = "competencyAreaId"
+      competencySubThemeId = "competencyThemeId"
+      competencySubThemeId = "competencySubThemeId"
     }
 
   flink-conf: |+
