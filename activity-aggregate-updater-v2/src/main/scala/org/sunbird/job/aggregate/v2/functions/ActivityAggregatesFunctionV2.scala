@@ -1,6 +1,6 @@
 package org.sunbird.job.aggregate.v2.functions
 
-import com.datastax.driver.core.TypeTokens
+import com.datastax.driver.core.{ConsistencyLevel, SimpleStatement, TypeTokens}
 import com.datastax.driver.core.querybuilder.{QueryBuilder, Select, Update}
 import com.google.gson.Gson
 import com.twitter.storehaus.cache.TTLCache
@@ -35,7 +35,13 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
 
   override def open(parameters: Configuration): Unit = {
     if (cassandraUtil == null)
-      cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
+      cassandraUtil = new CassandraUtil(
+        config.dbHost,
+        config.dbPort,
+        config.cassandraReadTimeoutMs,
+        config.cassandraConnectTimeoutMs,
+        config.cassandraMaxRetries
+      )
     cache = new DataCache(config, new RedisConnect(config), config.nodeStore, List())
     cache.init()
 
@@ -50,64 +56,63 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
   override def processElement(event: Event,
                               ctx: KeyedProcessFunction[String, Event, Event]#Context,
                               out: Collector[Event]): Unit = {
-    try {
-      val userId = event.userId
-      val courseId = event.courseId
-      val batchId = event.batchId
-      val language = event.language
-      val contents = event.contents
+    // Exceptions are intentionally NOT caught here.
+    // Any failure (Cassandra timeout, malformed data, etc.) propagates to Flink,
+    // which triggers a task restart via the configured fixedDelayRestart strategy.
+    // This ensures no events are silently dropped and issues are detected quickly.
+    val userId = event.userId
+    val courseId = event.courseId
+    val batchId = event.batchId
+    val language = event.language
+    val contents = event.contents
 
-      val (isValid, category) = verifyPrimaryCategory(courseId)(metrics, config, httpUtil, contentCache)
-      if (!isValid) return
+    val (isValid, category) = verifyPrimaryCategory(courseId)(metrics, config, httpUtil, contentCache)
+    if (!isValid) return
 
-      val enrolmentRow = getEnrolment(userId, courseId, batchId)
-      var langContentStatus: Map[String, Map[String, Int]] =
-        if (enrolmentRow != null && enrolmentRow.getObject("lang_contentstatus") != null) {
-          enrolmentRow.getObject("lang_contentstatus")
-            .asInstanceOf[JMap[String, JMap[String, Integer]]]
-            .asScala
-            .map { case (lang, contentMap) =>
-              lang -> contentMap.asScala.toMap.mapValues(_.intValue())
-            }.toMap
-        } else {
-          Map.empty
-        }
-
-      if (!langContentStatus.contains(language)) {
-        langContentStatus = langContentStatus + (language -> Map.empty[String, Int])
-      }
-
-      val existingLangMap = langContentStatus.getOrElse(language, Map.empty[String, Int])
-
-      val courseMetadataJava = getCourseInfo(courseId)(metrics, config, contentCache, httpUtil)
-      val courseMetadata = courseMetadataJava.asScala.toMap
-
-      val translatedLeafNodes = getTranslatedLeafNodes(language, courseMetadata, contents.headOption.map(_.contentId).getOrElse(""), courseId)
-      val updatedMap = updateContentStatuses(event, contents, existingLangMap, translatedLeafNodes)
-      val updatedLangMap = contents.foldLeft(existingLangMap) { (acc, content) =>
-        val contentId = content.contentId
-        val incomingStatus = content.status
-        val existingStatus = acc.getOrElse(contentId, 0)
-        if (!acc.contains(contentId)) acc + (contentId -> incomingStatus)
-        else if (incomingStatus > existingStatus) acc + (contentId -> incomingStatus)
-        else acc
-      }
-
-      val statusIsTwo = enrolmentRow != null && enrolmentRow.getInt("status").equals(2)
-
-      val finalLangContentStatus = updateLangContentStatusInUserEnrolment(
-        userId, courseId, batchId, language, langContentStatus, updatedLangMap, courseMetadata, statusIsTwo
-      )
-      if (JsonKeys.LEARNING_PATHWAY.equalsIgnoreCase(category)) {
-        evaluateLearnerPathwayCompletion(event, courseMetadata, ctx)
+    val enrolmentRow = getEnrolment(userId, courseId, batchId)
+    var langContentStatus: Map[String, Map[String, Int]] =
+      if (enrolmentRow != null && enrolmentRow.getObject("lang_contentstatus") != null) {
+        enrolmentRow.getObject("lang_contentstatus")
+          .asInstanceOf[JMap[String, JMap[String, Integer]]]
+          .asScala
+          .map { case (lang, contentMap) =>
+            lang -> contentMap.asScala.toMap.mapValues(_.intValue())
+          }.toMap
       } else {
-        triggerCertificateIfRequired(event, courseMetadata, finalLangContentStatus(language), ctx)
+        Map.empty
       }
-      out.collect(event)
-    } catch {
-      case ex: Exception =>
-        logger.error("Error processing event", ex)
+
+    if (!langContentStatus.contains(language)) {
+      langContentStatus = langContentStatus + (language -> Map.empty[String, Int])
     }
+
+    val existingLangMap = langContentStatus.getOrElse(language, Map.empty[String, Int])
+
+    val courseMetadataJava = getCourseInfo(courseId)(metrics, config, contentCache, httpUtil)
+    val courseMetadata = courseMetadataJava.asScala.toMap
+
+    val translatedLeafNodes = getTranslatedLeafNodes(language, courseMetadata, contents.headOption.map(_.contentId).getOrElse(""), courseId)
+    val updatedMap = updateContentStatuses(event, contents, existingLangMap, translatedLeafNodes)
+    val updatedLangMap = contents.foldLeft(existingLangMap) { (acc, content) =>
+      val contentId = content.contentId
+      val incomingStatus = content.status
+      val existingStatus = acc.getOrElse(contentId, 0)
+      if (!acc.contains(contentId)) acc + (contentId -> incomingStatus)
+      else if (incomingStatus > existingStatus) acc + (contentId -> incomingStatus)
+      else acc
+    }
+
+    val statusIsTwo = enrolmentRow != null && enrolmentRow.getInt("status").equals(2)
+
+    val finalLangContentStatus = updateLangContentStatusInUserEnrolment(
+      userId, courseId, batchId, language, langContentStatus, updatedLangMap, courseMetadata, statusIsTwo
+    )
+    if (JsonKeys.LEARNING_PATHWAY.equalsIgnoreCase(category)) {
+      evaluateLearnerPathwayCompletion(event, courseMetadata, ctx)
+    } else {
+      triggerCertificateIfRequired(event, courseMetadata, finalLangContentStatus(language), ctx)
+    }
+    out.collect(event)
   }
 
   def triggerCertificateIfRequired( event: Event,
@@ -140,6 +145,9 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       )
 
       val updateAggQuery = getUserAggQuery(userAgg)
+      // LOCAL_QUORUM: ensure the agg write reaches majority of nodes before
+      // the next event can read a stale aggregates value.
+      updateAggQuery.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
       cassandraUtil.update(updateAggQuery)
     }
     if (config.dedupEnabled) {
@@ -295,6 +303,9 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       .and(QueryBuilder.eq("courseid", courseId))
       .and(QueryBuilder.eq("batchid", batchId))
     logger.info(s"Updating user enrolment for user: $userId, course: $courseId, batch: $batchId with lang_contentstatus: $langMap")
+    // LOCAL_QUORUM: ensure this write is visible to at least 2/3 nodes before
+    // any subsequent read (which also uses LOCAL_QUORUM) can proceed.
+    update.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
     cassandraUtil.update(update)
   }
 
@@ -441,12 +452,17 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
 
   def getEnrolment(userId: String, courseId: String, batchId: String) = {
     val selectWhere: Select.Where = QueryBuilder.select().all()
-      .from(config.dbKeyspace, config.dbUserEnrolmentsTable).
-      where()
-    selectWhere.and(QueryBuilder.eq("userid", userId))
+      .from(config.dbKeyspace, config.dbUserEnrolmentsTable)
+      .where()
+    selectWhere
+      .and(QueryBuilder.eq("userid", userId))
       .and(QueryBuilder.eq("courseid", courseId))
       .and(QueryBuilder.eq("batchid", batchId))
-    cassandraUtil.findOne(selectWhere.toString)
+    // LOCAL_QUORUM: require majority of replica nodes to respond so we never
+    // read stale data that hasn't yet been replicated from a prior write.
+    val stmt = new SimpleStatement(selectWhere.toString)
+      .setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
+    cassandraUtil.findOneWithStatement(stmt)
   }
 
   def evaluateLearnerPathwayCompletion(
