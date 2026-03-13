@@ -101,4 +101,7 @@ class UserCompetencyUpdaterConfig(override val config: Config) extends BaseJobCo
   val externallyUploaded: String = config.getString("extcontent.externallyUploaded")
   val trueValue: String = config.getString("extcontent.trueValue")
   val falseValue: String = config.getString("extcontent.falseValue")
+  val externalTraining: String = config.getString("extcontent.externalTraining")
+  val userEntityEnrolmentsTable: String = config.getString("extcontent.userEntityEnrolmentsTable")
+
 }
