@@ -214,7 +214,8 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       val query = if (lastCourseId == null)
         s"SELECT courseid,batchid,status,issued_certificates FROM ${config.coursesdb}.${config.enrolmentTable} WHERE userid='$userId' LIMIT $batchSize;"
       else
-        s"SELECT courseid,batchid,status,issued_certificates FROM ${config.coursesdb}.${config.enrolmentTable} WHERE userid='$userId' AND (courseid,batchid) > ('$lastCourseId','$lastBatchId') LIMIT $batchSize;"
+        s"SELECT courseid,batchid,status,issued_certificates FROM ${config.coursesdb}.${config.enrolmentTable} WHERE userid='$userId' AND courseid > '$lastCourseId' LIMIT $batchSize;"
+      logger.info(s"fetchUserEnrollments - generated query: $query")
       val rows = cassandraUtil.find(query)
       if (rows == null || rows.isEmpty) {
         logger.debug(s"fetchUserEnrollments - no rows for userId=$userId lastCourseId=$lastCourseId lastBatchId=$lastBatchId")
@@ -246,7 +247,9 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     val courseId = enrolment(config.courseid).toString
     logger.info(s"processCourse - userId=$userId courseId=$courseId")
     val courseInfo = getCourseInfo(courseId)(metrics,config,cache,httpUtil)
+    logger.info(s"Fetched courseInfo for courseId=$courseId: ${ScalaJsonUtil.serialize(courseInfo)}")
     val competencies = courseInfo.get(config.competenciesV6Key).asInstanceOf[java.util.List[java.util.Map[String,AnyRef]]].asScala.toList.map(_.asScala.toMap)
+    logger.info(s"Fetched courseInfo for courseId=$courseId: ${ScalaJsonUtil.serialize(competencies)}")
     var certificateId = ""
     var acquiredAt = ""
     val certs = enrolment.get(config.issuedCertificatesKey).map(_.asInstanceOf[java.util.List[java.util.Map[String,String]]])
@@ -569,12 +572,6 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
 
         if (detailsObj != null) {
           competencyDetails =
-            detailsObj.asScala.map { case (k, v) =>
-              k -> v.asScala.toList.map(_.asScala.toMap)
-            }.toMap
-        }
-        if (detailsObj != null) {
-          val competencyDetails =
             detailsObj.asScala.map { case (k, v) =>
               k -> v.asScala.toList.map(_.asScala.toMap)
             }.toMap
