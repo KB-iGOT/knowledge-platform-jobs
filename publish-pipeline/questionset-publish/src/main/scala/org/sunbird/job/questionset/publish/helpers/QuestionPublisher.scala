@@ -106,7 +106,7 @@ trait QuestionPublisher extends ObjectReader with ObjectValidator with ObjectEnr
     cassandraUtil.session.execute(query.toString)
   }
 
-  override def getDataForEcar(obj: ObjectData): Option[List[Map[String, AnyRef]]] = {
+  def getDataForEcar(obj: ObjectData): Option[List[Map[String, AnyRef]]] = {
     logger.info(s"QuestionPublisher:getDataForEcar: ECAR data generation disabled for Question: ${obj.identifier}")
     // Some(List(obj.metadata ++ obj.extData.getOrElse(Map()).filter(p => !excludeBundleMeta.contains(p._1))))
     None
