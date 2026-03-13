@@ -218,7 +218,8 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       logger.info(s"fetchUserEnrollments - generated query: $query")
       val rows = cassandraUtil.find(query)
       if (rows == null || rows.isEmpty) {
-        logger.debug(s"fetchUserEnrollments - no rows for userId=$userId lastCourseId=$lastCourseId lastBatchId=$lastBatchId")
+        //TODO change logger info to debug.
+        logger.info(s"fetchUserEnrollments - no rows for userId=$userId lastCourseId=$lastCourseId lastBatchId=$lastBatchId")
         hasMore = false
       } else {
         val enrolments = rows.asScala.map(rowToMap).toList
@@ -236,7 +237,8 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
         val lastRow = rows.get(rows.size() - 1)
         lastCourseId = lastRow.getString(config.courseid)
         lastBatchId = lastRow.getString(config.batchid)
-        logger.debug(s"fetchUserEnrollments - processed batch size=${rows.size()} lastCourseId=$lastCourseId lastBatchId=$lastBatchId")
+        //TODO change logger info to debug.
+        logger.info(s"fetchUserEnrollments - processed batch size=${rows.size()} lastCourseId=$lastCourseId lastBatchId=$lastBatchId")
         if (rows.size() < batchSize) hasMore = false
       }
     }
@@ -251,6 +253,8 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     val competencies = courseInfo.get(config.competenciesV6Key).asInstanceOf[java.util.List[java.util.Map[String,AnyRef]]].asScala.toList.map(_.asScala.toMap)
     logger.info(s"Fetched courseInfo for courseId=$courseId: ${ScalaJsonUtil.serialize(competencies)}")
     var certificateId = ""
+    //TODO remove the logger statements post testing.
+    logger.info(s"CourseInfo - courseInfo=$courseInfo")
     var acquiredAt = ""
     val certs = enrolment.get(config.issuedCertificatesKey).map(_.asInstanceOf[java.util.List[java.util.Map[String,String]]])
     certs.foreach(l => if (!l.isEmpty) { val c=l.get(0); certificateId=c.getOrDefault(config.identifierKey,""); acquiredAt=c.getOrDefault(config.lastIssuedOnKey,"") })
@@ -260,6 +264,8 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       val areaId = comp.getOrElse(config.competencyAreaIdentifierKey,"").toString
       val themeId = comp.getOrElse(config.competencyThemeIdentifierKey,"").toString
       val subthemeId = comp.getOrElse(config.competencySubThemeIdentifierKey,"").toString
+      //TODO remove the logger statements post testing.
+      logger.info(s"process competency - areaId=$areaId themeId=$themeId subthemeId=$subthemeId")
       upsertUserCompetencyByContext(userId, areaId, themeId, subthemeId, detailsMap, config.iGOTCourses, config.dbName + "." + config.userCompetencyTable, metrics)
     }
   }
@@ -274,7 +280,8 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
                                              userCompetencyTable: String,
                                              metrics: Metrics
                                            ): Unit = {
-    logger.debug(s"upsertUserCompetencyByContext - reading competency_details for userId=$userId area=$areaId theme=$themeId subtheme=$subthemeId key=$competencyKey")
+    //TODO change logger info to debug.
+    logger.info(s"upsertUserCompetencyByContext - reading competency_details for userId=$userId area=$areaId theme=$themeId subtheme=$subthemeId key=$competencyKey")
     val selectQuery =
       s"SELECT competency_details FROM $userCompetencyTable WHERE user_id='$userId' AND competency_area_id='$areaId' AND competency_theme_id='$themeId' AND competency_subtheme_id='$subthemeId';"
     val existingRows = cassandraUtil.find(selectQuery)
@@ -307,6 +314,8 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
        ('$userId', '$areaId', '$themeId', '$subthemeId', $cqlDetails);
      """
     logger.info(s"upsertUserCompetencyByContext - upserting competency for userId=$userId area=$areaId theme=$themeId subtheme=$subthemeId key=$competencyKey")
+    //TODO remove the logger statements post testing.
+    logger.info(s"upsertUserCompetencyByContext - upsertQuery=$upsertQuery")
     cassandraUtil.upsert(upsertQuery)
     metrics.incCounter(config.dbUpdateCount)
   }
