@@ -164,15 +164,20 @@ trait QuestionPublisher extends ObjectReader with ObjectValidator with ObjectEnr
 
   @throws[Exception]
   def getIndexFile(identifier: String, objType: String, bundlePath: String, objList: List[Map[String, AnyRef]]): File = {
-    try {
-      val file: File = new File(bundlePath + File.separator + indexFileName)
-      val header: String = s"""{"id": "sunbird.${objType.toLowerCase()}.archive", "ver": "$defaultManifestVersion" ,"ts":"$getTimeStamp", "params":{"resmsgid": "$getUUID"}, "archive":{ "count": ${objList.size}, "ttl":24, "items": """
-      val mJson = header + ScalaJsonUtil.serialize(objList) + "}}"
-      FileUtils.writeStringToFile(file, mJson)
-      file
-    } catch {
-      case e: Exception => throw new Exception("Exception occurred while writing manifest file for : " + identifier, e)
-    }
+    logger.info(s"QuestionPublisher:getIndexFile: Index file generation disabled for Question: $identifier, object type: $objType")
+    
+    // try {
+    //   val file: File = new File(bundlePath + File.separator + indexFileName)
+    //   val header: String = s"""{"id": "sunbird.${objType.toLowerCase()}.archive", "ver": "$defaultManifestVersion" ,"ts":"$getTimeStamp", "params":{"resmsgid": "$getUUID"}, "archive":{ "count": ${objList.size}, "ttl":24, "items": """
+    //   val mJson = header + ScalaJsonUtil.serialize(objList) + "}}"
+    //   FileUtils.writeStringToFile(file, mJson)
+    //   file
+    // } catch {
+    //   case e: Exception => throw new Exception("Exception occurred while writing manifest file for : " + identifier, e)
+    // }
+    
+    logger.info(s"QuestionPublisher:getIndexFile: Returning empty file since index file generation is disabled for: $identifier")
+    new File(bundlePath + File.separator + indexFileName)
   }
 
   private def uploadArtifactToCloud(uploadFile: File, identifier: String)(implicit cloudStorageUtil: CloudStorageUtil): Array[String] = {
