@@ -18,7 +18,7 @@ import scala.collection.mutable.ListBuffer
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext}
 
-trait QuestionPublisher extends ObjectReader with ObjectValidator with ObjectEnrichment /* with EcarGenerator */ with ObjectUpdater {
+trait QuestionPublisher extends ObjectReader with ObjectValidator with ObjectEnrichment with EcarGenerator with ObjectUpdater {
   private val bundleLocation: String = "/tmp"
   private val indexFileName = "index.json"
   private val defaultManifestVersion = "1.2"
@@ -106,78 +106,63 @@ trait QuestionPublisher extends ObjectReader with ObjectValidator with ObjectEnr
     cassandraUtil.session.execute(query.toString)
   }
 
-  def getDataForEcar(obj: ObjectData): Option[List[Map[String, AnyRef]]] = {
-    logger.info(s"QuestionPublisher:getDataForEcar: ECAR data generation disabled for Question: ${obj.identifier}")
-    // Some(List(obj.metadata ++ obj.extData.getOrElse(Map()).filter(p => !excludeBundleMeta.contains(p._1))))
-    None
+  override def getDataForEcar(obj: ObjectData): Option[List[Map[String, AnyRef]]] = {
+    Some(List(obj.metadata ++ obj.extData.getOrElse(Map()).filter(p => !excludeBundleMeta.contains(p._1))))
   }
 
   def getObjectWithEcar(data: ObjectData, pkgTypes: List[String])(implicit ec: ExecutionContext, neo4JUtil: Neo4JUtil, cloudStorageUtil: CloudStorageUtil, config: PublishConfig, defCache: DefinitionCache, defConfig: DefinitionConfig, httpUtil: HttpUtil): ObjectData = {
-    logger.info(s"QuestionPublisher:getObjectWithEcar: ECAR generation disabled for Question: ${data.identifier}, package types: ${pkgTypes.mkString(", ")}")
-    // logger.info("QuestionPublisher:generateECAR: Ecar generation done for Question: " + data.identifier)
-    // val ecarMap: Map[String, String] = generateEcar(data, pkgTypes)
-    // val variants: java.util.Map[String, java.util.Map[String, String]] = ecarMap.map { case (key, value) => key.toLowerCase -> Map[String, String]("ecarUrl" -> value, "size" -> httpUtil.getFileSize(getSignedURL(value, cloudStorageUtil)).toString).asJava }.asJava
-    // logger.info("QuestionPublisher ::: generateECAR ::: ecar map ::: " + ecarMap)
-    // val meta: Map[String, AnyRef] = Map("downloadUrl" -> ecarMap.getOrElse(EcarPackageType.FULL.toString, ""), "variants" -> variants)
-    // new ObjectData(data.identifier, data.metadata ++ meta, data.extData, data.hierarchy)
-    logger.info(s"QuestionPublisher:getObjectWithEcar: Returning original object without ECAR URLs for: ${data.identifier}")
-    data
+    logger.info("QuestionPublisher:generateECAR: Ecar generation done for Question: " + data.identifier)
+    val ecarMap: Map[String, String] = generateEcar(data, pkgTypes)
+    val variants: java.util.Map[String, java.util.Map[String, String]] = ecarMap.map { case (key, value) => key.toLowerCase -> Map[String, String]("ecarUrl" -> value, "size" -> httpUtil.getFileSize(getSignedURL(value, cloudStorageUtil)).toString).asJava }.asJava
+    logger.info("QuestionPublisher ::: generateECAR ::: ecar map ::: " + ecarMap)
+    val meta: Map[String, AnyRef] = Map("downloadUrl" -> ecarMap.getOrElse(EcarPackageType.FULL.toString, ""), "variants" -> variants)
+    new ObjectData(data.identifier, data.metadata ++ meta, data.extData, data.hierarchy)
   }
 
   def updateArtifactUrl(obj: ObjectData, pkgType: String)(implicit ec: ExecutionContext, neo4JUtil: Neo4JUtil, cloudStorageUtil: CloudStorageUtil, defCache: DefinitionCache, defConfig: DefinitionConfig, config: PublishConfig, httpUtil: HttpUtil): ObjectData = {
-    logger.info(s"QuestionPublisher:updateArtifactUrl: Artifact URL update disabled for Question: ${obj.identifier}, package type: $pkgType")
-    
-    // val bundlePath = bundleLocation + File.separator + obj.identifier + File.separator + System.currentTimeMillis + "_temp"
-    // try {
-    //   val objType = obj.getString("objectType", "")
-    //   val objList = getDataForEcar(obj).getOrElse(List())
-    //   val (updatedObjList, dUrls) = getManifestData(obj.identifier, pkgType, objList)
-    //   val downloadUrls: Map[AnyRef, List[String]] = dUrls.flatten.groupBy(_._1).map { case (k, v) => k -> v.map(_._2) }
-    //   logger.info("QuestionPublisher ::: updateArtifactUrl ::: downloadUrls :::: " + downloadUrls)
-    //   val duration: String = config.getString("media_download_duration", "300 seconds")
-    //   val downloadedMedias: List[File] = Await.result(downloadFiles_v2(obj.identifier, downloadUrls, bundlePath), Duration.apply(duration))
-    //   if (downloadUrls.nonEmpty && downloadedMedias.isEmpty)
-    //     throw new Exception("Error Occurred While Downloading Bundle Media Files For : " + obj.identifier)
+    val bundlePath = bundleLocation + File.separator + obj.identifier + File.separator + System.currentTimeMillis + "_temp"
+    try {
+      val objType = obj.getString("objectType", "")
+      val objList = getDataForEcar(obj).getOrElse(List())
+      val (updatedObjList, dUrls) = getManifestData(obj.identifier, pkgType, objList)
+      val downloadUrls: Map[AnyRef, List[String]] = dUrls.flatten.groupBy(_._1).map { case (k, v) => k -> v.map(_._2) }
+      logger.info("QuestionPublisher ::: updateArtifactUrl ::: downloadUrls :::: " + downloadUrls)
+      val duration: String = config.getString("media_download_duration", "300 seconds")
+      val downloadedMedias: List[File] = Await.result(downloadFiles_v2(obj.identifier, downloadUrls, bundlePath), Duration.apply(duration))
+      if (downloadUrls.nonEmpty && downloadedMedias.isEmpty)
+        throw new Exception("Error Occurred While Downloading Bundle Media Files For : " + obj.identifier)
 
-    //   getIndexFile(obj.identifier, objType, bundlePath, updatedObjList)
+      getIndexFile(obj.identifier, objType, bundlePath, updatedObjList)
 
-    //   // create zip package
-    //   val zipFileName: String = bundlePath + File.separator + obj.identifier + "_" + System.currentTimeMillis + ".zip"
-    //   FileUtils.createZipPackage(bundlePath, zipFileName)
+      // create zip package
+      val zipFileName: String = bundlePath + File.separator + obj.identifier + "_" + System.currentTimeMillis + ".zip"
+      FileUtils.createZipPackage(bundlePath, zipFileName)
 
-    //   // upload zip file to blob and set artifactUrl
-    //   val result: Array[String] = uploadArtifactToCloud(new File(zipFileName), obj.identifier)
+      // upload zip file to blob and set artifactUrl
+      val result: Array[String] = uploadArtifactToCloud(new File(zipFileName), obj.identifier)
 
-    //   val updatedMeta = obj.metadata ++ Map("artifactUrl" -> result(1))
-    //   new ObjectData(obj.identifier, updatedMeta, obj.extData, obj.hierarchy)
-    // } catch {
-    //   case ex: Exception =>
-    //     ex.printStackTrace()
-    //     throw new Exception(s"Error While Generating $pkgType ECAR Bundle For : " + obj.identifier, ex)
-    // } finally {
-    //   FileUtils.deleteDirectory(new File(bundlePath))
-    // }
-    
-    logger.info(s"QuestionPublisher:updateArtifactUrl: Returning original object without artifact URL modification for: ${obj.identifier}")
-    obj
+      val updatedMeta = obj.metadata ++ Map("artifactUrl" -> result(1))
+      new ObjectData(obj.identifier, updatedMeta, obj.extData, obj.hierarchy)
+    } catch {
+      case ex: Exception =>
+        ex.printStackTrace()
+        throw new Exception(s"Error While Generating $pkgType ECAR Bundle For : " + obj.identifier, ex)
+    } finally {
+      FileUtils.deleteDirectory(new File(bundlePath))
+    }
   }
 
   @throws[Exception]
   def getIndexFile(identifier: String, objType: String, bundlePath: String, objList: List[Map[String, AnyRef]]): File = {
-    logger.info(s"QuestionPublisher:getIndexFile: Index file generation disabled for Question: $identifier, object type: $objType")
-    
-    // try {
-    //   val file: File = new File(bundlePath + File.separator + indexFileName)
-    //   val header: String = s"""{"id": "sunbird.${objType.toLowerCase()}.archive", "ver": "$defaultManifestVersion" ,"ts":"$getTimeStamp", "params":{"resmsgid": "$getUUID"}, "archive":{ "count": ${objList.size}, "ttl":24, "items": """
-    //   val mJson = header + ScalaJsonUtil.serialize(objList) + "}}"
-    //   FileUtils.writeStringToFile(file, mJson)
-    //   file
-    // } catch {
-    //   case e: Exception => throw new Exception("Exception occurred while writing manifest file for : " + identifier, e)
-    // }
-    
-    logger.info(s"QuestionPublisher:getIndexFile: Returning empty file since index file generation is disabled for: $identifier")
-    new File(bundlePath + File.separator + indexFileName)
+    try {
+      val file: File = new File(bundlePath + File.separator + indexFileName)
+      val header: String = s"""{"id": "sunbird.${objType.toLowerCase()}.archive", "ver": "$defaultManifestVersion" ,"ts":"$getTimeStamp", "params":{"resmsgid": "$getUUID"}, "archive":{ "count": ${objList.size}, "ttl":24, "items": """
+      val mJson = header + ScalaJsonUtil.serialize(objList) + "}}"
+      FileUtils.writeStringToFile(file, mJson)
+      file
+    } catch {
+      case e: Exception => throw new Exception("Exception occurred while writing manifest file for : " + identifier, e)
+    }
   }
 
   private def uploadArtifactToCloud(uploadFile: File, identifier: String)(implicit cloudStorageUtil: CloudStorageUtil): Array[String] = {
