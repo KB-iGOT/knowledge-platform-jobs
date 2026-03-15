@@ -405,7 +405,7 @@ object Utility {
                                                       cassandraUtil: CassandraUtil): Int = {
     val query = s"SELECT total_points FROM ${config.sunbird_keyspace}.${config.user_karma_summary_table} WHERE userid = '$userId'"
     val result = cassandraUtil.find(query)
-    if (result != null) {
+    if (result != null && !result.isEmpty) {
       val totalPoint = result.get(0).getInt(config.TOTAL_POINTS)
       totalPoint
     } else {
