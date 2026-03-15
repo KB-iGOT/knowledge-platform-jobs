@@ -47,6 +47,7 @@ class EventCertificateGeneratorConfig(override val config: Config) extends BaseJ
   val sbKeyspace: String = config.getString("lms-cassandra.sbkeyspace")
   val certRegTable: String = config.getString("lms-cassandra.certreg.table")
   val dbEnrollmentTable: String = config.getString("lms-cassandra.user_enrolments.table")
+  val dbExternalTrainingEnrollmentTable: String = config.getString("lms-cassandra.user_external_training.table")
   val dbKeyspace: String = config.getString("lms-cassandra.keyspace")
   val dbHost: String = config.getString("lms-cassandra.host")
   val dbPort: Int = config.getInt("lms-cassandra.port")
