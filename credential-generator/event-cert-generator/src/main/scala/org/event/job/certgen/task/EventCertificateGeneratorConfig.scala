@@ -202,4 +202,10 @@ class EventCertificateGeneratorConfig(override val config: Config) extends BaseJ
   val dynamicCertificateEnabledForEvent: Boolean = if (config.hasPath("dynamicCertificateEnabledForEvent")) config.getBoolean("dynamicCertificateEnabledForEvent") else true
   val version = "version"
   val specialEventCertificateExceptionEvents: util.List[String] = if(config.hasPath("specialEventCertificateExceptionEvents")) config.getStringList("specialEventCertificateExceptionEvents") else new util.ArrayList[String]
+  val eventType = "eventType"
+  val contentId = "contentId"
+  val contextType = "contextType"
+  val competencyAcquired = "COMPETENCY_ACQUIRED"
+  val externalTraining = "externalTraining"
+  val competencyMappingOutputTag: OutputTag[String] = OutputTag[String]("competency-mapping")
 }
