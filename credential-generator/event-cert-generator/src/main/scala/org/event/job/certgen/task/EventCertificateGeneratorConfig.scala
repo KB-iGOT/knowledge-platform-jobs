@@ -23,6 +23,7 @@ class EventCertificateGeneratorConfig(override val config: Config) extends BaseJ
   val kafkaAuditEventTopic: String = config.getString("kafka.output.audit.topic")
   val kafkaKarmaPointsEventTopic: String = config.getString("kafka.output.karma.point.topic")
   val dashboardPointsEventTopic: String = config.getString("kafka.output.dashboard.topic")
+  val userCompetencyMappingEventTopic: String = config.getString("kafka.output.competency.topic")
 
   val enableSuppressException: Boolean = if (config.hasPath("enable.suppress.exception")) config.getBoolean("enable.suppress.exception") else false
   val enableRcCertificate: Boolean = if (config.hasPath("enable.rc.certificate")) config.getBoolean("enable.rc.certificate") else false
@@ -36,6 +37,7 @@ class EventCertificateGeneratorConfig(override val config: Config) extends BaseJ
   val userFeedParallelism: Int = if (config.hasPath("task.userfeed.parallelism")) config.getInt("task.userfeed.parallelism") else 1
   val karmaPointsParallelism: Int = if (config.hasPath("task.karmapoints.parallelism")) config.getInt("task.karmapoints.parallelism") else 1
   val dashboardParallelism: Int = if (config.hasPath("task.dashboard.parallelism")) config.getInt("task.dashboard.parallelism") else 1
+  val competencyParallelism: Int = if (config.hasPath("task.competency.parallelism")) config.getInt("task.competency.parallelism") else 1
 
   //ES configuration
   val esConnection: String = config.getString("es.basePath")

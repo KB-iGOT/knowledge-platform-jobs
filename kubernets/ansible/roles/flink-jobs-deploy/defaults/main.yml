@@ -156,6 +156,7 @@ event_cert_generator_consumer_parallelism: 1
 event_cert_generator_parallelism: 1
 event_cert_generator_enable_suppress_exception: false
 event_cert_generator_enable_rc_certificate: true
+event_user_competency_updater_parallelism: 1
 
 ###  user_activity_analysis_updater Job related Vars
 user_activity_analysis_updater_consumer_parallelism: 1
@@ -199,6 +200,7 @@ user_competency_updater_parallelism: 1
 user_competency_updater_restart_strategy_delay: 240000
 user_competency_updater_checkpointing_interval: 300000
 user_competency_updater_checkpointing_pause_interval: 90000
+user_competency_updater_competency_parallelism: 1
 ### to be removed
 job_classname: ""
 

@@ -72,6 +72,12 @@ class EventCertificateGeneratorTask(config: EventCertificateGeneratorConfig, kaf
         .uid("event-enrolment-alert")
         .setParallelism(config.dashboardParallelism)
 
+      processStreamTask.getSideOutput(config.competencyMappingOutputTag)
+        .addSink(kafkaConnector.kafkaStringSink(config.userCompetencyMappingEventTopic))
+        .name("user-competency-mapping")
+        .uid("user-competency-mapping")
+        .setParallelism(config.competencyParallelism)
+
       env.execute(config.jobName)
     }
 
