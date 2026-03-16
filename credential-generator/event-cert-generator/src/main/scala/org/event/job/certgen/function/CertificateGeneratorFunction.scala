@@ -533,11 +533,28 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
     val certModelList: List[CertModel] = new CertMapper(certificateConfig).mapReqToCertModel(event)
     println("generateCertificate " + event)
     val certificateGenerator = new CertificateGenerator
-    val primaryFields = Map(config.userId.toLowerCase() -> event.userId,
-      config.dbContentId -> event.eventId,
-      config.dbContextId -> event.eventId,
-      config.dbBatchId -> event.batchId)
-    val increaseCertCount: Boolean = getIssuedCertificatesDetailsFromUserEnrollmentTable(primaryFields)
+    val primaryFields =
+      if (event.eventType.equalsIgnoreCase(config.externalTraining)) {
+        Map(
+          config.userId.toLowerCase() -> event.userId,
+          config.dbContextId -> event.eventId,
+          config.dbBatchId -> event.batchId
+        )
+      } else {
+        Map(
+          config.userId.toLowerCase() -> event.userId,
+          config.dbContentId -> event.eventId,
+          config.dbContextId -> event.eventId,
+          config.dbBatchId -> event.batchId
+        )
+      }
+
+    val increaseCertCount: Boolean =
+      if (event.eventType.equalsIgnoreCase(config.externalTraining)) {
+        getIssuedCertificatesDetailsFromUserExternalTrainingEnrollmentTable(primaryFields)
+      } else {
+        getIssuedCertificatesDetailsFromUserEnrollmentTable(primaryFields)
+      }
     certModelList.foreach(certModel => {
       var uuid: String = null
       try {
@@ -777,4 +794,27 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
     .and(QueryBuilder.eq(config.dbContextId, eventId))
     .and(QueryBuilder.eq(config.dbBatchId, batchId))
 
+  private def getIssuedCertificatesDetailsFromUserExternalTrainingEnrollmentTable(columns: Map[String, AnyRef]): Boolean = {
+    logger.info("primary columns {}", columns)
+    val selectWhere = QueryBuilder.select("issued_certificates", "status", "progress")
+      .from(config.dbKeyspace, config.dbExternalTrainingEnrollmentTable)
+      .where()
+    columns.map(col => {
+      col._2 match {
+        case value: List[Any] =>
+          selectWhere.and(QueryBuilder.in(col._1, value.asJava))
+        case _ =>
+          selectWhere.and(QueryBuilder.eq(col._1, col._2))
+      }
+    })
+    logger.info("select query {}", selectWhere.toString)
+    val records = cassandraUtil.find(selectWhere.toString).asScala.toList
+    //Check status == 2 and issued_certificates is not empty if so, return false -- means increaseCertCount is false
+    !records.exists(row => {
+      val certificates = row.getObject("issued_certificates")
+        .asInstanceOf[java.util.List[java.util.Map[String, String]]]
+      val status = row.getInt("status")
+      certificates != null && !certificates.isEmpty && status == 2
+    })
+  }
 }
