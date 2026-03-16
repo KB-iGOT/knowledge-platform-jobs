@@ -419,6 +419,7 @@ questionset-publish:
     execution.checkpointing.timeout: 1800000
     execution.checkpointing.tolerable-failed-checkpoints: 5
     execution.checkpointing.max-concurrent-checkpoints: 1
+    enable.ecar.generation: false
 
 search-indexer:
   search-indexer: |+
@@ -439,7 +440,7 @@ search-indexer:
     dialcode.index.name = "dialcode"
     dailcodemetrics.index.name = "dialcodemetrics"
     restrict.metadata.objectTypes = []
-    nested.fields = ["badgeAssertions", "targets", "badgeAssociations", "plugins", "me_totalTimeSpent", "me_totalPlaySessionCount", "me_totalTimeSpentInSec", "batches", "trackable", "credentials", "discussionForum", "provider", "osMetadata", "actions", "transcripts", "accessibility", "taxonomyPaths_v2", "competencies_v3", "test_competencies_v2", "competencies_v2", "secureSettings", "test_competencies_v4", "competencies_v5", "test_secureSettings", "competencies_v6", "referenceNodes", "resourceTypeDetails", "sectorDetails_v1", "preEnrolmentResources", "languageMapV1", "milestones_v1"]
+    nested.fields = ["badgeAssertions", "targets", "badgeAssociations", "plugins", "me_totalTimeSpent", "me_totalPlaySessionCount", "me_totalTimeSpentInSec", "batches", "trackable", "credentials", "discussionForum", "provider", "osMetadata", "actions", "transcripts", "accessibility", "taxonomyPaths_v2", "competencies_v3", "test_competencies_v2", "competencies_v2", "secureSettings", "test_competencies_v4", "competencies_v5", "test_secureSettings", "competencies_v6", "referenceNodes", "resourceTypeDetails", "sectorDetails_v1", "preEnrolmentResources", "languageMapV1", "milestones_v1","badgeDetails_v1"]
     schema.definition_cache.expiry = {{ schema_definition_cache_expiry_in_sec }}
     restrict.objectTypes=["EventSet", "Questionnaire", "Misconception", "FrameworkType", "Term", "CategoryInstance","Framework"]
     ignored.fields={{ search_indexer_ignored_fields | to_json }}
@@ -479,7 +480,7 @@ framework-search-indexer:
     dialcode.index.name = "dialcode"
     dailcodemetrics.index.name = "dialcodemetrics"
     restrict.metadata.objectTypes = []
-    nested.fields = ["badgeAssertions", "targets", "badgeAssociations", "plugins", "me_totalTimeSpent", "me_totalPlaySessionCount", "me_totalTimeSpentInSec", "batches", "trackable", "credentials", "discussionForum", "provider", "osMetadata", "actions", "transcripts", "accessibility", "taxonomyPaths_v2", "competencies_v3", "test_competencies_v2", "competencies_v2", "secureSettings", "test_competencies_v4", "competencies_v5", "test_secureSettings", "competencies_v6", "referenceNodes", "resourceTypeDetails", "sectorDetails_v1", "preEnrolmentResources", "languageMapV1", "milestones_v1"]
+    nested.fields = ["badgeAssertions", "targets", "badgeAssociations", "plugins", "me_totalTimeSpent", "me_totalPlaySessionCount", "me_totalTimeSpentInSec", "batches", "trackable", "credentials", "discussionForum", "provider", "osMetadata", "actions", "transcripts", "accessibility", "taxonomyPaths_v2", "competencies_v3", "test_competencies_v2", "competencies_v2", "secureSettings", "test_competencies_v4", "competencies_v5", "test_secureSettings", "competencies_v6", "referenceNodes", "resourceTypeDetails", "sectorDetails_v1", "preEnrolmentResources", "languageMapV1", "milestones_v1","badgeDetails_test"]
     schema.definition_cache.expiry = {{ schema_definition_cache_expiry_in_sec }}
     restrict.objectTypes = ["EventSet", "Questionnaire", "Misconception", "FrameworkType", "EventSetImage", "EventImage"]
     ignored.fields={{ framework_search_indexer_ignored_fields | to_json }}
@@ -772,6 +773,7 @@ collection-certificate-generator:
       output.audit.topic = {{ env_name }}.telemetry.raw
       groupId = {{ env_name }}-certificate-generator-group
       program.cert.output.topic= {{ env_name }}.issue.program.certificate.request
+      output.competency.topic = "{{env_name}}.user.competency.mapping.event"
     }
     task {
       restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
@@ -839,6 +841,7 @@ event-cert-generator:
       program.cert.output.topic= {{ env_name }}.event.generate.certificate.failed
       output.karma.point.topic = "{{env_name}}.user.claim.event.karma.points"
       output.dashboard.topic = "{{env_name}}.dashboard.user.state"
+      output.competency.topic = "{{env_name}}.user.competency.mapping.event"
     }
     task {
       restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
@@ -1101,7 +1104,7 @@ content-publish:
         full = ["appIcon", "grayScaleAppIcon", "artifactUrl", "itemSetPreviewUrl", "media"]
       }
 
-      nested.fields = ["badgeAssertions", "targets", "badgeAssociations", "plugins", "me_totalTimeSpent", "me_totalPlaySessionCount", "me_totalTimeSpentInSec", "batches", "trackable", "credentials", "discussionForum", "provider", "osMetadata", "actions", "taxonomyPaths_v2", "competencies_v3", "test_competencies_v2", "competencies_v2", "secureSettings", "test_competencies_v4", "competencies_v5", "test_secureSettings", "competencies_v6", "referenceNodes", "sectorDetails_v1", "preEnrolmentResources", "languageMapV1", "milestones_v1"]
+      nested.fields = ["badgeAssertions", "targets", "badgeAssociations", "plugins", "me_totalTimeSpent", "me_totalPlaySessionCount", "me_totalTimeSpentInSec", "batches", "trackable", "credentials", "discussionForum", "provider", "osMetadata", "actions", "taxonomyPaths_v2", "competencies_v3", "test_competencies_v2", "competencies_v2", "secureSettings", "test_competencies_v4", "competencies_v5", "test_secureSettings", "competencies_v6", "referenceNodes", "sectorDetails_v1", "preEnrolmentResources", "languageMapV1", "milestones_v1","badgeDetails_v1"]
       restrict.objectTypes = ["EventSet", "Questionnaire", "Misconception", "FrameworkType", "EventSetImage", "EventImage", "resourceTypeDetails"]
     }
     cloud_storage {
@@ -1193,6 +1196,130 @@ content-publish:
     jobmanager.execution.failover-strategy: region
     taskmanager.memory.network.fraction: 0.1
 
+user-competency-updater:
+  user-competency-updater: |+
+    include file("/data/flink/conf/base-config.conf")
+    kafka {
+      input.topic = "{{ env}}.user.competency.mapping.event"
+      groupId = "dev-user-competency-mapping-event-group"
+    }
+    task {
+      restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
+      restart-strategy.delay = {{ user_competency_updater_restart_strategy_delay }} # in milli-seconds # on max restarts (3) within 4 min the job will fail.
+      consumer.parallelism = {{ user_competency_updater_consumer_parallelism }}
+      parallelism = {{ user_competency_updater_parallelism }}
+
+      checkpointing.interval = {{ user_competency_updater_checkpointing_interval }}
+      checkpointing.pause.between.seconds = {{ user_competency_updater_checkpointing_pause_interval }}
+    }
+    lms-cassandra {
+      keyspace = "sunbird"
+      user {
+        table = "user"
+        competency {
+          table = "user_competency_mapping"
+        }
+      }
+      learner {
+        achievement {
+          table = "learner_achievements_v2"
+        }
+      }
+      sunbird{
+      db = "sunbird"
+      }
+    }
+    redis {
+      host = {{data_redis_host}}
+      port = {{data_redis_port}}
+      connection {
+        max = 2
+        idle.min = 1
+        idle.max = 2
+        minEvictableIdleTimeSeconds = 120
+        timeBetweenEvictionRunsSeconds = 300
+      }
+    }
+    content {
+      hierarchy {
+        table = "content_hierarchy"
+      }
+      read {
+        url = "{{core_content_service_base_url}}content/v1/read/"
+      }
+      competencies = "competencies_v6"
+    }
+    certificate {
+      preprocessor {
+        consumer = "user-competency-mapping-event-group"
+      }
+    }
+    postgres {
+      host = "{{igot_postgres_db_ip}}"
+      port = "5432"
+      database = "sunbird"
+      username = "{{postgresql_username_sunbird}}"
+      password = "{{postgresql_password_sunbird}}"
+    }
+    extcontent {
+      read {
+        url = "{{cb_pores_service_base_url}}cios/v1/content/read/"
+      }
+      responseKey = "content"
+      extCourses= "extCourses"
+      db = "sunbird_courses"
+      table = "user_external_enrolments"
+      issuedCertificatesKey = "issued_certificates"
+      version = "version"
+      version2Value = "v2"
+      identifierKey = "identifier"
+      lastIssuedOnKey = "lastIssuedOn"
+      competencyAreaIdentifierKey = "competencyAreaRefId"
+      competencyThemeIdentifierKey = "competencyThemeRefId"
+      competencySubThemeIdentifierKey = "competencySubThemeRefId"
+      acquiredContextIdKey = "acquiredContextId"
+      acquiredAtKey = "acquired_at"
+      certificateIdKey = "certificateId"
+      competenciesDetails="competency_details"
+      achievements= "achievements"
+      competencyAreaId = "competencyAreaId"
+      competencyThemeId = "competencyThemeId"
+      compSubThemeId = "competencySubThemeId"
+      action = "action"
+      contextdata = "contextdata"
+      uuid = "uuid"
+      issuedDate = "issuedDate"
+      selfAchievemt = "selfAchievement"
+      update = "UPDATE "
+      delete = "DELETE"
+      removed = "removed"
+      added = "added"
+      firstTimeUserFetchLimit = 100
+      courseid = "courseid"
+      enrolmenttable = "user_enrolments_v2"
+      status = "status"
+      batchid = "batchid"
+      iGOTCourses = "iGOTCourses"
+      url = "url"
+      externallyUploaded = "externallyUploaded"
+      trueValue = "true"
+      falseValue = "false"
+      uploadedDocumentUrl = "uploadedDocumentUrl"
+      externalTraining = "externalTraining"
+      userEntityEnrolmentsTable = "user_external_training_enrolments"
+      competencyAreaIdentifier = "competencyAreaId"
+      competencySubThemeId = "competencyThemeId"
+      competencySubThemeId = "competencySubThemeId"
+    }
+
+  flink-conf: |+
+    jobmanager.memory.flink.size: {{ flink_job_names['user-competency-updater'].jobmanager_memory }}
+    taskmanager.memory.flink.size: {{ flink_job_names['user-competency-updater'].taskmanager_memory }}
+    taskmanager.numberOfTaskSlots: {{ flink_job_names['user-competency-updater'].taskslots }}
+    parallelism.default: 1
+    jobmanager.execution.failover-strategy: region
+    taskmanager.memory.network.fraction: 0.1
+
 notification-job:
   notification-job: |+
     include file("/data/flink/conf/base-config.conf")
@@ -1233,6 +1360,7 @@ common-certificate-generator-utility:
       output.audit.topic = {{ env_name }}.telemetry.raw
       groupId = {{ env_name }}-common-certificate-generator-group
       program.cert.output.topic= {{ env_name }}.issue.program.certificate.request
+      output.competency.topic = {{ env_name }}.user.competency.mapping.event
     }
     task {
       restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
