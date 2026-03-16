@@ -1,8 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-				 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-				 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
-                             http://maven.apache.org/maven-v4_0_0.xsd">
+<?xml version="1.0" encoding="UTF-8"?><project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0                              http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
   <prerequisites>
@@ -38,8 +34,8 @@
     <module>framework-search-indexer</module>
     <module>activity-aggregate-updater-v2</module>
     <module>user-competency-updater</module>
+    <module>user-achievement-processor</module>
   </modules>
-
   <properties>
     <!-- maven specific properties -->
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -50,7 +46,6 @@
     <jackson-jaxrs.version>1.9.13</jackson-jaxrs.version>
     <scoverage.plugin.version>1.4.0</scoverage.plugin.version>
   </properties>
-
   <repositories>
     <repository>
       <id>my-local-repo</id>
@@ -66,7 +61,6 @@
       <url>https://oss.sonatype.org/content/groups/scala-tools</url>
     </repository>
   </repositories>
-
   <pluginRepositories>
     <pluginRepository>
       <id>scala-tools.org</id>
@@ -74,7 +68,6 @@
       <url>http://scala-tools.org/repo-releases</url>
     </pluginRepository>
   </pluginRepositories>
-
   <dependencies>
     <dependency>
       <groupId>org.scala-lang</groupId>
@@ -82,7 +75,6 @@
       <version>${scala.maj.version}</version>
     </dependency>
   </dependencies>
-
   <build>
     <pluginManagement>
       <plugins>
