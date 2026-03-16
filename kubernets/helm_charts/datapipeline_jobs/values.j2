@@ -1215,6 +1215,7 @@ user-competency-updater:
 
       checkpointing.interval = {{ user_competency_updater_checkpointing_interval }}
       checkpointing.pause.between.seconds = {{ user_competency_updater_checkpointing_pause_interval }}
+      competency.parallelism = {{ user_competency_updater_competency_parallelism }}
     }
     lms-cassandra {
       keyspace = "sunbird"
