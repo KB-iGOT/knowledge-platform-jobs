@@ -329,6 +329,10 @@ class CertificateGeneratorFunction(config: CertificateGeneratorConfig, httpUtil:
             context.output(config.notifierOutputTag, NotificationMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId,
                certMetaData.templateId, event.partition, event.offset, event.providerName, event.coursePosterImage))
           }
+          val competencyEvent = buildCompetencyAcquiredEvent(certMetaData.userId, certMetaData.courseId)
+          logger.info(s"Firing competency mapping event for user: ${certMetaData.userId} course: ${certMetaData.courseId}")
+          context.output(config.competencyMappingOutputTag, competencyEvent)
+          logger.info("Competency mapping event fired successfully: {}", competencyEvent)
           //context.output(config.userFeedOutputTag, UserFeedMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId, event.partition, event.offset))
         } else {
           metrics.incCounter(config.failedEventCount)
@@ -504,5 +508,19 @@ class CertificateGeneratorFunction(config: CertificateGeneratorConfig, httpUtil:
 
       })
     }
+  }
+
+  /**
+   * Builds a serialized JSON string for the COMPETENCY_ACQUIRED Kafka event.
+   */
+  private def buildCompetencyAcquiredEvent(userId: String, contentId: String): String = {
+    val edata = Map[String, AnyRef](
+      config.eventType   -> config.competencyAcquired,
+      config.userId     -> userId,
+      config.contentId -> contentId,
+      config.batchId     -> "",
+      config.contextType -> config.extCourses
+    )
+    ScalaJsonUtil.serialize(Map[String, AnyRef]("edata" -> edata))
   }
 }
