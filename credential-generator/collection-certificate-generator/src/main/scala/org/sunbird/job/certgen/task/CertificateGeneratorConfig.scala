@@ -196,7 +196,6 @@ class CertificateGeneratorConfig(override val config: Config) extends BaseJobCon
   val eventType = "eventType"
   val contentId = "contentId"
   val contextType = "contextType"
-  val competencyAcquired = "COMPETENCY_ACQUIRED"
   val iGOTCourses = "iGOTCourses"
 
 }

@@ -537,9 +537,8 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
   /**
    * Builds a serialized JSON string for the COMPETENCY_ACQUIRED Kafka event.
    */
-  private def buildCompetencyAcquiredEvent(userId: String, contentId: String, batchId: String): String = {
+  private def buildBadgeAwardEvent(userId: String, contentId: String, batchId: String): String = {
     val edata = Map[String, AnyRef](
-      config.eventType   -> config.competencyAcquired,
       config.userId     -> userId,
       config.contentId -> contentId,
       config.batchId     -> batchId,
