@@ -15,6 +15,7 @@ import org.sunbird.job.{BaseProcessKeyedFunction, Metrics}
 import scala.collection.JavaConverters._
 import org.sunbird.job.util.ScalaJsonUtil
 
+import java.util.UUID
 import scala.collection.JavaConverters._
 
 class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil: HttpUtil)
@@ -45,10 +46,17 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
   override def processElement(event: Event,
                               context: KeyedProcessFunction[String, Event, String]#Context,
                               metrics: Metrics): Unit = {
-    try {
+
       logger.info(s"processElement - received event: userId=${event.userId}, contextType=${event.contextType}, contentId=${event.contentId}")
       if (event.isFirstTimeUser != null && event.isFirstTimeUser) {
-        processFirstTimeUser(event, metrics)
+        try {
+          processFirstTimeUser(event, metrics)
+        } catch {
+          case ex: Exception =>
+            metrics.incCounter(config.failedEventCount)
+            context.output(config.generateCompetencyFailedOutputTag, generateFailedEvent(event.userId, event.batchId, event.contentId))
+            logger.error("Error processing first time user event: " + ex.getMessage, ex)
+        }
       } else {
         val contextType = event.contextType
         if (contextType == config.achievements) {
@@ -61,11 +69,6 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
           processExternalTraining(event, metrics)
         }
       }
-    } catch {
-      case ex: Exception =>
-        metrics.incCounter(config.failedEventCount)
-        logger.error("Error processing event: " + ex.getMessage, ex)
-    }
   }
 
   private def processExternalTraining(event: Event, metrics: Metrics): Unit = {
@@ -994,5 +997,12 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       metrics.incCounter(config.dbUpdateCount)
       logger.info(s"Processing extCourse competency: areaId=$areaId, themeId=$themeId, subthemeId=$subthemeId")
     }
+  }
+
+  def generateFailedEvent(userId: String, batchId: String, contentId: String): String = {
+    val ets = System.currentTimeMillis
+    val mid = s"LP.${ets}.${UUID.randomUUID}"
+    val eventString = s"""{"eid": "BE_JOB_REQUEST", "ets": $ets, "mid": "$mid", "actor": {"id": "Program Certificate Pre Processor Generator", "type": "System"}, "context": {"pdata": {"ver": "1.0", "id": "org.sunbird.platform"}}, "object": {"id": "${batchId}_${contentId}", "type": "ProgramCertificatePreProcessorGeneration"}, "edata": {"userId": "$userId", "action": "program-issue-certificate", "iteration": 1, "trigger": "auto-issue", "batchId": "$batchId", "parentCollections": ["$contentId"], "courseId": "$contentId"}}"""
+    eventString
   }
 }

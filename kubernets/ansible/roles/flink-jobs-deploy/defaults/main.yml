@@ -156,6 +156,7 @@ event_cert_generator_consumer_parallelism: 1
 event_cert_generator_parallelism: 1
 event_cert_generator_enable_suppress_exception: false
 event_cert_generator_enable_rc_certificate: true
+event_user_competency_updater_parallelism: 1
 
 ###  user_activity_analysis_updater Job related Vars
 user_activity_analysis_updater_consumer_parallelism: 1
