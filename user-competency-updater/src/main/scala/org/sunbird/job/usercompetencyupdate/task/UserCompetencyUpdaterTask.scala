@@ -33,7 +33,8 @@ class UserCompetencyPreUpdaterTask(config: UserCompetencyUpdaterConfig, kafkaCon
               .process(new UserCompetencyPreProcessorFn(config, httpUtil))
               .name("user-competency-updater").uid("user-competency-updater")
               .setParallelism(config.parallelism)
-        // Remove all old side outputs and sinks
+        progressStream.getSideOutput(config.generateCompetencyFailedOutputTag).addSink(kafkaConnector.kafkaStringSink(config.kafkaFailedTopic))
+          .name(config.generateCompetencyFailedEventProducer).uid(config.generateCompetencyFailedEventProducer).setParallelism(config.generateCompetencyParallelism)
         env.execute(config.jobName)
     }
 }

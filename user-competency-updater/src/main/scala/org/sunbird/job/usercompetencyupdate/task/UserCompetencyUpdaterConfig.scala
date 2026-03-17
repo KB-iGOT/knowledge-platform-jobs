@@ -19,6 +19,9 @@ class UserCompetencyUpdaterConfig(override val config: Config) extends BaseJobCo
   //kafka config
   val kafkaInputTopic: String = config.getString("kafka.input.topic")
   override val kafkaConsumerParallelism: Int = config.getInt("task.consumer.parallelism")
+  val kafkaFailedTopic: String = config.getString("kafka.failed.topic")
+  val generateCompetencyFailedEventProducer = "generate-competency-failed-event-sink"
+  val generateCompetencyParallelism: Int = config.getInt("task.competency.parallelism")
 
   //Cassandra config
   val dbHost: String = config.getString("lms-cassandra.host")
@@ -103,5 +106,7 @@ class UserCompetencyUpdaterConfig(override val config: Config) extends BaseJobCo
   val falseValue: String = config.getString("extcontent.falseValue")
   val externalTraining: String = config.getString("extcontent.externalTraining")
   val userEntityEnrolmentsTable: String = config.getString("extcontent.userEntityEnrolmentsTable")
+  val generateCompetencyFailedOutputTagName = "generate-competency-failed-request"
+  val generateCompetencyFailedOutputTag: OutputTag[String] = OutputTag[String](generateCompetencyFailedOutputTagName)
 
 }

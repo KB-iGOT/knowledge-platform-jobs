@@ -174,11 +174,21 @@ class CertValidator() {
   }
 
   def isNotIssued(event: Event)(config: EventCertificateGeneratorConfig, metrics: Metrics, cassandraUtil: CassandraUtil):Boolean = {
-    val query = QueryBuilder.select( "issued_certificates").from(config.dbKeyspace, config.dbEnrollmentTable)
+    val isExternalTraining = event.eventType.equalsIgnoreCase(config.externalTraining)
+    val table =
+      if (isExternalTraining) config.dbExternalTrainingEnrollmentTable
+      else config.dbEnrollmentTable
+    var query = QueryBuilder
+      .select("issued_certificates")
+      .from(config.dbKeyspace, table)
       .where(QueryBuilder.eq(config.dbUserId, event.eData.getOrElse("userId", "")))
-      .and(QueryBuilder.eq(config.dbContentId, event.related.getOrElse("eventId", "")))
       .and(QueryBuilder.eq(config.dbContextId, event.related.getOrElse("eventId", "")))
       .and(QueryBuilder.eq(config.dbBatchId, event.related.getOrElse("batchId", "")))
+    if (!isExternalTraining) {
+      query = query.and(
+        QueryBuilder.eq(config.dbContentId, event.related.getOrElse("eventId", ""))
+      )
+    }
     val row = cassandraUtil.findOne(query.toString)
     metrics.incCounter(config.enrollmentDbReadCount)
     if (null != row) {
@@ -189,6 +199,5 @@ class CertValidator() {
       ((null != event.oldId && !event.oldId.isEmpty) || !isCertIssued)
     } else false
   }
-
 }
 

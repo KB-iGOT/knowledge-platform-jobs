@@ -165,6 +165,7 @@ class CertificateGeneratorConfig(override val config: Config) extends BaseJobCon
   val auditEventOutputTag: OutputTag[String] = OutputTag[String](auditEventOutputTagName)
   val notifierOutputTag: OutputTag[NotificationMetaData] = OutputTag[NotificationMetaData]("notifier")
   val userFeedOutputTag: OutputTag[UserFeedMetaData] = OutputTag[UserFeedMetaData]("user-feed")
+  val competencyMappingOutputTag: OutputTag[String] = OutputTag[String]("competency-mapping")
   
   //UserFeed constants
   val priority: String = "priority"
@@ -186,4 +187,9 @@ class CertificateGeneratorConfig(override val config: Config) extends BaseJobCon
   val addCertRegApiV2 = "/certs/v3/registry/add"
   val dynamicCertificateEnabledForExternalContent: Boolean = if (config.hasPath("dynamicCertificateEnabledForExternalContent")) config.getBoolean("dynamicCertificateEnabledForExternalContent") else true
   val version = "version"
+  val eventType = "eventType"
+  val contextType = "contextType"
+  val competencyAcquired = "COMPETENCY_ACQUIRED"
+  val extCourses = "extCourses"
+  val contentId = "contentId"
 }
