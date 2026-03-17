@@ -13,9 +13,8 @@ import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil, ScalaJsonUtil}
 import org.sunbird.job.{BaseProcessKeyedFunction, Metrics}
 
 import scala.collection.JavaConverters._
-import org.sunbird.job.util.ScalaJsonUtil
 
-import scala.collection.JavaConverters._
+import scala.collection.convert.ImplicitConversions.`map AsScala`
 
 class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: HttpUtil)
                                    (implicit val stringTypeInfo: TypeInformation[String],
@@ -93,7 +92,34 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
   }
 
   /**
-   * Parse ISO 8601 date string to Unix timestamp in milliseconds
+   * Parse badge earning date time from various types
+   * Handles Double (including scientific notation), Float, Integer, Long, and String
+   */
+  private def parseBadgeEarningDateTime(value: Any): Long = {
+    try {
+      value match {
+        case d: java.lang.Double => d.toLong
+        case f: java.lang.Float => f.toLong
+        case i: java.lang.Integer => i.toLong
+        case l: java.lang.Long => l.longValue()
+        case s: String =>
+          try {
+            // Try parsing as double first (handles scientific notation like 1.774656E12)
+            s.toDouble.toLong
+          } catch {
+            case _: NumberFormatException => s.toLong
+          }
+        case _ => value.toString.toDouble.toLong
+      }
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Failed to parse badgeEarningDateTime: $value", ex)
+        0L
+    }
+  }
+
+  /**
+   * Parse ISO date string to milliseconds timestamp
    */
   private def parseIsoDateToMillis(dateString: String): Long = {
     try {
@@ -112,26 +138,24 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
   }
 
   /**
-   * Fetch user name from User API
+   * Fetch user name directly from Cassandra
    */
   private def getUserName(userId: String): String = {
     try {
-      val url = config.userReadURL + userId
-      val response = httpUtil.get(url, config.defaultHeaders)
+      val userQuery = s"SELECT firstname FROM ${config.dbName}.${config.dbTable} WHERE id='$userId';"
+      val userRows = cassandraUtil.find(userQuery)
 
-      if (200 == response.status) {
-        val resultMap = JSONUtil.deserialize[Map[String, AnyRef]](response.body)
-        val userResponse = resultMap
-          .get("result").flatMap(r => if (r.isInstanceOf[Map[_, _]]) Some(r.asInstanceOf[Map[String, AnyRef]]) else None)
-          .flatMap(_.get("response")).flatMap(r => if (r.isInstanceOf[Map[_, _]]) Some(r.asInstanceOf[Map[String, AnyRef]]) else None)
-          .getOrElse(Map.empty[String, AnyRef])
-
-        val firstName = userResponse.getOrElse("firstName", "").toString
-        if (firstName.nonEmpty) firstName else userId
-      } else {
-        logger.warn(s"Failed to fetch user details for userId=$userId, status=${response.status}")
-        userId
+      if (userRows != null && !userRows.isEmpty) {
+        val row = userRows.get(0)
+        val firstName = row.getString("firstname")
+        if (firstName != null && firstName.nonEmpty) {
+          logger.info(s"Found user firstName in Cassandra for userId=$userId")
+          return firstName
+        }
       }
+
+      logger.warn(s"Failed to fetch user details for userId=$userId from Cassandra")
+      userId
     } catch {
       case ex: Exception =>
         logger.error(s"Error fetching user name for userId=$userId", ex)
@@ -224,29 +248,71 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     processBadgeAwardingForIGOTCourses(userId, courseId, batchId, courseMetadata, metrics)
   }
 
-  // Fetch course info for badge awarding - only badgeDetails_v1 is needed
-  private def getCourseInfo(courseId: String)(
+  def getCourseInfo(courseId: String)(
     metrics: Metrics,
     config: UserBadgeAwardingConfig,
-    cache: DataCache,
+    contentCache: DataCache,
     httpUtil: HttpUtil
   ): java.util.Map[String, AnyRef] = {
-    val courseMetadata = cache.getWithRetry(courseId)
-    val courseInfoMap: java.util.Map[String, AnyRef] = new java.util.HashMap[String, AnyRef]()
-
-    // Fetch badgeDetails_v1
-    val badgeDetails: AnyRef = if (courseMetadata == null || courseMetadata.isEmpty || !courseMetadata.contains("badgeDetails_v1")) {
-      val url = config.contentReadURL + courseId + "?fields=badgeDetails_v1"
+    logger.info(
+      s"Fetching course details from Redis for Id: ${courseId}, Configured Index: " + contentCache.getDBConfigIndex() + ", Current Index: " + contentCache.getDBIndex()
+    )
+    val courseMetadata = Option(contentCache).flatMap(c => Option(c.getWithRetry(courseId))).getOrElse(null)
+    if (null == courseMetadata || courseMetadata.isEmpty) {
+      logger.error(
+        s"Fetching course details from Content Service for Id: ${courseId}"
+      )
+      val url =
+        config.contentReadURL + "/" + courseId + "?fields=identifier,parentCollections,primaryCategory,leafNodes,badgeDetails_v1"
       val response = getAPICall(url, "content")(config, httpUtil, metrics)
-      response.get("badgeDetails_v1")
+      val primaryCategory = StringContext
+        .processEscapes(
+          response.getOrElse("primaryCategory", "").asInstanceOf[String]
+        )
+        .filter(_ >= ' ')
+      val parentCollections = response
+        .getOrElse("parentCollections", List.empty[String])
+        .asInstanceOf[List[String]]
+      val leafNodes = response
+        .getOrElse("leafNodes", List.empty[String])
+        .asInstanceOf[List[String]]
+      val badgeDetails_v1 = response
+        .getOrElse("badgeDetails_v1", List.empty[String])
+        .asInstanceOf[List[String]]
+      val courseInfoMap: java.util.Map[String, AnyRef] =
+        new java.util.HashMap[String, AnyRef]()
+      courseInfoMap.put("courseId", courseId)
+      courseInfoMap.put("parentCollections", parentCollections)
+      courseInfoMap.put("primaryCategory", primaryCategory)
+      courseInfoMap.put("leafNodes", leafNodes)
+      courseInfoMap.put("badgeDetails_v1", badgeDetails_v1)
+      courseInfoMap
     } else {
-      courseMetadata.get("badgeDetails_v1")
+      val primaryCategory = StringContext
+        .processEscapes(
+          courseMetadata
+            .getOrElse("primarycategory", "")
+            .asInstanceOf[String]
+        )
+        .filter(_ >= ' ')
+      val parentCollections = courseMetadata
+        .getOrElse("parentcollections", new java.util.ArrayList())
+        .asInstanceOf[java.util.ArrayList[String]]
+      val courseInfoMap: java.util.Map[String, AnyRef] =
+        new java.util.HashMap[String, AnyRef]()
+      courseInfoMap.put("courseId", courseId)
+      courseInfoMap.put("parentCollections", parentCollections)
+      courseInfoMap.put("primaryCategory", primaryCategory)
+      val leafNodes = courseMetadata
+        .getOrElse("leafnodes", new java.util.ArrayList())
+        .asInstanceOf[java.util.ArrayList[String]]
+      courseInfoMap.put("leafNodes", leafNodes)
+      val badgeDetails_v1 = courseMetadata
+          .getOrElse("badgedetailsv1", new java.util.ArrayList())
+          .asInstanceOf[java.util.ArrayList[String]]
+      courseInfoMap.put("badgeDetails_v1", badgeDetails_v1)
+      courseInfoMap
     }
-
-    if (badgeDetails != null) {
-      courseInfoMap.put("badgeDetails_v1", badgeDetails)
-    }
-    courseInfoMap
   }
 
   // Add new method for extCourses
@@ -256,7 +322,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     val extContentReadUrl = config.extContentUrl
     val contentUrl = s"$extContentReadUrl$courseId"
     val cachedMetadata = cache.getWithRetry(courseId)
-    import scala.collection.JavaConverters._
 
     // Build courseMetadata map to pass to badge awarding function
     val courseMetadataMap = new java.util.HashMap[String, AnyRef]()
@@ -354,8 +419,8 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         logger.info(s"badgeEarningDateEnabled=false for courseId=$courseId, awarding badge immediately")
       } else {
         // If badgeEarningDateEnabled is true, check badgeEarningDateTime against lastIssuedOn
-        val badgeEarningDateTime = Option(badgeDetailsObj.get(config.badgeEarningDateTimeKey))
-          .map(_.toString.toLong)
+        val badgeEarningDateTime: Long = Option(badgeDetailsObj.get(config.badgeEarningDateTimeKey))
+          .map(value => parseBadgeEarningDateTime(value))
           .getOrElse(0L)
 
         if (badgeEarningDateTime == 0L) {
@@ -451,7 +516,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         // Insert into badge lookup table
         val lookupInsertQuery =
           s"""
-             INSERT INTO ${config.coursesdb}.user_badge_lookup
+             INSERT INTO ${config.coursesdb}.${config.badgeLookUpTable}
              (userid, courseid, badgeid, criteria, templateurl, issuedon)
              VALUES (?, ?, ?, ?, ?, ?);
            """
@@ -550,8 +615,8 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         logger.info(s"badgeEarningDateEnabled=false for extCourseId=$courseId, awarding badge immediately")
       } else {
         // If badgeEarningDateEnabled is true, check badgeEarningDateTime against lastIssuedOn
-        val badgeEarningDateTime = Option(badgeDetailsObj.get(config.badgeEarningDateTimeKey))
-          .map(_.toString.toLong)
+        val badgeEarningDateTime: Long = Option(badgeDetailsObj.get(config.badgeEarningDateTimeKey))
+          .map(value => parseBadgeEarningDateTime(value))
           .getOrElse(0L)
 
         if (badgeEarningDateTime == 0L) {
@@ -563,7 +628,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         val externalEnrolQuery =
           s"""
              SELECT issued_certificates
-             FROM ${config.extContentUserExternalEnrolmentsDb}.${config.extContentUserExternalEnrolmentsTable}
+             FROM ${config.coursesdb}.${config.externalEnrolmentTable}
              WHERE userid='$userId'
              AND courseid='$courseId';
            """
@@ -630,7 +695,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         // Update user_external_enrolments with issued_badges
         val updateQuery =
           s"""
-             UPDATE ${config.extContentUserExternalEnrolmentsDb}.${config.extContentUserExternalEnrolmentsTable}
+             UPDATE ${config.coursesdb}.${config.externalEnrolmentTable}
              SET issued_badges = ?
              WHERE userid='$userId'
              AND courseid='$courseId';
@@ -643,7 +708,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         // Insert into badge lookup table
         val lookupInsertQuery =
           s"""
-             INSERT INTO ${config.extContentUserExternalEnrolmentsDb}.user_badge_lookup
+             INSERT INTO ${config.coursesdb}.${config.badgeLookUpTable}
              (userid, courseid, badgeid, criteria, templateurl, issuedon)
              VALUES (?, ?, ?, ?, ?, ?);
            """

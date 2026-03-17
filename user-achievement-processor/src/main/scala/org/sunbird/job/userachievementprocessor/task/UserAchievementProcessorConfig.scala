@@ -25,6 +25,11 @@ class UserBadgeAwardingConfig(override val config: Config) extends BaseJobConfig
   val dbHost: String = config.getString("lms-cassandra.host")
   val dbPort: Int = config.getInt("lms-cassandra.port")
   val dbName: String = config.getString("lms-cassandra.sunbird.db")
+  val dbTable: String = config.getString("lms-cassandra.sunbird.table")
+  val coursesdb: String = config.getString("lms-cassandra.coursesdb")
+  val enrolmentTable: String = config.getString("lms-cassandra.enrolmentTable")
+  val badgeLookUpTable: String = config.getString("lms-cassandra.badgeLookupTable")
+  val externalEnrolmentTable: String = config.getString("lms-cassandra.externalEnrolmentTable")
 
   // Metric List
   val totalEventsCount = "total-events-count"
@@ -39,17 +44,12 @@ class UserBadgeAwardingConfig(override val config: Config) extends BaseJobConfig
 
   // Content and External Content config
   val contentReadURL: String = config.getString("content.read.url")
-  val userReadURL: String = config.getString("user.read.url")
   val extContentUrl: String = config.getString("extcontent.read.url")
   val extCoursesContextType: String = config.getString("extcontent.extCourses")
   val iGOTCoursesContextType: String = config.getString("extcontent.iGOTCourses")
   val extContentResponseKey: String = config.getString("extcontent.responseKey")
-  val extContentUserExternalEnrolmentsDb: String = config.getString("extcontent.db")
-  val extContentUserExternalEnrolmentsTable: String = config.getString("extcontent.table")
   val extContentUserExternalEnrolmentsIssuedCertificatesKey: String = config.getString("extcontent.issuedCertificatesKey")
   val lastIssuedOnKey: String = config.getString("extcontent.lastIssuedOnKey")
-  val coursesdb: String = config.getString("extcontent.db")
-  val enrolmentTable: String = config.getString("extcontent.enrolmenttable")
   val issuedCertificatesKey: String = config.getString("extcontent.issuedCertificatesKey")
 
   // Badge awarding config
