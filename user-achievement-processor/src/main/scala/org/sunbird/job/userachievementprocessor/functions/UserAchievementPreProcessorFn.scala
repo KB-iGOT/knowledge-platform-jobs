@@ -1,0 +1,677 @@
+package org.sunbird.job.userbadgeawarding.functions
+
+import com.datastax.driver.core.Row
+import com.google.common.reflect.TypeToken
+import org.apache.flink.api.common.typeinfo.TypeInformation
+import org.apache.flink.configuration.Configuration
+import org.apache.flink.streaming.api.functions.KeyedProcessFunction
+import org.slf4j.LoggerFactory
+import org.sunbird.job.cache.{DataCache, RedisConnect}
+import org.sunbird.job.userbadgeawarding.domain.Event
+import org.sunbird.job.userbadgeawarding.task.UserBadgeAwardingConfig
+import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil, ScalaJsonUtil}
+import org.sunbird.job.{BaseProcessKeyedFunction, Metrics}
+
+import scala.collection.JavaConverters._
+import org.sunbird.job.util.ScalaJsonUtil
+
+import scala.collection.JavaConverters._
+
+class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: HttpUtil)
+                                   (implicit val stringTypeInfo: TypeInformation[String],
+                                    @transient var cassandraUtil: CassandraUtil = null)
+  extends BaseProcessKeyedFunction[String, Event, String](config) {
+
+  private[this] val logger = LoggerFactory.getLogger(classOf[UserAchievementPreProcessorFn])
+  private var cache: DataCache = _
+  private var redisConnect: RedisConnect = _
+
+  override def open(parameters: Configuration): Unit = {
+    super.open(parameters)
+    cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
+    redisConnect = new RedisConnect(config)
+    cache = new DataCache(config, redisConnect, config.collectionCacheStore, List())
+    cache.init()
+  }
+
+  override def close(): Unit = {
+    cassandraUtil.close()
+    super.close()
+  }
+
+  override def metricsList(): List[String] = {
+    List(config.totalEventsCount, config.dbUpdateCount, config.failedEventCount, config.skippedEventCount, config.successEventCount)
+  }
+
+  /**
+   * Push recent badge activity to Redis
+   * Maintains a list of max 10 recent badge awards
+   */
+  private def pushRecentBadgeActivity(userId: String, badgeId: String, badgeTitle: String): Unit = {
+    try {
+      // Fetch user name from API
+      val userName = getUserName(userId)
+
+      val badgeActivity = Map(
+        "userId" -> userId,
+        "userName" -> userName,
+        "badgeId" -> badgeId,
+        "badgeTitle" -> badgeTitle
+      )
+
+      val badgeActivityJson = ScalaJsonUtil.serialize(badgeActivity)
+
+      // Use Redis connection to push badge activity
+      val jedis = redisConnect.getConnection(config.collectionCacheStore)
+      try {
+        // Check if the key exists and its type
+        val keyType = jedis.`type`(config.recentBadgeActivityKey)
+
+        // If the key exists but is not a list, delete it first
+        if (keyType != "none" && keyType != "list") {
+          logger.warn(s"Redis key ${config.recentBadgeActivityKey} is of type '$keyType', deleting it to recreate as list")
+          jedis.del(config.recentBadgeActivityKey)
+        }
+
+        // LPUSH to add to the beginning of the list
+        jedis.lpush(config.recentBadgeActivityKey, badgeActivityJson)
+
+        // LTRIM to keep only the most recent 10 items
+        jedis.ltrim(config.recentBadgeActivityKey, 0, config.recentBadgeActivityMaxSize - 1)
+
+        logger.info(s"Pushed recent badge activity to Redis: userName=$userName, badgeTitle=$badgeTitle")
+      } finally {
+        if (jedis != null) {
+          jedis.close()
+        }
+      }
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Error pushing recent badge activity to Redis for userId=$userId, badgeTitle=$badgeTitle", ex)
+      // Don't fail the entire badge awarding process if Redis update fails
+    }
+  }
+
+  /**
+   * Parse ISO 8601 date string to Unix timestamp in milliseconds
+   */
+  private def parseIsoDateToMillis(dateString: String): Long = {
+    try {
+      import java.text.SimpleDateFormat
+      import java.util.TimeZone
+
+      val dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+      dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"))
+      val date = dateFormat.parse(dateString)
+      date.getTime
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Error parsing date string: $dateString", ex)
+        0L
+    }
+  }
+
+  /**
+   * Fetch user name from User API
+   */
+  private def getUserName(userId: String): String = {
+    try {
+      val url = config.userReadURL + userId
+      val response = httpUtil.get(url, config.defaultHeaders)
+
+      if (200 == response.status) {
+        val resultMap = JSONUtil.deserialize[Map[String, AnyRef]](response.body)
+        val userResponse = resultMap
+          .get("result").flatMap(r => if (r.isInstanceOf[Map[_, _]]) Some(r.asInstanceOf[Map[String, AnyRef]]) else None)
+          .flatMap(_.get("response")).flatMap(r => if (r.isInstanceOf[Map[_, _]]) Some(r.asInstanceOf[Map[String, AnyRef]]) else None)
+          .getOrElse(Map.empty[String, AnyRef])
+
+        val firstName = userResponse.getOrElse("firstName", "").toString
+        if (firstName.nonEmpty) firstName else userId
+      } else {
+        logger.warn(s"Failed to fetch user details for userId=$userId, status=${response.status}")
+        userId
+      }
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Error fetching user name for userId=$userId", ex)
+        userId
+    }
+  }
+
+
+  override def processElement(event: Event,
+                              context: KeyedProcessFunction[String, Event, String]#Context,
+                              metrics: Metrics): Unit = {
+    try {
+      val contextType = event.contextType
+      if (contextType != null && contextType.equalsIgnoreCase(config.iGOTCoursesContextType)) {
+        processIGOTCourses(event, metrics)
+      } else if (contextType != null && contextType.equalsIgnoreCase(config.extCoursesContextType)) {
+        processExtCourses(event, metrics)
+      }
+    } catch {
+      case ex: Exception =>
+        metrics.incCounter(config.failedEventCount)
+        logger.error("Error processing event: " + ex.getMessage, ex)
+    }
+  }
+
+  // Helper for API call, returns the required response map or throws on error
+  private def getAPICall(url: String, responseParam: String)(config: UserBadgeAwardingConfig, httpUtil: HttpUtil, metrics: Metrics): java.util.Map[String, AnyRef] = {
+    val response = httpUtil.get(url, config.defaultHeaders)
+    if (200 == response.status) {
+      val resultMap = JSONUtil.deserialize[Map[String, AnyRef]](response.body)
+      val result = resultMap.getOrElse("result", Map[String, AnyRef]())
+      if (result.isInstanceOf[Map[_, _]]) {
+        val resultTyped = result.asInstanceOf[Map[String, AnyRef]]
+        if (resultTyped.contains(responseParam)) {
+          val responseValue = resultTyped(responseParam)
+          if (responseValue.isInstanceOf[Map[_, _]]) {
+            val scalaMap = responseValue.asInstanceOf[Map[String, AnyRef]]
+            new java.util.HashMap[String, AnyRef](scalaMap.asJava)
+          } else {
+            new java.util.HashMap[String, AnyRef]()
+          }
+        } else {
+          new java.util.HashMap[String, AnyRef]()
+        }
+      } else {
+        new java.util.HashMap[String, AnyRef]()
+      }
+    } else if (400 == response.status && response.body.contains(config.userAccBlockedErrCode)) {
+      metrics.incCounter(config.skippedEventCount)
+      logger.error(s"Error while fetching user details for ${url}: " + response.status + " :: " + response.body)
+      new java.util.HashMap[String, AnyRef]()
+    } else {
+      throw new Exception(s"Error from get API : ${url}, with response: ${response}")
+    }
+  }
+
+  // Helper for API call for extcontent, returns the required response map or throws on error
+  private def getExtContentAPICall(url: String)(config: UserBadgeAwardingConfig, httpUtil: HttpUtil, metrics: Metrics): java.util.Map[String, AnyRef] = {
+    val response = httpUtil.get(url, config.defaultHeaders)
+    if (200 == response.status) {
+      val result = JSONUtil.deserialize[Map[String, AnyRef]](response.body)
+      if (result.contains(config.extContentResponseKey)) {
+        val responseValue = result(config.extContentResponseKey)
+        if (responseValue.isInstanceOf[Map[_, _]]) {
+          val scalaMap = responseValue.asInstanceOf[Map[String, AnyRef]]
+          new java.util.HashMap[String, AnyRef](scalaMap.asJava)
+        } else {
+          new java.util.HashMap[String, AnyRef]()
+        }
+      } else {
+        new java.util.HashMap[String, AnyRef]()
+      }
+    } else if (400 == response.status && response.body.contains(config.userAccBlockedErrCode)) {
+      metrics.incCounter(config.skippedEventCount)
+      logger.error(s"Error while fetching extcontent details for ${url}: " + response.status + " :: " + response.body)
+      new java.util.HashMap[String, AnyRef]()
+    } else {
+      throw new Exception(s"Error from extcontent get API : ${url}, with response: ${response}")
+    }
+  }
+
+  private def processIGOTCourses(event: Event, metrics: Metrics): Unit = {
+    val userId = event.userId
+    val courseId = event.contentId
+    val batchId = event.batchId
+
+    val courseMetadata: java.util.Map[String, AnyRef] = getCourseInfo(courseId)(metrics, config, cache, httpUtil)
+
+    // Process badge awarding for iGOTCourses
+    processBadgeAwardingForIGOTCourses(userId, courseId, batchId, courseMetadata, metrics)
+  }
+
+  // Fetch course info for badge awarding - only badgeDetails_v1 is needed
+  private def getCourseInfo(courseId: String)(
+    metrics: Metrics,
+    config: UserBadgeAwardingConfig,
+    cache: DataCache,
+    httpUtil: HttpUtil
+  ): java.util.Map[String, AnyRef] = {
+    val courseMetadata = cache.getWithRetry(courseId)
+    val courseInfoMap: java.util.Map[String, AnyRef] = new java.util.HashMap[String, AnyRef]()
+
+    // Fetch badgeDetails_v1
+    val badgeDetails: AnyRef = if (courseMetadata == null || courseMetadata.isEmpty || !courseMetadata.contains("badgeDetails_v1")) {
+      val url = config.contentReadURL + courseId + "?fields=badgeDetails_v1"
+      val response = getAPICall(url, "content")(config, httpUtil, metrics)
+      response.get("badgeDetails_v1")
+    } else {
+      courseMetadata.get("badgeDetails_v1")
+    }
+
+    if (badgeDetails != null) {
+      courseInfoMap.put("badgeDetails_v1", badgeDetails)
+    }
+    courseInfoMap
+  }
+
+  // Add new method for extCourses
+  private def processExtCourses(event: Event, metrics: Metrics): Unit = {
+    val userId = event.userId
+    val courseId = event.contentId
+    val extContentReadUrl = config.extContentUrl
+    val contentUrl = s"$extContentReadUrl$courseId"
+    val cachedMetadata = cache.getWithRetry(courseId)
+    import scala.collection.JavaConverters._
+
+    // Build courseMetadata map to pass to badge awarding function
+    val courseMetadataMap = new java.util.HashMap[String, AnyRef]()
+
+    if (cachedMetadata != null && cachedMetadata.contains(config.extContentResponseKey)) {
+      val contentMap = cachedMetadata(config.extContentResponseKey).asInstanceOf[java.util.Map[String, AnyRef]]
+
+      // Extract badgeDetails_v1 if present
+      val badgeDetailsV1 = contentMap.get(config.badgeDetailsV1Key)
+      if (badgeDetailsV1 != null) {
+        courseMetadataMap.put(config.badgeDetailsV1Key, badgeDetailsV1)
+      }
+    } else {
+      logger.warn(
+        s"Key '${config.extContentResponseKey}' not found in courseMetadata for courseId=$courseId. Falling back to API call."
+      )
+      val response = getExtContentAPICall(contentUrl)(config, httpUtil, metrics)
+
+      // Extract badgeDetails_v1 if present
+      val badgeDetailsV1 = response.get(config.badgeDetailsV1Key)
+      if (badgeDetailsV1 != null) {
+        courseMetadataMap.put(config.badgeDetailsV1Key, badgeDetailsV1)
+      }
+    }
+
+    // Process badge awarding for extCourses
+    processBadgeAwardingForExtCourses(userId, courseId, courseMetadataMap, metrics)
+  }
+
+  /**
+   * Process badge awarding for iGOTCourses
+   * Checks if content has badgeDetails_v1, then processes badge awarding based on badgeEarningDateEnabled
+   */
+  private def processBadgeAwardingForIGOTCourses(
+                                                  userId: String,
+                                                  courseId: String,
+                                                  batchId: String,
+                                                  courseMetadata: java.util.Map[String, AnyRef],
+                                                  metrics: Metrics
+                                                ): Unit = {
+    try {
+      import scala.collection.JavaConverters._
+
+      // Check if badgeDetails_v1 exists in course metadata
+      val badgeDetailsV1Raw = courseMetadata.get(config.badgeDetailsV1Key)
+      if (badgeDetailsV1Raw == null) {
+        logger.info(s"No badgeDetails_v1 found for courseId=$courseId, skipping badge awarding")
+        return
+      }
+
+      // badgeDetails_v1 is an array/list of badge objects
+      val badgeDetailsList = badgeDetailsV1Raw match {
+        case jl: java.util.List[_] => jl.asScala.toList
+        case sl: Seq[_] => sl.toList
+        case _ =>
+          logger.warn(s"badgeDetails_v1 is not a list for courseId=$courseId, skipping badge awarding")
+          return
+      }
+
+      if (badgeDetailsList.isEmpty) {
+        logger.info(s"badgeDetails_v1 is empty for courseId=$courseId, skipping badge awarding")
+        return
+      }
+
+      // Convert Scala Map to Java Map
+      val badgeDetailsObj = badgeDetailsList.head match {
+        case jm: java.util.Map[_, _] => jm.asInstanceOf[java.util.Map[String, AnyRef]]
+        case sm: Map[_, _] => new java.util.HashMap[String, AnyRef](sm.asInstanceOf[Map[String, AnyRef]].asJava)
+        case _ =>
+          logger.warn(s"Unexpected badge details type for courseId=$courseId, skipping badge awarding")
+          return
+      }
+
+      val criteria = Option(badgeDetailsObj.get(config.criteriaKey)).map(_.toString).getOrElse("")
+      val badgeTemplate = Option(badgeDetailsObj.get(config.badgeTemplateKey)).map(_.toString).getOrElse("")
+      val badgeId = Option(badgeDetailsObj.get(config.badgeIdKey)).map(_.toString).getOrElse("")
+      val badgeTitle = Option(badgeDetailsObj.get("badgeTitle")).map(_.toString).getOrElse("")
+
+      if (criteria.isEmpty || badgeTemplate.isEmpty || badgeId.isEmpty) {
+        logger.warn(s"Incomplete badge details for courseId=$courseId, skipping badge awarding")
+        return
+      }
+
+      // Check badgeEarningDateEnabled
+      val badgeEarningDateEnabled = Option(badgeDetailsObj.get(config.badgeEarningDateEnabledKey))
+        .map(_.toString.toBoolean)
+        .getOrElse(false)
+
+      val currentTime = System.currentTimeMillis()
+      var shouldAwardBadge = false
+
+      if (!badgeEarningDateEnabled) {
+        // If badgeEarningDateEnabled is false, award badge immediately
+        shouldAwardBadge = true
+        logger.info(s"badgeEarningDateEnabled=false for courseId=$courseId, awarding badge immediately")
+      } else {
+        // If badgeEarningDateEnabled is true, check badgeEarningDateTime against lastIssuedOn
+        val badgeEarningDateTime = Option(badgeDetailsObj.get(config.badgeEarningDateTimeKey))
+          .map(_.toString.toLong)
+          .getOrElse(0L)
+
+        if (badgeEarningDateTime == 0L) {
+          logger.warn(s"badgeEarningDateTime not found or invalid for courseId=$courseId, skipping badge awarding")
+          return
+        }
+
+        // Read user_enrolments_v2 to get issued_certificates and lastIssuedOn
+        val enrolmentQuery =
+          s"""
+             SELECT issued_certificates
+             FROM ${config.coursesdb}.${config.enrolmentTable}
+             WHERE userid='$userId'
+             AND courseid='$courseId'
+             AND batchid='$batchId';
+           """
+
+        val enrolmentRows = cassandraUtil.find(enrolmentQuery)
+        if (enrolmentRows != null && !enrolmentRows.isEmpty) {
+          val row = enrolmentRows.get(0)
+          val certsRaw = row.getList(
+            config.issuedCertificatesKey,
+            new TypeToken[java.util.Map[String, String]]() {}
+          )
+
+          if (certsRaw != null && !certsRaw.isEmpty) {
+            import scala.collection.JavaConverters._
+            val issuedCertificates = certsRaw.asScala.toList
+
+            // Get the latest lastIssuedOn value - parse ISO date strings to timestamps
+            val lastIssuedOnValues = issuedCertificates
+              .flatMap(cert => Option(cert.get(config.lastIssuedOnKey)))
+              .map { dateStr =>
+                try {
+                  // Try to parse as long first (in case it's already a timestamp)
+                  dateStr.toLong
+                } catch {
+                  case _: NumberFormatException =>
+                    // If it fails, parse as ISO 8601 date string
+                    parseIsoDateToMillis(dateStr)
+                }
+              }
+              .filter(_ > 0) // Filter out invalid dates
+              .sorted
+
+            if (lastIssuedOnValues.nonEmpty) {
+              val latestLastIssuedOn = lastIssuedOnValues.last
+
+              // Check if badgeEarningDateTime > lastIssuedOn
+              if (badgeEarningDateTime > latestLastIssuedOn) {
+                shouldAwardBadge = true
+                logger.info(s"badgeEarningDateTime ($badgeEarningDateTime) > lastIssuedOn ($latestLastIssuedOn) for courseId=$courseId, awarding badge")
+              } else {
+                logger.info(s"badgeEarningDateTime ($badgeEarningDateTime) <= lastIssuedOn ($latestLastIssuedOn) for courseId=$courseId, skipping badge awarding")
+              }
+            }
+          }
+        }
+      }
+
+      // Update issued_badges if shouldAwardBadge is true
+      if (shouldAwardBadge) {
+        import java.text.SimpleDateFormat
+        import java.util.TimeZone
+
+        val dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+        dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"))
+        val formattedIssuedOn = dateFormat.format(new java.util.Date(currentTime))
+
+        val badgeMap = new java.util.HashMap[String, String]()
+        badgeMap.put(config.badgeIdKey, badgeId)
+        badgeMap.put(config.criteriaKey, criteria)
+        badgeMap.put(config.templateUrlKey, badgeTemplate)
+        badgeMap.put(config.issuedOnKey, formattedIssuedOn)
+
+        val badgeList = new java.util.ArrayList[java.util.Map[String, String]]()
+        badgeList.add(badgeMap)
+
+        // Update user_enrolments_v2 with issued_badges
+        val updateQuery =
+          s"""
+             UPDATE ${config.coursesdb}.${config.enrolmentTable}
+             SET issued_badges = ?
+             WHERE userid='$userId'
+             AND courseid='$courseId'
+             AND batchid='$batchId';
+           """
+
+        val preparedStmt = cassandraUtil.session.prepare(updateQuery)
+        val boundStmt = preparedStmt.bind(badgeList)
+        cassandraUtil.session.execute(boundStmt)
+
+        // Insert into badge lookup table
+        val lookupInsertQuery =
+          s"""
+             INSERT INTO ${config.coursesdb}.user_badge_lookup
+             (userid, courseid, badgeid, criteria, templateurl, issuedon)
+             VALUES (?, ?, ?, ?, ?, ?);
+           """
+
+        val lookupStmt = cassandraUtil.session.prepare(lookupInsertQuery)
+        val lookupBoundStmt = lookupStmt.bind(
+          userId,
+          courseId,
+          badgeId,
+          criteria,
+          badgeTemplate,
+          new java.util.Date(currentTime)
+        )
+        cassandraUtil.session.execute(lookupBoundStmt)
+
+        logger.info(s"Successfully awarded badge for userId=$userId, courseId=$courseId, batchId=$batchId")
+        logger.info(s"Inserted badge into lookup table: userId=$userId, courseId=$courseId, badgeId=$badgeId")
+
+        // Push recent badge activity to Redis
+        if (badgeTitle.nonEmpty) {
+          pushRecentBadgeActivity(userId, badgeId, badgeTitle)
+        }
+
+        metrics.incCounter(config.dbUpdateCount)
+      }
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Error processing badge awarding for iGOTCourses userId=$userId, courseId=$courseId, batchId=$batchId", ex)
+    }
+  }
+
+  /**
+   * Process badge awarding for extCourses
+   * Checks if content has badgeDetails_v1, then processes badge awarding based on badgeEarningDateEnabled
+   */
+  private def processBadgeAwardingForExtCourses(
+                                                 userId: String,
+                                                 courseId: String,
+                                                 courseMetadata: java.util.Map[String, AnyRef],
+                                                 metrics: Metrics
+                                               ): Unit = {
+    try {
+      import scala.collection.JavaConverters._
+
+      // Check if badgeDetails_v1 exists in course metadata
+      val badgeDetailsV1Raw = courseMetadata.get(config.badgeDetailsV1Key)
+      if (badgeDetailsV1Raw == null) {
+        logger.info(s"No badgeDetails_v1 found for extCourseId=$courseId, skipping badge awarding")
+        return
+      }
+
+      // badgeDetails_v1 is an array/list of badge objects
+      val badgeDetailsList = badgeDetailsV1Raw match {
+        case jl: java.util.List[_] => jl.asScala.toList
+        case sl: Seq[_] => sl.toList
+        case _ =>
+          logger.warn(s"badgeDetails_v1 is not a list for extCourseId=$courseId, skipping badge awarding")
+          return
+      }
+
+      if (badgeDetailsList.isEmpty) {
+        logger.info(s"badgeDetails_v1 is empty for extCourseId=$courseId, skipping badge awarding")
+        return
+      }
+
+      // Convert Scala Map to Java Map
+      val badgeDetailsObj = badgeDetailsList.head match {
+        case jm: java.util.Map[_, _] => jm.asInstanceOf[java.util.Map[String, AnyRef]]
+        case sm: Map[_, _] => new java.util.HashMap[String, AnyRef](sm.asInstanceOf[Map[String, AnyRef]].asJava)
+        case _ =>
+          logger.warn(s"Unexpected badge details type for extCourseId=$courseId, skipping badge awarding")
+          return
+      }
+
+      val criteria = Option(badgeDetailsObj.get(config.criteriaKey)).map(_.toString).getOrElse("")
+      val badgeTemplate = Option(badgeDetailsObj.get(config.badgeTemplateKey)).map(_.toString).getOrElse("")
+      val badgeId = Option(badgeDetailsObj.get(config.badgeIdKey)).map(_.toString).getOrElse("")
+      val badgeTitle = Option(badgeDetailsObj.get("badgeTitle")).map(_.toString).getOrElse("")
+
+      if (criteria.isEmpty || badgeTemplate.isEmpty || badgeId.isEmpty) {
+        logger.warn(s"Incomplete badge details for extCourseId=$courseId, skipping badge awarding")
+        return
+      }
+
+      // Check badgeEarningDateEnabled
+      val badgeEarningDateEnabled = Option(badgeDetailsObj.get(config.badgeEarningDateEnabledKey))
+        .map(_.toString.toBoolean)
+        .getOrElse(false)
+
+      val currentTime = System.currentTimeMillis()
+      var shouldAwardBadge = false
+
+      if (!badgeEarningDateEnabled) {
+        // If badgeEarningDateEnabled is false, award badge immediately
+        shouldAwardBadge = true
+        logger.info(s"badgeEarningDateEnabled=false for extCourseId=$courseId, awarding badge immediately")
+      } else {
+        // If badgeEarningDateEnabled is true, check badgeEarningDateTime against lastIssuedOn
+        val badgeEarningDateTime = Option(badgeDetailsObj.get(config.badgeEarningDateTimeKey))
+          .map(_.toString.toLong)
+          .getOrElse(0L)
+
+        if (badgeEarningDateTime == 0L) {
+          logger.warn(s"badgeEarningDateTime not found or invalid for extCourseId=$courseId, skipping badge awarding")
+          return
+        }
+
+        // Read user_external_enrolments to get issued_certificates and lastIssuedOn
+        val externalEnrolQuery =
+          s"""
+             SELECT issued_certificates
+             FROM ${config.extContentUserExternalEnrolmentsDb}.${config.extContentUserExternalEnrolmentsTable}
+             WHERE userid='$userId'
+             AND courseid='$courseId';
+           """
+
+        val enrolmentRows = cassandraUtil.find(externalEnrolQuery)
+        if (enrolmentRows != null && !enrolmentRows.isEmpty) {
+          val row = enrolmentRows.get(0)
+          val certsRaw = row.getObject(config.extContentUserExternalEnrolmentsIssuedCertificatesKey)
+            .asInstanceOf[java.util.List[java.util.Map[String, String]]]
+
+          if (certsRaw != null && !certsRaw.isEmpty) {
+            import scala.collection.JavaConverters._
+            val issuedCertificates = certsRaw.asScala.toList
+
+            // Get the latest lastIssuedOn value - parse ISO date strings to timestamps
+            val lastIssuedOnValues = issuedCertificates
+              .flatMap(cert => Option(cert.get(config.lastIssuedOnKey)))
+              .map { dateStr =>
+                try {
+                  // Try to parse as long first (in case it's already a timestamp)
+                  dateStr.toLong
+                } catch {
+                  case _: NumberFormatException =>
+                    // If it fails, parse as ISO 8601 date string
+                    parseIsoDateToMillis(dateStr)
+                }
+              }
+              .filter(_ > 0) // Filter out invalid dates
+              .sorted
+
+            if (lastIssuedOnValues.nonEmpty) {
+              val latestLastIssuedOn = lastIssuedOnValues.last
+
+              // Check if badgeEarningDateTime > lastIssuedOn
+              if (badgeEarningDateTime > latestLastIssuedOn) {
+                shouldAwardBadge = true
+                logger.info(s"badgeEarningDateTime ($badgeEarningDateTime) > lastIssuedOn ($latestLastIssuedOn) for extCourseId=$courseId, awarding badge")
+              } else {
+                logger.info(s"badgeEarningDateTime ($badgeEarningDateTime) <= lastIssuedOn ($latestLastIssuedOn) for extCourseId=$courseId, skipping badge awarding")
+              }
+            }
+          }
+        }
+      }
+
+      // Update issued_badges if shouldAwardBadge is true
+      if (shouldAwardBadge) {
+        import java.text.SimpleDateFormat
+        import java.util.TimeZone
+
+        val dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+        dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"))
+        val formattedIssuedOn = dateFormat.format(new java.util.Date(currentTime))
+
+        val badgeMap = new java.util.HashMap[String, String]()
+        badgeMap.put(config.badgeIdKey, badgeId)
+        badgeMap.put(config.criteriaKey, criteria)
+        badgeMap.put(config.templateUrlKey, badgeTemplate)
+        badgeMap.put(config.issuedOnKey, formattedIssuedOn)
+
+        val badgeList = new java.util.ArrayList[java.util.Map[String, String]]()
+        badgeList.add(badgeMap)
+
+        // Update user_external_enrolments with issued_badges
+        val updateQuery =
+          s"""
+             UPDATE ${config.extContentUserExternalEnrolmentsDb}.${config.extContentUserExternalEnrolmentsTable}
+             SET issued_badges = ?
+             WHERE userid='$userId'
+             AND courseid='$courseId';
+           """
+
+        val preparedStmt = cassandraUtil.session.prepare(updateQuery)
+        val boundStmt = preparedStmt.bind(badgeList)
+        cassandraUtil.session.execute(boundStmt)
+
+        // Insert into badge lookup table
+        val lookupInsertQuery =
+          s"""
+             INSERT INTO ${config.extContentUserExternalEnrolmentsDb}.user_badge_lookup
+             (userid, courseid, badgeid, criteria, templateurl, issuedon)
+             VALUES (?, ?, ?, ?, ?, ?);
+           """
+
+        val lookupStmt = cassandraUtil.session.prepare(lookupInsertQuery)
+        val lookupBoundStmt = lookupStmt.bind(
+          userId,
+          courseId,
+          badgeId,
+          criteria,
+          badgeTemplate,
+          new java.util.Date(currentTime)
+        )
+        cassandraUtil.session.execute(lookupBoundStmt)
+
+        logger.info(s"Successfully awarded badge for userId=$userId, extCourseId=$courseId")
+        logger.info(s"Inserted badge into lookup table: userId=$userId, courseId=$courseId, badgeId=$badgeId")
+
+        // Push recent badge activity to Redis
+        if (badgeTitle.nonEmpty) {
+          pushRecentBadgeActivity(userId, badgeId, badgeTitle)
+        }
+
+        metrics.incCounter(config.dbUpdateCount)
+      }
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Error processing badge awarding for extCourses userId=$userId, courseId=$courseId", ex)
+    }
+  }
+}
