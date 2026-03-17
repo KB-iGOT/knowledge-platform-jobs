@@ -210,6 +210,13 @@ user_achievement_updater_checkpointing_pause_interval: 90000
 ### to be removed
 job_classname: ""
 
+### User Badge Award Related Vars
+user_badge_award_request_consumer_parallelism: 1
+user_badge_award_request_parallelism: 1
+user_badge_award_request_restart_strategy_delay: 240000
+user_badge_award_request_checkpointing_interval: 300000
+user_badge_award_request_checkpointing_pause_interval: 90000
+
 ### class name vars
 flink_job_names:
   activity-aggregate-updater:
@@ -377,6 +384,13 @@ flink_job_names:
     cpu_requests: 0.3
   user-achievement-updater:
     job_class_name: 'org.sunbird.job.aggregate.task.UserAchievementPreUpdaterTask'
+    replica: 1
+    jobmanager_memory: 1024m
+    taskmanager_memory: 1024m
+    taskslots: 1
+    cpu_requests: 0.3
+  user-badge-award-request:
+    job_class_name: 'org.sunbird.job.userbadgeawarding.task'
     replica: 1
     jobmanager_memory: 1024m
     taskmanager_memory: 1024m
