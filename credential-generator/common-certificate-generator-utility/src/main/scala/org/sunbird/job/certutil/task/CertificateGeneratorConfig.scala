@@ -28,7 +28,7 @@ class CertificateGeneratorConfig(override val config: Config) extends BaseJobCon
 
   // Producers
   val certificateGeneratorAuditProducer = "collection-certificate-generator-audit-events-sink"
-  val certificateGeneratorCompetencyMappingProducer = "after-certificate-generator-competency-mapping-sink"
+  val certificateGeneratorCompetencyMappingProducer = "certificate-generator-competency-mapping-sink"
 
   override val kafkaConsumerParallelism: Int = config.getInt("task.consumer.parallelism")
   val notifierParallelism: Int = if(config.hasPath("task.notifier.parallelism")) config.getInt("task.notifier.parallelism") else 1
