@@ -1567,24 +1567,26 @@ assessment-public-certificate-generator:
     jobmanager.execution.failover-strategy: region
     taskmanager.memory.network.fraction: 0.1
 
-  user-badge-award-request:
+user-badge-award-request:
   user-badge-award-request: |+
     include file("/data/flink/conf/base-config.conf")
+
     kafka {
-      kafka {
       input.topic = "{{ env }}.user.badge.award.request"
       groupId = "user-badge-awarding-event-group"
-	    broker-servers = "localhost:9092"
-	    zookeeper = "localhost:2181"
+      broker-servers = "localhost:9092"
+      zookeeper = "localhost:2181"
     }
+
     task {
       restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
-      restart-strategy.delay = {{ user_badge_award_request_restart_strategy_delay }} # in milli-seconds # on max restarts (3) within 4 min the job will fail.
+      restart-strategy.delay = {{ user_badge_award_request_restart_strategy_delay }} # in milli-seconds
       consumer.parallelism = {{ user_badge_award_request_consumer_parallelism }}
       parallelism = {{ user_badge_award_request_parallelism }}
       checkpointing.interval = {{ user_badge_award_request_checkpointing_interval }}
       checkpointing.pause.between.seconds = {{ user_badge_award_request_checkpointing_pause_interval }}
     }
+
     lms-cassandra {
       host = "localhost"
       port = 9042
@@ -1599,8 +1601,8 @@ assessment-public-certificate-generator:
     }
 
     redis {
-      host = {{data_redis_host}}
-      port = {{data_redis_port}}
+      host = {{ data_redis_host }}
+      port = {{ data_redis_port }}
       connection {
         max = 2
         idle.min = 1
@@ -1609,15 +1611,16 @@ assessment-public-certificate-generator:
         timeBetweenEvictionRunsSeconds = 300
       }
     }
+
     content {
       read {
-        url = "{{core_content_service_base_url}}content/v4/read/"
+        url = "{{ core_content_service_base_url }}content/v4/read/"
       }
     }
-    
+
     extcontent {
       read {
-        url = "{{cb_pores_service_base_url}}cios/v1/content/read/"
+        url = "{{ cb_pores_service_base_url }}cios/v1/content/read/"
       }
       responseKey = "content"
       extCourses = "extCourses"
@@ -1646,4 +1649,3 @@ assessment-public-certificate-generator:
 tolerations:
   enabled: {{ kp_flink_tolerations_enabled | default('false') }}
   nodepoolname: {{ kp_nodepool_name }}
-  
