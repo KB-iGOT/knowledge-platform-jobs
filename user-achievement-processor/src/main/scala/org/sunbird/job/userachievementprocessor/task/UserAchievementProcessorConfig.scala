@@ -19,7 +19,10 @@ class UserBadgeAwardingConfig(override val config: Config) extends BaseJobConfig
 
   //kafka config
   val kafkaInputTopic: String = config.getString("kafka.input.topic")
+  val kafkaFailedTopic: String = config.getString("kafka.input.topic")
   override val kafkaConsumerParallelism: Int = config.getInt("task.consumer.parallelism")
+  val generateBadgeFailedEventProducer = "generate-badge-failed-event-sink"
+  val generateBadgeParallelism: Int = config.getInt("task.badge.parallelism")
 
   //Cassandra config
   val dbHost: String = config.getString("lms-cassandra.host")
@@ -30,6 +33,8 @@ class UserBadgeAwardingConfig(override val config: Config) extends BaseJobConfig
   val enrolmentTable: String = config.getString("lms-cassandra.enrolmentTable")
   val badgeLookUpTable: String = config.getString("lms-cassandra.badgeLookupTable")
   val externalEnrolmentTable: String = config.getString("lms-cassandra.externalEnrolmentTable")
+  val generateBadgeFailedOutputTagName = "generate-badge-failed-request"
+  val generateBadgeFailedOutputTag: OutputTag[String] = OutputTag[String](generateBadgeFailedOutputTagName)
 
   // Metric List
   val totalEventsCount = "total-events-count"
