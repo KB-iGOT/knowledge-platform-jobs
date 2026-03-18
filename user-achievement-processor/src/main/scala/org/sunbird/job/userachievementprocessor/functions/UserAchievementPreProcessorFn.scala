@@ -263,7 +263,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         s"Fetching course details from Content Service for Id: ${courseId}"
       )
       val url =
-        config.contentReadURL + "/" + courseId + "?fields=identifier,parentCollections,primaryCategory,leafNodes,badgeDetails_v1"
+        config.contentReadURL + "/" + courseId + "?fields=identifier,parentCollections,primaryCategory,childNodes,badgeDetails_v1"
       val response = getAPICall(url, "content")(config, httpUtil, metrics)
       val primaryCategory = StringContext
         .processEscapes(
@@ -273,8 +273,8 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       val parentCollections = response
         .getOrElse("parentCollections", List.empty[String])
         .asInstanceOf[List[String]]
-      val leafNodes = response
-        .getOrElse("leafNodes", List.empty[String])
+      val childNodes = response
+        .getOrElse("childNodes", List.empty[String])
         .asInstanceOf[List[String]]
       val badgeDetails_v1 = response
         .getOrElse("badgeDetails_v1", List.empty[String])
@@ -284,7 +284,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       courseInfoMap.put("courseId", courseId)
       courseInfoMap.put("parentCollections", parentCollections)
       courseInfoMap.put("primaryCategory", primaryCategory)
-      courseInfoMap.put("leafNodes", leafNodes)
+      courseInfoMap.put("childNodes", childNodes)
       courseInfoMap.put("badgeDetails_v1", badgeDetails_v1)
       courseInfoMap
     } else {
@@ -303,10 +303,10 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       courseInfoMap.put("courseId", courseId)
       courseInfoMap.put("parentCollections", parentCollections)
       courseInfoMap.put("primaryCategory", primaryCategory)
-      val leafNodes = courseMetadata
-        .getOrElse("leafnodes", new java.util.ArrayList())
+      val childNodes = courseMetadata
+        .getOrElse("childnodes", new java.util.ArrayList())
         .asInstanceOf[java.util.ArrayList[String]]
-      courseInfoMap.put("leafNodes", leafNodes)
+      courseInfoMap.put("childNodes", childNodes)
       val badgeDetails_v1 = courseMetadata
           .getOrElse("badgedetailsv1", new java.util.ArrayList())
           .asInstanceOf[java.util.ArrayList[String]]
@@ -353,7 +353,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
   /**
    * Process badge awarding for iGOTCourses
-   * Checks if content has badgeDetails_v1, then processes badge awarding based on badgeEarningDateEnabled
+   * Handles BOTH course-level badge awarding AND program-level badge awarding
    */
   private def processBadgeAwardingForIGOTCourses(
                                                   userId: String,
@@ -365,10 +365,66 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     try {
       import scala.collection.JavaConverters._
 
+      // EXISTING LOGIC: Process course-level badge awarding
+      processCourseLevelBadgeAwarding(userId, courseId, batchId, courseMetadata, metrics)
+
+      // NEW LOGIC: Process program-level badge awarding for curated programs
+      val primaryCategory = Option(courseMetadata.get("primaryCategory")).map(_.toString).getOrElse("")
+
+      // Check if primaryCategory is "Course"
+      if (primaryCategory.equalsIgnoreCase("Course")) {
+        logger.info(s"Processing Course category for courseId=$courseId")
+
+        // Get parentCollections
+        val parentCollectionsRaw = courseMetadata.get("parentCollections")
+        if (parentCollectionsRaw != null) {
+          val parentCollections = parentCollectionsRaw match {
+            case jl: java.util.List[_] => jl.asScala.toList.map(_.toString)
+            case sl: Seq[_] => sl.toList.map(_.toString)
+            case _ =>
+              logger.warn(s"parentCollections is not a list for courseId=$courseId")
+              List.empty[String]
+          }
+
+          if (parentCollections.nonEmpty) {
+            // Loop through each parent collection (program)
+            parentCollections.foreach { programId =>
+              logger.info(s"Processing program: $programId for courseId=$courseId")
+              processProgramBadgeAwarding(userId, programId, batchId, metrics)
+            }
+          } else {
+            logger.info(s"parentCollections is empty for courseId=$courseId")
+          }
+        } else {
+          logger.info(s"No parentCollections found for courseId=$courseId")
+        }
+      } else {
+        logger.info(s"primaryCategory is not 'Course' for courseId=$courseId, skipping program badge processing")
+      }
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Error processing badge awarding for iGOTCourses userId=$userId, courseId=$courseId, batchId=$batchId", ex)
+    }
+  }
+
+  /**
+   * EXISTING LOGIC: Process course-level badge awarding
+   * Checks if content has badgeDetails_v1, then processes badge awarding based on badgeEarningDateEnabled
+   */
+  private def processCourseLevelBadgeAwarding(
+                                               userId: String,
+                                               courseId: String,
+                                               batchId: String,
+                                               courseMetadata: java.util.Map[String, AnyRef],
+                                               metrics: Metrics
+                                             ): Unit = {
+    try {
+      import scala.collection.JavaConverters._
+
       // Check if badgeDetails_v1 exists in course metadata
       val badgeDetailsV1Raw = courseMetadata.get(config.badgeDetailsV1Key)
       if (badgeDetailsV1Raw == null) {
-        logger.info(s"No badgeDetails_v1 found for courseId=$courseId, skipping badge awarding")
+        logger.info(s"No badgeDetails_v1 found for courseId=$courseId, skipping course-level badge awarding")
         return
       }
 
@@ -377,12 +433,12 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         case jl: java.util.List[_] => jl.asScala.toList
         case sl: Seq[_] => sl.toList
         case _ =>
-          logger.warn(s"badgeDetails_v1 is not a list for courseId=$courseId, skipping badge awarding")
+          logger.warn(s"badgeDetails_v1 is not a list for courseId=$courseId, skipping course-level badge awarding")
           return
       }
 
       if (badgeDetailsList.isEmpty) {
-        logger.info(s"badgeDetails_v1 is empty for courseId=$courseId, skipping badge awarding")
+        logger.info(s"badgeDetails_v1 is empty for courseId=$courseId, skipping course-level badge awarding")
         return
       }
 
@@ -391,7 +447,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         case jm: java.util.Map[_, _] => jm.asInstanceOf[java.util.Map[String, AnyRef]]
         case sm: Map[_, _] => new java.util.HashMap[String, AnyRef](sm.asInstanceOf[Map[String, AnyRef]].asJava)
         case _ =>
-          logger.warn(s"Unexpected badge details type for courseId=$courseId, skipping badge awarding")
+          logger.warn(s"Unexpected badge details type for courseId=$courseId, skipping course-level badge awarding")
           return
       }
 
@@ -401,7 +457,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       val badgeTitle = Option(badgeDetailsObj.get("badgeTitle")).map(_.toString).getOrElse("")
 
       if (criteria.isEmpty || badgeTemplate.isEmpty || badgeId.isEmpty) {
-        logger.warn(s"Incomplete badge details for courseId=$courseId, skipping badge awarding")
+        logger.warn(s"Incomplete badge details for courseId=$courseId, skipping course-level badge awarding")
         return
       }
 
@@ -424,7 +480,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
           .getOrElse(0L)
 
         if (badgeEarningDateTime == 0L) {
-          logger.warn(s"badgeEarningDateTime not found or invalid for courseId=$courseId, skipping badge awarding")
+          logger.warn(s"badgeEarningDateTime not found or invalid for courseId=$courseId, skipping course-level badge awarding")
           return
         }
 
@@ -474,7 +530,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
                 shouldAwardBadge = true
                 logger.info(s"badgeEarningDateTime ($badgeEarningDateTime) > lastIssuedOn ($latestLastIssuedOn) for courseId=$courseId, awarding badge")
               } else {
-                logger.info(s"badgeEarningDateTime ($badgeEarningDateTime) <= lastIssuedOn ($latestLastIssuedOn) for courseId=$courseId, skipping badge awarding")
+                logger.info(s"badgeEarningDateTime ($badgeEarningDateTime) <= lastIssuedOn ($latestLastIssuedOn) for courseId=$courseId, skipping course-level badge awarding")
               }
             }
           }
@@ -532,7 +588,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         )
         cassandraUtil.session.execute(lookupBoundStmt)
 
-        logger.info(s"Successfully awarded badge for userId=$userId, courseId=$courseId, batchId=$batchId")
+        logger.info(s"Successfully awarded course-level badge for userId=$userId, courseId=$courseId, batchId=$batchId")
         logger.info(s"Inserted badge into lookup table: userId=$userId, courseId=$courseId, badgeId=$badgeId")
 
         // Push recent badge activity to Redis
@@ -540,11 +596,310 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
           pushRecentBadgeActivity(userId, badgeId, badgeTitle)
         }
 
+        // Send notification for badge award
+        sendBadgeAwardNotification(userId, badgeTitle, courseId)
+
         metrics.incCounter(config.dbUpdateCount)
       }
     } catch {
       case ex: Exception =>
-        logger.error(s"Error processing badge awarding for iGOTCourses userId=$userId, courseId=$courseId, batchId=$batchId", ex)
+        logger.error(s"Error processing course-level badge awarding for userId=$userId, courseId=$courseId, batchId=$batchId", ex)
+    }
+  }
+
+  /**
+   * Process badge awarding for a program
+   */
+  private def processProgramBadgeAwarding(userId: String, programId: String, batchId: String, metrics: Metrics): Unit = {
+    try {
+      import scala.collection.JavaConverters._
+
+      // Check if badge already awarded for this program
+      val badgeCheckQuery =
+        s"""
+           SELECT badgeid
+           FROM ${config.coursesdb}.${config.badgeLookUpTable}
+           WHERE userid='$userId'
+           AND courseid='$programId';
+         """
+
+      val existingBadgeRows = cassandraUtil.find(badgeCheckQuery)
+      if (existingBadgeRows != null && !existingBadgeRows.isEmpty) {
+        logger.info(s"Badge already awarded for userId=$userId, programId=$programId. Skipping badge processing.")
+        return
+      }
+
+      val programMetadata: java.util.Map[String, AnyRef] = getCourseInfo(programId)(metrics, config, cache, httpUtil)
+
+      val badgeDetailsV1Raw = programMetadata.get(config.badgeDetailsV1Key)
+      if (badgeDetailsV1Raw == null) {
+        logger.info(s"No badgeDetails_v1 found for programId=$programId")
+        return
+      }
+
+      // badgeDetails_v1 is an array/list of badge objects
+      val badgeDetailsList = badgeDetailsV1Raw match {
+        case jl: java.util.List[_] => jl.asScala.toList
+        case sl: Seq[_] => sl.toList
+        case _ =>
+          logger.warn(s"badgeDetails_v1 is not a list for programId=$programId")
+          return
+      }
+
+      if (badgeDetailsList.isEmpty) {
+        logger.info(s"badgeDetails_v1 is empty for programId=$programId")
+        return
+      }
+
+      // Convert to Java Map
+      val badgeDetailsObj = badgeDetailsList.head match {
+        case jm: java.util.Map[_, _] => jm.asInstanceOf[java.util.Map[String, AnyRef]]
+        case sm: Map[_, _] => new java.util.HashMap[String, AnyRef](sm.asInstanceOf[Map[String, AnyRef]].asJava)
+        case _ =>
+          logger.warn(s"Unexpected badge details type for programId=$programId")
+          return
+      }
+
+      val criteria = Option(badgeDetailsObj.get(config.criteriaKey)).map(_.toString).getOrElse("")
+
+      // Check if criteria is "partialRandomCompletion"
+      if (!criteria.equalsIgnoreCase("partialRandomCompletion")) {
+        logger.info(s"Criteria is not 'partialRandomCompletion' for programId=$programId, skipping")
+        return
+      }
+
+      val badgeTemplate = Option(badgeDetailsObj.get(config.badgeTemplateKey)).map(_.toString).getOrElse("")
+      val badgeId = Option(badgeDetailsObj.get(config.badgeIdKey)).map(_.toString).getOrElse("")
+      val badgeTitle = Option(badgeDetailsObj.get("badgeTitle")).map(_.toString).getOrElse("")
+
+      // Handle requiredCourseCompletions as it can be Double (1.0) or Integer (1)
+      val requiredCompletionCount = Option(badgeDetailsObj.get("requiredCourseCompletions"))
+        .orElse(Option(badgeDetailsObj.get("requiredCompletionCount")))
+        .map { value =>
+          try {
+            value match {
+              case d: java.lang.Double => d.toInt
+              case f: java.lang.Float => f.toInt
+              case i: java.lang.Integer => i.intValue()
+              case l: java.lang.Long => l.toInt
+              case s: String => s.toDouble.toInt
+              case _ => value.toString.toDouble.toInt
+            }
+          } catch {
+            case ex: Exception =>
+              logger.error(s"Failed to parse requiredCompletionCount: $value", ex)
+              0
+          }
+        }
+        .getOrElse(0)
+
+      if (badgeTemplate.isEmpty || badgeId.isEmpty || requiredCompletionCount == 0) {
+        logger.warn(s"Incomplete badge details for programId=$programId")
+        return
+      }
+
+      // Check badgeEarningDateEnabled
+      val badgeEarningDateEnabled = Option(badgeDetailsObj.get(config.badgeEarningDateEnabledKey))
+        .map(_.toString.toBoolean)
+        .getOrElse(false)
+
+      val currentTime = System.currentTimeMillis()
+      var isEligible = false
+
+      if (!badgeEarningDateEnabled) {
+        // If badgeEarningDateEnabled is false, user is eligible
+        isEligible = true
+        logger.info(s"badgeEarningDateEnabled=false for programId=$programId, user is eligible")
+      } else {
+        // If badgeEarningDateEnabled is true, check badgeEarningDateTime > currentTime
+        val badgeEarningDateTime: Long = Option(badgeDetailsObj.get(config.badgeEarningDateTimeKey))
+          .map(value => parseBadgeEarningDateTime(value))
+          .getOrElse(0L)
+
+        if (badgeEarningDateTime == 0L) {
+          logger.warn(s"badgeEarningDateTime not found or invalid for programId=$programId")
+          return
+        }
+
+        if (badgeEarningDateTime > currentTime) {
+          isEligible = true
+          logger.info(s"badgeEarningDateTime ($badgeEarningDateTime) > currentTime ($currentTime) for programId=$programId, user is eligible")
+        } else {
+          logger.info(s"badgeEarningDateTime ($badgeEarningDateTime) <= currentTime ($currentTime) for programId=$programId, user is not eligible")
+          return
+        }
+      }
+
+      // If user is eligible, check course completion
+      if (isEligible) {
+        // Get leaf nodes for the program
+        val childNodesRaw = programMetadata.get("childNodes")
+        if (childNodesRaw == null) {
+          logger.info(s"No childNodes found for programId=$programId")
+          return
+        }
+
+        val childNodes = childNodesRaw match {
+          case jl: java.util.List[_] => jl.asScala.toList.map(_.toString)
+          case sl: Seq[_] => sl.toList.map(_.toString)
+          case _ =>
+            logger.warn(s"childNodes is not a list for programId=$programId")
+            return
+        }
+
+        if (childNodes.isEmpty) {
+          logger.info(s"childNodes is empty for programId=$programId")
+          return
+        }
+
+        // Check completion status for each leaf node
+        var completedCount = 0
+        childNodes.foreach { leafNodeId =>
+          val enrolmentQuery =
+            s"""
+               SELECT status
+               FROM ${config.coursesdb}.${config.enrolmentTable}
+               WHERE userid='$userId'
+               AND courseid='$leafNodeId'
+               ;
+             """
+
+          val enrolmentRows = cassandraUtil.find(enrolmentQuery)
+          if (enrolmentRows != null && !enrolmentRows.isEmpty) {
+            val row = enrolmentRows.get(0)
+            val status = row.getInt("status")
+            if (status == 2) {
+              completedCount += 1
+              logger.info(s"Course $leafNodeId completed for userId=$userId")
+            }
+          }
+        }
+
+        logger.info(s"User completed $completedCount courses, required: $requiredCompletionCount for programId=$programId")
+
+        // Check if user has completed required number of courses
+        if (completedCount >= requiredCompletionCount) {
+          // Award badge
+          awardProgramBadge(userId, programId, batchId, badgeId, criteria, badgeTemplate, badgeTitle, currentTime, metrics)
+        } else {
+          logger.info(s"User has not completed required courses for programId=$programId")
+        }
+      }
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Error processing program badge awarding for userId=$userId, programId=$programId", ex)
+    }
+  }
+
+  /**
+   * Award badge for program
+   */
+  private def awardProgramBadge(userId: String, programId: String, batchId: String, badgeId: String,
+                                 criteria: String, badgeTemplate: String, badgeTitle: String,
+                                 currentTime: Long, metrics: Metrics): Unit = {
+    try {
+      import java.text.SimpleDateFormat
+      import java.util.TimeZone
+
+      val dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+      dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"))
+      val formattedIssuedOn = dateFormat.format(new java.util.Date(currentTime))
+
+      val badgeMap = new java.util.HashMap[String, String]()
+      badgeMap.put(config.badgeIdKey, badgeId)
+      badgeMap.put(config.criteriaKey, criteria)
+      badgeMap.put(config.templateUrlKey, badgeTemplate)
+      badgeMap.put(config.issuedOnKey, formattedIssuedOn)
+
+      val badgeList = new java.util.ArrayList[java.util.Map[String, String]]()
+      badgeList.add(badgeMap)
+
+      // Insert/Update user_enrolments_v2 with issued_badges for program
+      val updateEnrolmentQuery =
+        s"""
+           UPDATE ${config.coursesdb}.${config.enrolmentTable}
+           SET issued_badges = ?
+           WHERE userid='$userId'
+           AND courseid='$programId'
+           AND batchid='$batchId';
+         """
+
+      val preparedStmt = cassandraUtil.session.prepare(updateEnrolmentQuery)
+      val boundStmt = preparedStmt.bind(badgeList)
+      cassandraUtil.session.execute(boundStmt)
+
+      logger.info(s"Updated issued_badges in user_enrolments_v2 for userId=$userId, programId=$programId, batchId=$batchId")
+
+      // Insert into badge lookup table
+      val lookupInsertQuery =
+        s"""
+           INSERT INTO ${config.coursesdb}.${config.badgeLookUpTable}
+           (userid, courseid, badgeid, criteria, templateurl, issuedon)
+           VALUES (?, ?, ?, ?, ?, ?);
+         """
+
+      val lookupStmt = cassandraUtil.session.prepare(lookupInsertQuery)
+      val lookupBoundStmt = lookupStmt.bind(
+        userId,
+        programId,
+        badgeId,
+        criteria,
+        badgeTemplate,
+        new java.util.Date(currentTime)
+      )
+      cassandraUtil.session.execute(lookupBoundStmt)
+
+      logger.info(s"Successfully awarded badge for userId=$userId, programId=$programId, badgeId=$badgeId")
+
+      // Push recent badge activity to Redis
+      if (badgeTitle.nonEmpty) {
+        pushRecentBadgeActivity(userId, badgeId, badgeTitle)
+      }
+
+      // Send notification for badge award
+      sendBadgeAwardNotification(userId, badgeTitle, programId)
+
+      metrics.incCounter(config.dbUpdateCount)
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Error awarding program badge for userId=$userId, programId=$programId", ex)
+    }
+  }
+
+  /**
+   * Send notification when badge is awarded
+   */
+  private def sendBadgeAwardNotification(userId: String, badgeTitle: String, courseName: String): Unit = {
+    if (!config.notificationEnabled) {
+      logger.info(s"Notification sending is disabled. Skipping notification for userId=$userId")
+      return
+    }
+
+    try {
+      val notificationPayload = Map(
+        "subCategory" -> config.notificationBadgeSubCategory,
+        "subType" -> config.notificationBadgeSubType,
+        "userIds" -> List(userId),
+        "message" -> Map(
+          "placeholders" -> Map(
+            "badgeTitle" -> badgeTitle,
+            "courseName" -> courseName
+          )
+        )
+      )
+
+      val notificationJson = ScalaJsonUtil.serialize(notificationPayload)
+      val response = httpUtil.post(config.notificationServiceUrl, notificationJson, config.defaultHeaders)
+
+      if (response.status == 200) {
+        logger.info(s"Notification sent successfully for userId=$userId, badgeTitle=$badgeTitle")
+      } else {
+        logger.warn(s"Failed to send notification for userId=$userId. Status: ${response.status}, Response: ${response.body}")
+      }
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Error sending notification for userId=$userId, badgeTitle=$badgeTitle", ex)
+      // Don't fail badge awarding if notification fails
     }
   }
 
@@ -731,6 +1086,9 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         if (badgeTitle.nonEmpty) {
           pushRecentBadgeActivity(userId, badgeId, badgeTitle)
         }
+
+        // Send notification for badge award
+        sendBadgeAwardNotification(userId, badgeTitle, courseId)
 
         metrics.incCounter(config.dbUpdateCount)
       }
