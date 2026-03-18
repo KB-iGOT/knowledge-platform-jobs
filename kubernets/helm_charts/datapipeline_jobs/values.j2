@@ -773,7 +773,7 @@ collection-certificate-generator:
       groupId = {{ env_name }}-certificate-generator-group
       program.cert.output.topic= {{ env_name }}.issue.program.certificate.request
       output.competency.topic = "{{env_name}}.user.competency.mapping.event"
-      kafka.output.badge.topic = {{ env_name }}.user.badge.award.request
+      output.badge.topic = {{ env_name }}.user.badge.award.request
     }
     task {
       restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
@@ -1437,7 +1437,7 @@ common-certificate-generator-utility:
       groupId = {{ env_name }}-common-certificate-generator-group
       program.cert.output.topic= {{ env_name }}.issue.program.certificate.request
       output.competency.topic = {{ env_name }}.user.competency.mapping.event
-      kafka.output.badge.topic = {{ env_name }}.user.badge.award.request
+      output.badge.topic = {{ env_name }}.user.badge.award.request
     }
     task {
       restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
