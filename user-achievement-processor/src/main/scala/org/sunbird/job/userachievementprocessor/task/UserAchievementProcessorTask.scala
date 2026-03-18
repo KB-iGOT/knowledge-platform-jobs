@@ -33,7 +33,9 @@ class UserAchievementPreProcessorTask(config: UserBadgeAwardingConfig, kafkaConn
               .process(new UserAchievementPreProcessorFn(config, httpUtil))
               .name("user-badge-awarding-processor").uid("user-badge-awarding-processor")
               .setParallelism(config.parallelism)
-        env.execute(config.jobName)
+      progressStream.getSideOutput(config.generateBadgeFailedOutputTag).addSink(kafkaConnector.kafkaStringSink(config.kafkaFailedTopic))
+        .name(config.generateBadgeFailedEventProducer).uid(config.generateBadgeFailedEventProducer).setParallelism(config.generateBadgeParallelism)
+      env.execute(config.jobName)
     }
 }
 
