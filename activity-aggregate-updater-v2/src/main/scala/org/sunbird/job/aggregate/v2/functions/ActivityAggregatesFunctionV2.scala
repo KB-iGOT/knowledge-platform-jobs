@@ -199,6 +199,8 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
             .and(QueryBuilder.eq("language", event.language))
             .and(QueryBuilder.eq("contentid", contentId))
 
+          // LOCAL_QUORUM: ensure write reaches majority of nodes before next read
+          updateQuery.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
           cassandraUtil.update(updateQuery)
 
           updatedMap += (contentId -> finalStatus)
