@@ -49,6 +49,15 @@ class CassandraUtil(host: String,
     executeWithRetry(new SimpleStatement(query)).all()
   }
 
+  /**
+   * Execute a pre-built Statement and return all matching rows.
+   * Callers may set ConsistencyLevel on the Statement before passing it in,
+   * e.g. stmt.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM).
+   */
+  def findWithStatement(stmt: Statement): util.List[Row] = {
+    executeWithRetry(stmt).all()
+  }
+
   def upsert(query: String): Boolean = {
     val rs: ResultSet = session.execute(query)
     rs.wasApplied()

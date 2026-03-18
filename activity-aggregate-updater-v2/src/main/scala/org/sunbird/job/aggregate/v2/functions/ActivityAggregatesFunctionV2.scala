@@ -330,7 +330,11 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       .and(QueryBuilder.eq("contentid", contentId))
       .limit(1)
 
-    val rows = cassandraUtil.find(query.toString).asScala
+    // LOCAL_QUORUM: read from majority of nodes to ensure we get latest data,
+    // preventing stale reads that cause inconsistency with previous writes
+    val stmt = new SimpleStatement(query.toString)
+      .setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
+    val rows = cassandraUtil.findWithStatement(stmt).asScala
 
     if (rows.nonEmpty) {
       val row = rows.head
