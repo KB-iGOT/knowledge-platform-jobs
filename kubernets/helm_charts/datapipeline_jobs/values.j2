@@ -1325,6 +1325,8 @@ user-achievement-processor:
     kafka {
       input.topic = "{{ env}}.user.badge.award.request"
       groupId = "user-badge-awarding-event-group"
+      failed.topic = "{{ env}}.user.badge.award.request.failed"
+      failed.groupId = "user-user.badge.award.request.failed-group"
       
     }
     task {
