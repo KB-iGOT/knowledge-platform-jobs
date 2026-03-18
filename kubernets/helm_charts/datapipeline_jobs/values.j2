@@ -1349,6 +1349,8 @@ user-achievement-processor:
     redis {
       host = {{data_redis_host}}
       port = {{data_redis_port}}
+      recentBadgeActivityKey = "dashboard_recent_badge_activity"
+      recentBadgeActivityMaxSize = 10
       connection {
         max = 2
         idle.min = 1
