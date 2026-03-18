@@ -19,7 +19,7 @@ class UserBadgeAwardingConfig(override val config: Config) extends BaseJobConfig
 
   //kafka config
   val kafkaInputTopic: String = config.getString("kafka.input.topic")
-  val kafkaFailedTopic: String = config.getString("kafka.input.topic")
+  val kafkaFailedTopic: String = config.getString("kafka.failed.topic")
   override val kafkaConsumerParallelism: Int = config.getInt("task.consumer.parallelism")
   val generateBadgeFailedEventProducer = "generate-badge-failed-event-sink"
   val generateBadgeParallelism: Int = config.getInt("task.badge.parallelism")
