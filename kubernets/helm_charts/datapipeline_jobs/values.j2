@@ -1336,9 +1336,7 @@ user-achievement-processor:
       parallelism = {{ user_achievement_updater_parallelism }}
       checkpointing.interval = {{ user_achievement_updater_checkpointing_interval }}
       checkpointing.pause.between.seconds = {{ user_achievement_updater_checkpointing_pause_interval }}
-      badge {
-    parallelism = 1
-}
+      badge.parallelism = 1
     }
     lms-cassandra {
       sunbird {
@@ -1365,7 +1363,7 @@ user-achievement-processor:
     }
     content {
       read {
-        url = "https://{{domain_name}}t/api/content/v1/read/"
+        url = "https://{{domain_name}}/api/content/v1/read/"
       }
     }
 
