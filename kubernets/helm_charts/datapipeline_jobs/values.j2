@@ -1334,9 +1334,11 @@ user-achievement-processor:
       restart-strategy.delay = {{ user_achievement_updater_restart_strategy_delay }} # in milli-seconds # on max restarts (3) within 4 min the job will fail.
       consumer.parallelism = {{ user_achievement_updater_consumer_parallelism }}
       parallelism = {{ user_achievement_updater_parallelism }}
-
       checkpointing.interval = {{ user_achievement_updater_checkpointing_interval }}
       checkpointing.pause.between.seconds = {{ user_achievement_updater_checkpointing_pause_interval }}
+      badge {
+    parallelism = 1
+}
     }
     lms-cassandra {
       sunbird {
