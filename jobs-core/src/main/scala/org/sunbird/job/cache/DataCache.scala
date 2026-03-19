@@ -296,6 +296,33 @@ class DataCache(val config: BaseJobConfig, val redisConnect: RedisConnect, val d
         0
     }
   }
+
+  /**
+   * Push value to the head of a list stored at key
+   * Used for recent badge activity tracking
+   */
+  def lpush(key: String, value: String): Long = {
+    try {
+      redisConnection.lpush(key, value)
+    } catch {
+      case ex: JedisException =>
+        logger.error("Error in lpush: ", ex)
+        0L
+    }
+  }
+
+  /**
+   * Trim list to only contain elements from start to end
+   * Used to limit the size of recent badge activity list
+   */
+  def ltrim(key: String, start: Long, end: Long): Unit = {
+    try {
+      redisConnection.ltrim(key, start, end)
+    } catch {
+      case ex: JedisException =>
+        logger.error("Error in ltrim: ", ex)
+    }
+  }
 }
 
 // $COVERAGE-ON$
