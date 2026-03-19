@@ -78,7 +78,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         // LTRIM to keep only the most recent 10 items
         jedis.ltrim(config.recentBadgeActivityKey, 0, config.recentBadgeActivityMaxSize - 1)
 
-        logger.info(s"Pushed recent badge activity to Redis: userName=$userName, badgeTitle=$badgeTitle")
+        logger.info(s"Pushed recent badge activity to Redis (index 12): userName=$userName, badgeTitle=$badgeTitle")
       } finally {
         if (jedis != null) {
           jedis.close()
