@@ -1,6 +1,6 @@
 package org.sunbird.job.userbadgeawarding.functions
 
-import com.datastax.driver.core.Row
+
 import com.google.common.reflect.TypeToken
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.configuration.Configuration
@@ -23,14 +23,16 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
   private[this] val logger = LoggerFactory.getLogger(classOf[UserAchievementPreProcessorFn])
   private var cache: DataCache = _
-  private var redisConnect: RedisConnect = _
+  private var dataCache: DataCache = _
 
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
     cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
-    redisConnect = new RedisConnect(config)
+    val redisConnect = new RedisConnect(config)
     cache = new DataCache(config, redisConnect, config.collectionCacheStore, List())
     cache.init()
+    dataCache = new DataCache(config, redisConnect, config.badgeCacheStore, List())
+    dataCache.init()
   }
 
   override def close(): Unit = {
@@ -48,7 +50,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
    */
   private def pushRecentBadgeActivity(userId: String, badgeId: String, badgeTitle: String): Unit = {
     try {
-      // Fetch user name from API
+      // Fetch user name from Cassandra
       val userName = getUserName(userId)
 
       val badgeActivity = Map(
@@ -59,31 +61,12 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       )
 
       val badgeActivityJson = ScalaJsonUtil.serialize(badgeActivity)
+      val redisKey = config.recentBadgeActivityKey
 
-      // Use Redis connection to push badge activity to index 12
-      val jedis = redisConnect.getConnection(config.badgeCacheStore)
-      try {
-        // Check if the key exists and its type
-        val keyType = jedis.`type`(config.recentBadgeActivityKey)
+      dataCache.lpush(redisKey, badgeActivityJson)
+      dataCache.ltrim(redisKey, 0, config.recentBadgeActivityMaxSize - 1)
 
-        // If the key exists but is not a list, delete it first
-        if (keyType != "none" && keyType != "list") {
-          logger.warn(s"Redis key ${config.recentBadgeActivityKey} is of type '$keyType', deleting it to recreate as list")
-          jedis.del(config.recentBadgeActivityKey)
-        }
-
-        // LPUSH to add to the beginning of the list
-        jedis.lpush(config.recentBadgeActivityKey, badgeActivityJson)
-
-        // LTRIM to keep only the most recent 10 items
-        jedis.ltrim(config.recentBadgeActivityKey, 0, config.recentBadgeActivityMaxSize - 1)
-
-        logger.info(s"Pushed recent badge activity to Redis (index 12): userName=$userName, badgeTitle=$badgeTitle")
-      } finally {
-        if (jedis != null) {
-          jedis.close()
-        }
-      }
+      logger.info(s"Pushed recent badge activity to Redis (index 12): userName=$userName, badgeTitle=$badgeTitle")
     } catch {
       case ex: Exception =>
         logger.error(s"Error pushing recent badge activity to Redis for userId=$userId, badgeTitle=$badgeTitle", ex)
@@ -934,20 +917,12 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
    */
   private def deleteBadgeCountCache(userId: String): Unit = {
     try {
-      val badgeCountKey = s"user:badgeCount_$userId"
-      val jedis = redisConnect.getConnection(config.collectionCacheStore)
-      try {
-        val deletedCount = jedis.del(badgeCountKey)
-        if (deletedCount > 0) {
-          logger.info(s"Deleted badge count cache from Redis (index 12) for userId=$userId, key=$badgeCountKey")
-        } else {
-          logger.info(s"Badge count cache key not found in Redis for userId=$userId, key=$badgeCountKey")
-        }
-      } finally {
-        if (jedis != null) {
-          jedis.close()
-        }
-      }
+      val redisKey = s"user:badgeCount_$userId"
+
+      // Use DataCache to delete from Redis (index 0)
+      cache.delWithRetry(redisKey)
+
+      logger.info(s"Deleted badge count cache from Redis (index 0) for userId=$userId, key=$redisKey")
     } catch {
       case ex: Exception =>
         logger.error(s"Error deleting badge count cache from Redis for userId=$userId", ex)
