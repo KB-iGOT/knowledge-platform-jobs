@@ -772,30 +772,32 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
           return
         }
 
-        // Check completion status for each leaf node
-        var completedCount = 0
-        childNodes.foreach { leafNodeId =>
-          val enrolmentQuery =
-            s"""
-               SELECT status
-               FROM ${config.coursesdb}.${config.enrolmentTable}
-               WHERE userid='$userId'
-               AND courseid='$leafNodeId'
-               ;
-             """
+        val courseIdsStr = childNodes.map(id => s"'$id'").mkString(",")
+        val batchEnrolmentQuery =
+          s"""
+             SELECT courseid, status
+             FROM ${config.coursesdb}.${config.enrolmentTable}
+             WHERE userid='$userId'
+             AND courseid IN ($courseIdsStr);
+           """
 
-          val enrolmentRows = cassandraUtil.find(enrolmentQuery)
-          if (enrolmentRows != null && !enrolmentRows.isEmpty) {
-            val row = enrolmentRows.get(0)
+        logger.info(s"Fetching completion status for ${childNodes.size} courses in single query for userId=$userId")
+        val enrolmentRows = cassandraUtil.find(batchEnrolmentQuery)
+
+        var completedCount = 0
+        if (enrolmentRows != null && !enrolmentRows.isEmpty) {
+          import scala.collection.JavaConverters._
+          enrolmentRows.asScala.foreach { row =>
+            val courseId = row.getString("courseid")
             val status = row.getInt("status")
             if (status == 2) {
               completedCount += 1
-              logger.info(s"Course $leafNodeId completed for userId=$userId")
+              logger.debug(s"Course $courseId completed for userId=$userId")
             }
           }
         }
 
-        logger.info(s"User completed $completedCount courses, required: $requiredCompletionCount for programId=$programId")
+        logger.info(s"User completed $completedCount out of ${childNodes.size} courses, required: $requiredCompletionCount for programId=$programId")
 
         // Check if user has completed required number of courses
         if (completedCount >= requiredCompletionCount) {
