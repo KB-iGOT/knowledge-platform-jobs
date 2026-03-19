@@ -591,6 +591,9 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         logger.info(s"Successfully awarded course-level badge for userId=$userId, courseId=$courseId, batchId=$batchId")
         logger.info(s"Inserted badge into lookup table: userId=$userId, courseId=$courseId, badgeId=$badgeId")
 
+        // Delete badge count cache from Redis
+        deleteBadgeCountCache(userId)
+
         // Push recent badge activity to Redis
         if (badgeTitle.nonEmpty) {
           pushRecentBadgeActivity(userId, badgeId, badgeTitle)
@@ -868,6 +871,9 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
       logger.info(s"Successfully awarded badge for userId=$userId, programId=$programId, badgeId=$badgeId")
 
+      // Delete badge count cache from Redis
+      deleteBadgeCountCache(userId)
+
       // Push recent badge activity to Redis
       if (badgeTitle.nonEmpty) {
         pushRecentBadgeActivity(userId, badgeId, badgeTitle)
@@ -917,6 +923,32 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       case ex: Exception =>
         logger.error(s"Error sending notification for userId=$userId, badgeTitle=$badgeTitle", ex)
       // Don't fail badge awarding if notification fails
+    }
+  }
+
+  /**
+   * Delete badge count cache from Redis
+   * This is called after a badge is awarded to invalidate the cached badge count
+   */
+  private def deleteBadgeCountCache(userId: String): Unit = {
+    try {
+      val badgeCountKey = s"user:badgeCount_$userId"
+      val jedis = redisConnect.getConnection(config.collectionCacheStore)
+      try {
+        val deletedCount = jedis.del(badgeCountKey)
+        if (deletedCount > 0) {
+          logger.info(s"Deleted badge count cache from Redis (index 12) for userId=$userId, key=$badgeCountKey")
+        } else {
+          logger.info(s"Badge count cache key not found in Redis for userId=$userId, key=$badgeCountKey")
+        }
+      } finally {
+        if (jedis != null) {
+          jedis.close()
+        }
+      }
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Error deleting badge count cache from Redis for userId=$userId", ex)
     }
   }
 
@@ -1098,6 +1130,9 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
         logger.info(s"Successfully awarded badge for userId=$userId, extCourseId=$courseId")
         logger.info(s"Inserted badge into lookup table: userId=$userId, courseId=$courseId, badgeId=$badgeId")
+
+        // Delete badge count cache from Redis
+        deleteBadgeCountCache(userId)
 
         // Push recent badge activity to Redis
         if (badgeTitle.nonEmpty) {
