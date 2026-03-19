@@ -698,6 +698,23 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         return
       }
 
+      // Check if user is enrolled in the program
+      val programEnrollmentQuery =
+        s"""
+           SELECT userid
+           FROM ${config.coursesdb}.${config.enrolmentTable}
+           WHERE userid='$userId'
+           AND courseid='$programId';
+         """
+
+      val programEnrollmentRows = cassandraUtil.find(programEnrollmentQuery)
+      if (programEnrollmentRows == null || programEnrollmentRows.isEmpty) {
+        logger.info(s"User not enrolled in program. userId=$userId, programId=$programId, batchId=$batchId. Skipping badge award.")
+        return
+      }
+
+      logger.info(s"User enrolled in program verified. userId=$userId, programId=$programId")
+
       // Check badgeEarningDateEnabled
       val badgeEarningDateEnabled = Option(badgeDetailsObj.get(config.badgeEarningDateEnabledKey))
         .map(_.toString.toBoolean)
