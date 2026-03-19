@@ -60,8 +60,8 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
       val badgeActivityJson = ScalaJsonUtil.serialize(badgeActivity)
 
-      // Use Redis connection to push badge activity
-      val jedis = redisConnect.getConnection(config.collectionCacheStore)
+      // Use Redis connection to push badge activity to index 12
+      val jedis = redisConnect.getConnection(config.badgeCacheStore)
       try {
         // Check if the key exists and its type
         val keyType = jedis.`type`(config.recentBadgeActivityKey)

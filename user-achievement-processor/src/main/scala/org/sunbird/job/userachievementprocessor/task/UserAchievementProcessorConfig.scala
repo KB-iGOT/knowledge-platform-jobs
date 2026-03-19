@@ -12,7 +12,7 @@ class UserBadgeAwardingConfig(override val config: Config) extends BaseJobConfig
 
   //Redis config
   val collectionCacheStore: Int = 0
-  val contentCacheStore: Int = 5
+  val badgeCacheStore: Int = 12
   val recentBadgeActivityKey: String = config.getString("redis.recentBadgeActivityKey")
   val recentBadgeActivityMaxSize: Int = config.getInt("redis.recentBadgeActivityMaxSize")
 
