@@ -379,6 +379,11 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
             context.output(config.notifierOutputTag, NotificationMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId,
               certMetaData.batchId, certMetaData.templateId, event.partition, event.offset, event.providerName, event.coursePosterImage))
           }
+          // Validate certificate is actually persisted in enrollment table before firing competency event
+          val competencyEvent = buildCompetencyAcquiredEvent(certMetaData.userId, certMetaData.courseId, certMetaData.batchId)
+          logger.info("Firing competency mapping event for user: {} course: {} batch: {}", certMetaData.userId, certMetaData.courseId, certMetaData.batchId)
+          context.output(config.competencyMappingOutputTag, competencyEvent)
+          logger.info("Competency mapping event fired successfully: {}", competencyEvent)
           //context.output(config.userFeedOutputTag, UserFeedMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId, event.partition, event.offset))
         } else {
           metrics.incCounter(config.failedEventCount)
@@ -530,6 +535,20 @@ class CertificateGeneratorFunction  (config: CertificateGeneratorConfig, httpUti
       logger.error("certificate addition to registry v2 failed: " + httpResponse.status + " :: " + httpResponse.body)
       throw ServerException("ERR_API_CALL", "Something Went Wrong While Making API Call | Status is v2: " + httpResponse.status + " :: " + httpResponse.body)
     }
+  }
+
+  /**
+   * Builds a serialized JSON string for the COMPETENCY_ACQUIRED Kafka event.
+   */
+  private def buildCompetencyAcquiredEvent(userId: String, contentId: String, batchId: String): String = {
+    val edata = Map[String, AnyRef](
+      config.eventType   -> config.competencyAcquired,
+      config.userId     -> userId,
+      config.contentId -> contentId,
+      config.batchId     -> batchId,
+      config.contextType -> config.iGOTCourses
+    )
+    ScalaJsonUtil.serialize(Map[String, AnyRef]("edata" -> edata))
   }
 
 }

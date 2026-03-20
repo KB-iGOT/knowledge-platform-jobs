@@ -43,6 +43,11 @@ class CertificateGeneratorStreamTask(config: CertificateGeneratorConfig, kafkaCo
       .name(config.certificateGeneratorAuditProducer)
       .uid(config.certificateGeneratorAuditProducer)
 
+    processStreamTask.getSideOutput(config.competencyMappingOutputTag)
+      .addSink(kafkaConnector.kafkaStringSink(config.kafkaCompetencyMappingTopic))
+      .name(config.certificateGeneratorCompetencyMappingProducer)
+      .uid(config.certificateGeneratorCompetencyMappingProducer)
+
     processStreamTask.getSideOutput(config.notifierOutputTag)
       .process(new NotifierFunction(config, httpUtil))
       .name("notifier")

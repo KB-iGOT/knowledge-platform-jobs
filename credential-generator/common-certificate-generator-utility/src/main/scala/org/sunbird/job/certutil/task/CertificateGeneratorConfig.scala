@@ -21,12 +21,14 @@ class CertificateGeneratorConfig(override val config: Config) extends BaseJobCon
   // Kafka Topics Configuration
   val kafkaInputTopic: String = config.getString("kafka.input.topic")
   val kafkaAuditEventTopic: String = config.getString("kafka.output.audit.topic")
+  val kafkaCompetencyMappingTopic: String = config.getString("kafka.output.competency.topic")
 
   val enableSuppressException: Boolean = if(config.hasPath("enable.suppress.exception")) config.getBoolean("enable.suppress.exception") else false
   val enableRcCertificate: Boolean = if(config.hasPath("enable.rc.certificate")) config.getBoolean("enable.rc.certificate") else false
 
   // Producers
   val certificateGeneratorAuditProducer = "collection-certificate-generator-audit-events-sink"
+  val certificateGeneratorCompetencyMappingProducer = "certificate-generator-competency-mapping-sink"
 
   override val kafkaConsumerParallelism: Int = config.getInt("task.consumer.parallelism")
   val notifierParallelism: Int = if(config.hasPath("task.notifier.parallelism")) config.getInt("task.notifier.parallelism") else 1
@@ -165,6 +167,7 @@ class CertificateGeneratorConfig(override val config: Config) extends BaseJobCon
   val auditEventOutputTag: OutputTag[String] = OutputTag[String](auditEventOutputTagName)
   val notifierOutputTag: OutputTag[NotificationMetaData] = OutputTag[NotificationMetaData]("notifier")
   val userFeedOutputTag: OutputTag[UserFeedMetaData] = OutputTag[UserFeedMetaData]("user-feed")
+  val competencyMappingOutputTag: OutputTag[String] = OutputTag[String]("competency-mapping")
   
   //UserFeed constants
   val priority: String = "priority"
@@ -186,4 +189,9 @@ class CertificateGeneratorConfig(override val config: Config) extends BaseJobCon
   val addCertRegApiV2 = "/certs/v3/registry/add"
   val dynamicCertificateEnabledForExternalContent: Boolean = if (config.hasPath("dynamicCertificateEnabledForExternalContent")) config.getBoolean("dynamicCertificateEnabledForExternalContent") else true
   val version = "version"
+  val eventType = "eventType"
+  val contextType = "contextType"
+  val competencyAcquired = "COMPETENCY_ACQUIRED"
+  val extCourses = "extCourses"
+  val contentId = "contentId"
 }

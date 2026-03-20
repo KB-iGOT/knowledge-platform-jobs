@@ -391,6 +391,17 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
 
   }
 
+  private def buildCompetencyAcquiredEvent(userId: String, contentId: String, batchId: String): String = {
+    val edata = Map[String, AnyRef](
+      config.eventType   -> config.competencyAcquired,
+      config.userId     -> userId,
+      config.contentId -> contentId,
+      config.batchId     -> batchId,
+      config.contextType -> config.externalTraining
+    )
+    ScalaJsonUtil.serialize(Map[String, AnyRef]("edata" -> edata))
+  }
+
 
   /**
    * returns query for updating issued_certificates in user_enrollment table
@@ -522,11 +533,28 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
     val certModelList: List[CertModel] = new CertMapper(certificateConfig).mapReqToCertModel(event)
     println("generateCertificate " + event)
     val certificateGenerator = new CertificateGenerator
-    val primaryFields = Map(config.userId.toLowerCase() -> event.userId,
-      config.dbContentId -> event.eventId,
-      config.dbContextId -> event.eventId,
-      config.dbBatchId -> event.batchId)
-    val increaseCertCount: Boolean = getIssuedCertificatesDetailsFromUserEnrollmentTable(primaryFields)
+    val primaryFields =
+      if (event.eventType.equalsIgnoreCase(config.externalTraining)) {
+        Map(
+          config.userId.toLowerCase() -> event.userId,
+          config.dbContextId -> event.eventId,
+          config.dbBatchId -> event.batchId
+        )
+      } else {
+        Map(
+          config.userId.toLowerCase() -> event.userId,
+          config.dbContentId -> event.eventId,
+          config.dbContextId -> event.eventId,
+          config.dbBatchId -> event.batchId
+        )
+      }
+
+    val increaseCertCount: Boolean =
+      if (event.eventType.equalsIgnoreCase(config.externalTraining)) {
+        getIssuedCertificatesDetailsFromUserExternalTrainingEnrollmentTable(primaryFields)
+      } else {
+        getIssuedCertificatesDetailsFromUserEnrollmentTable(primaryFields)
+      }
     certModelList.foreach(certModel => {
       var uuid: String = null
       try {
@@ -550,7 +578,11 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
         val userEnrollmentData = UserEnrollmentData(related.getOrElse(config.BATCH_ID, "").asInstanceOf[String], certModel.identifier,
           related.getOrElse(config.EVENT_ID, "").asInstanceOf[String], event.courseName, event.templateId,
           Certificate(uuid, event.name, qrMap.accessCode, formatter.format(new Date()), "", ""))
-        updateUserEnrollmentTableV2(event, userEnrollmentData, context)
+        if (event.eventType.equalsIgnoreCase(config.externalTraining)) {
+          updateUserExternalTrainingEnrollmentTable(event, userEnrollmentData, context)
+        } else {
+          updateUserEnrollmentTableV2(event, userEnrollmentData, context)
+        }
       } finally {
         cleanUp(uuid, directory)
       }
@@ -658,4 +690,131 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
 
   }
 
+  def updateUserExternalTrainingEnrollmentTable(event: Event, certMetaData: UserEnrollmentData, context: KeyedProcessFunction[String, Event, String]#Context)(implicit metrics: Metrics): Unit = {
+    logger.info("updating user event enrollment table {}", certMetaData)
+    val primaryFields = Map(config.dbUserId -> certMetaData.userId, config.dbContextId -> certMetaData.eventId, config.dbBatchId -> certMetaData.batchId)
+    val records = getIssuedCertificatesFromUserExternalTrainingEnrollmentTable(primaryFields)
+    if (records.nonEmpty) {
+      records.foreach((row: Row) => {
+        val issuedOn = row.getTimestamp("completedOn")
+        var certificatesList = row.getList(config.issued_certificates, TypeTokens.mapOf(classOf[String], classOf[String]))
+        if (null == certificatesList && certificatesList.isEmpty) {
+          certificatesList = new util.ArrayList[util.Map[String, String]]()
+        }
+        val updatedCerts: util.List[util.Map[String, String]] = certificatesList.stream().filter(cert => !StringUtils.equalsIgnoreCase(certMetaData.certificate.name, cert.get("name"))).collect(Collectors.toList())
+        updatedCerts.add(mapAsJavaMap(Map[String, String](
+          config.name -> certMetaData.certificate.name,
+          config.identifier -> certMetaData.certificate.id,
+          config.token -> certMetaData.certificate.token,
+        ) ++ {
+          if (!certMetaData.certificate.lastIssuedOn.isEmpty) Map[String, String](config.lastIssuedOn -> certMetaData.certificate.lastIssuedOn)
+          else Map[String, String]()
+        }
+          ++ {
+          if (config.enableRcCertificate) Map[String, String](config.templateUrl -> certMetaData.certificate.templateUrl, config.`type` -> certMetaData.certificate.`type`)
+          else Map[String, String]()
+        } ++ {
+          if (!config.specialEventCertificateExceptionEvents.contains(event.primaryCategory)) {
+            if (StringUtils.isNotBlank(config.specialEventCertificateName)) {
+              logger.info("The special Certificate event name is : {}", config.specialEventCertificateName)
+              Map[String, String](
+                config.eventIssueName -> config.specialEventCertificateName,
+              )
+            } else {
+              logger.info("No Special Certificate")
+              Map[String, String]()
+            }
+          } else {
+            logger.info(
+              "Skipping special certificate for primaryCategory: {}",
+              event.primaryCategory
+            )
+            Map[String, String]()
+          }
+        } ++ {
+          logger.info("The dynamic Certificate generation request")
+          Map[String, String](
+            config.version -> "v2",
+          )
+        }
+        ))
+
+        val query = getExternalTrainingEnrollmentDBTable(updatedCerts, certMetaData.userId, certMetaData.eventId, certMetaData.batchId, config)
+        logger.info("update query {}", query.toString)
+        val result = cassandraUtil.update(query)
+        logger.info("update result {}", result)
+        if (result) {
+          logger.info("issued certificates in user-enrollment table  updated successfully")
+          metrics.incCounter(config.dbUpdateCount)
+          val certificateAuditEvent = generateAuditEvent(certMetaData)
+          logger.info("pushAuditEvent: audit event generated for certificate : " + certificateAuditEvent)
+          val audit = ScalaJsonUtil.serialize(certificateAuditEvent)
+          context.output(config.auditEventOutputTag, audit)
+          logger.info("pushAuditEvent: certificate audit event success {}", audit)
+          if (config.enableUserNotification) {
+            context.output(config.notifierOutputTag, NotificationMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.eventId,
+              certMetaData.batchId, certMetaData.templateId, event.partition, event.offset, event.providerName, event.coursePosterImage))
+          }
+          val competencyEvent = buildCompetencyAcquiredEvent(certMetaData.userId, certMetaData.eventId, certMetaData.batchId)
+          logger.info("Firing competency mapping event for user: {} course: {} batch: {}", certMetaData.userId, certMetaData.eventId, certMetaData.batchId)
+          context.output(config.competencyMappingOutputTag, competencyEvent)
+          logger.info("Competency mapping event fired successfully: {}", competencyEvent)
+          //context.output(config.userFeedOutputTag, UserFeedMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId, event.partition, event.offset))
+        } else {
+          metrics.incCounter(config.failedEventCount)
+          throw new Exception(s"Update certificates to enrolments failed: ${event}")
+        }
+
+      })
+    }
+  }
+
+  private def getIssuedCertificatesFromUserExternalTrainingEnrollmentTable(columns: Map[String, AnyRef])(implicit metrics: Metrics) = {
+    logger.info("primary columns {}", columns)
+    val selectWhere = QueryBuilder.select().all()
+      .from(config.dbKeyspace, config.dbExternalTrainingEnrollmentTable).
+      where()
+    columns.map(col => {
+      col._2 match {
+        case value: List[Any] =>
+          selectWhere.and(QueryBuilder.in(col._1, value.asJava))
+        case _ =>
+          selectWhere.and(QueryBuilder.eq(col._1, col._2))
+      }
+    })
+    logger.info("select query {}", selectWhere.toString)
+    metrics.incCounter(config.enrollmentDbReadCount)
+    cassandraUtil.find(selectWhere.toString).asScala.toList
+  }
+
+  def getExternalTrainingEnrollmentDBTable(updatedCerts: util.List[util.Map[String, String]], userId: String, eventId: String, batchId: String, config: EventCertificateGeneratorConfig):
+  Update.Where = QueryBuilder.update(config.dbKeyspace, config.dbExternalTrainingEnrollmentTable).where()
+    .`with`(QueryBuilder.set(config.issued_certificates, updatedCerts))
+    .where(QueryBuilder.eq(config.dbUserId, userId))
+    .and(QueryBuilder.eq(config.dbContextId, eventId))
+    .and(QueryBuilder.eq(config.dbBatchId, batchId))
+
+  private def getIssuedCertificatesDetailsFromUserExternalTrainingEnrollmentTable(columns: Map[String, AnyRef]): Boolean = {
+    logger.info("primary columns {}", columns)
+    val selectWhere = QueryBuilder.select("issued_certificates", "status", "progress")
+      .from(config.dbKeyspace, config.dbExternalTrainingEnrollmentTable)
+      .where()
+    columns.map(col => {
+      col._2 match {
+        case value: List[Any] =>
+          selectWhere.and(QueryBuilder.in(col._1, value.asJava))
+        case _ =>
+          selectWhere.and(QueryBuilder.eq(col._1, col._2))
+      }
+    })
+    logger.info("select query {}", selectWhere.toString)
+    val records = cassandraUtil.find(selectWhere.toString).asScala.toList
+    //Check status == 2 and issued_certificates is not empty if so, return false -- means increaseCertCount is false
+    !records.exists(row => {
+      val certificates = row.getObject("issued_certificates")
+        .asInstanceOf[java.util.List[java.util.Map[String, String]]]
+      val status = row.getInt("status")
+      certificates != null && !certificates.isEmpty && status == 2
+    })
+  }
 }
