@@ -197,8 +197,6 @@ class CertificateGeneratorConfig(override val config: Config) extends BaseJobCon
   val dynamicCertificateEnabledForExternalContent: Boolean = if (config.hasPath("dynamicCertificateEnabledForExternalContent")) config.getBoolean("dynamicCertificateEnabledForExternalContent") else true
   val version = "version"
   val eventType = "eventType"
-  val contextType = "contextType"
   val competencyAcquired = "COMPETENCY_ACQUIRED"
   val extCourses = "extCourses"
-  val contentId = "contentId"
 }
