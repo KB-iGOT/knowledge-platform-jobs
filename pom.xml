@@ -3,21 +3,21 @@
 				 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 				 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
                              http://maven.apache.org/maven-v4_0_0.xsd">
-	<modelVersion>4.0.0</modelVersion>
+  <modelVersion>4.0.0</modelVersion>
 
-	<prerequisites>
-		<maven>3.0.0</maven>
-	</prerequisites>
+  <prerequisites>
+    <maven>3.0.0</maven>
+  </prerequisites>
 
-	<groupId>org.sunbird</groupId>
-	<artifactId>knowledge-platform-jobs</artifactId>
-	<version>1.0</version>
-	<packaging>pom</packaging>
-	<name>Knowledge Platform Jobs</name>
-	<description>
+  <groupId>org.sunbird</groupId>
+  <artifactId>knowledge-platform-jobs</artifactId>
+  <version>1.0</version>
+  <packaging>pom</packaging>
+  <name>Knowledge Platform Jobs</name>
+  <description>
 		KP Flink jobs for stream processing
 	</description>
-	<url>https://sunbird.org/</url>
+  <url>https://sunbird.org/</url>
 
   <modules>
     <module>jobs-core</module>
@@ -37,6 +37,7 @@
     <module>user-activity-analysis-updater</module>
     <module>framework-search-indexer</module>
     <module>activity-aggregate-updater-v2</module>
+    <module>user-competency-updater</module>
     <module>user-achievement-processor</module>
   </modules>
 
