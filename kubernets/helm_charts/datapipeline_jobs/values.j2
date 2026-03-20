@@ -1369,18 +1369,7 @@ user-achievement-processor:
       read {
         url = "{{cb_pores_service_base_url}}cios/v1/content/read/"
       }
-    }
-    notification {
-      service {
-        url = "{{cb_notification_wrapper_service_base_url}}/notifications/create"
-      }
-      badge {
-        subCategory = "AWARD_BADGES"
-        subType = "UPDATE"
-        enabled = true
-      }
-    }
-    job {
+    
       responseKey = "content"
       extCourses = "extCourses"
       iGOTCourses = "iGOTCourses"
@@ -1396,6 +1385,18 @@ user-achievement-processor:
       templateUrlKey = "templateUrl"
       badgeTemplateKey = "badgeTemplate"
     }
+
+    notification {
+      service {
+        url = "{{cb_notification_wrapper_service_base_url}}/notifications/create"
+      }
+      badge {
+        subCategory = "AWARD_BADGES"
+        subType = "UPDATE"
+        enabled = true
+      }
+    }
+    
   flink-conf: |+
     jobmanager.memory.flink.size: {{ flink_job_names['user-achievement-processor'].jobmanager_memory }}
     taskmanager.memory.flink.size: {{ flink_job_names['user-achievement-processor'].taskmanager_memory }}
