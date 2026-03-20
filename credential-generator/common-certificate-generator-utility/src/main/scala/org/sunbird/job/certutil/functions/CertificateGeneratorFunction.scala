@@ -333,6 +333,7 @@ class CertificateGeneratorFunction(config: CertificateGeneratorConfig, httpUtil:
             context.output(config.notifierOutputTag, NotificationMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId,
                certMetaData.templateId, event.partition, event.offset, event.providerName, event.coursePosterImage))
           }
+          context.output(config.userBadgeAwardOutputTag, buildBadgeAwardEvent(certMetaData.userId, certMetaData.courseId, ""))
           //context.output(config.userFeedOutputTag, UserFeedMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId, event.partition, event.offset))
         } else {
           metrics.incCounter(config.failedEventCount)
@@ -391,6 +392,22 @@ class CertificateGeneratorFunction(config: CertificateGeneratorConfig, httpUtil:
       "parentCollections" -> event.parentCollections
     )
     ScalaJsonUtil.serialize(BEJobRequestEvent(edata = eData, `object` = EventObjectCourseCertificate(id = event.userId)))
+  }
+
+  private def buildBadgeAwardEvent(userId: String, contentId: String, batchId: String): String = {
+    val baseEdata = Map[String, AnyRef](
+      config.userId     -> userId,
+      config.contentId -> contentId,
+      config.contextType -> config.externalCourses
+    )
+
+    val edata = if (batchId != null && batchId.nonEmpty) {
+      baseEdata + (config.batchId -> batchId)
+    } else {
+      baseEdata
+    }
+
+    ScalaJsonUtil.serialize(Map[String, AnyRef]("edata" -> edata))
   }
 
   /*

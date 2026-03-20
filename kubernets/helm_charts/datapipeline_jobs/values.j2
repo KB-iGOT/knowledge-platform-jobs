@@ -1460,6 +1460,49 @@ assessment-public-certificate-generator:
     jobmanager.execution.failover-strategy: region
     taskmanager.memory.network.fraction: 0.1
 
+user.badge.award.request:
+  user.badge.award.request: |+
+    include file("/data/flink/conf/base-config.conf")
+    kafka {
+      input.topic = "{{ env_name }}.user.badge.award.request"
+      output.topic = "{{ env_name }}.telemetry.raw"
+      groupId = "{{ env_name }}-user-badge-awarding-event-group"
+    }
+
+    user_read_api = "/private/user/v1/read"
+    content_read_api = "/content/v1/read/"
+    
+    extcontent {
+      read {
+        url = "http://localhost:7001/cios/v1/content/read/"
+      }
+      responseKey = "content"
+      extCourses = "extCourses"
+      iGOTCourses = "iGOTCourses"
+      db = "sunbird_courses"
+      table = "user_external_enrolments"
+      issuedCertificatesKey = "issued_certificates"
+      lastIssuedOnKey = "lastIssuedOn"
+      enrolmenttable = "user_enrolments_v2"
+      badgeDetailsV1Key = "badgeDetails_v1"
+      badgeEarningDateEnabledKey = "badgeEarningDateEnabled"
+      badgeEarningDateTimeKey = "badgeEarningDateTime"
+      issuedBadgesKey = "issued_badges"
+      criteriaKey = "criteria"
+      badgeIdKey = "badgeId"
+      issuedOnKey = "issuedOn"
+      templateUrlKey = "templateUrl"
+      badgeTemplateKey = "badgeTemplate"
+    }
+
+  flink-conf: |+
+    jobmanager.memory.flink.size: {{ flink_job_names['user.badge.award.request'].jobmanager_memory }}
+    taskmanager.memory.flink.size: {{ flink_job_names['user.badge.award.request'].taskmanager_memory }}
+    taskmanager.numberOfTaskSlots: {{ flink_job_names['user.badge.award.request'].taskslots }}
+    parallelism.default: 1
+    jobmanager.execution.failover-strategy: region
+    taskmanager.memory.network.fraction: 0.1
+
 tolerations:
   enabled: {{ kp_flink_tolerations_enabled | default('false') }}
   nodepoolname: {{ kp_nodepool_name }}
