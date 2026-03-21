@@ -1199,10 +1199,10 @@ user-competency-updater:
   user-competency-updater: |+
     include file("/data/flink/conf/base-config.conf")
     kafka {
-      input.topic = "{{ env}}.user.competency.mapping.event"
-      groupId = "{{ env}}-user-competency-mapping-event-group"
-      failed.topic = "{{ env}}.user.competency.mapping.event.failed"
-      failed.groupId = "{{ env}}-competency-mapping-event-failed-group"
+      input.topic = "{{ env_name }}.user.competency.mapping.event"
+      groupId = "{{ env_name }}-user-competency-mapping-event-group"
+      failed.topic = "{{ env_name }}.user.competency.mapping.event.failed"
+      failed.groupId = "{{ env_name }}-competency-mapping-event-failed-group"
     }
     task {
       restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
