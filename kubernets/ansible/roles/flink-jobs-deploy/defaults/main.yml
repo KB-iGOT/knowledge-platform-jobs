@@ -156,7 +156,6 @@ event_cert_generator_consumer_parallelism: 1
 event_cert_generator_parallelism: 1
 event_cert_generator_enable_suppress_exception: false
 event_cert_generator_enable_rc_certificate: true
-event_user_competency_updater_parallelism: 1
 
 ###  user_activity_analysis_updater Job related Vars
 user_activity_analysis_updater_consumer_parallelism: 1
@@ -200,7 +199,14 @@ user_competency_updater_parallelism: 1
 user_competency_updater_restart_strategy_delay: 240000
 user_competency_updater_checkpointing_interval: 300000
 user_competency_updater_checkpointing_pause_interval: 90000
-user_competency_updater_competency_parallelism: 1
+
+
+######user-achievement-updater######
+user_achievement_updater_consumer_parallelism: 1
+user_achievement_updater_parallelism: 1
+user_achievement_updater_restart_strategy_delay: 240000
+user_achievement_updater_checkpointing_interval: 300000
+user_achievement_updater_checkpointing_pause_interval: 90000
 ### to be removed
 job_classname: ""
 
@@ -363,7 +369,14 @@ flink_job_names:
     taskslots: 1
     cpu_requests: 0.3
   user-competency-updater:
-    job_class_name: 'org.sunbird.job.aggregate.task.UserCompetencyPreUpdaterTask'
+    job_class_name: 'org.sunbird.job.usercompetencyupdate.task.UserCompetencyUpdaterTask'
+    replica: 1
+    jobmanager_memory: 1024m
+    taskmanager_memory: 1024m
+    taskslots: 1
+    cpu_requests: 0.3
+  user-achievement-processor:
+    job_class_name: 'org.sunbird.job.userbadgeawarding.task.UserAchievementPreProcessorTask'
     replica: 1
     jobmanager_memory: 1024m
     taskmanager_memory: 1024m
