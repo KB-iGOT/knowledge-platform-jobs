@@ -26,7 +26,7 @@ taskmanager:
   rpc_port: {{ taskmanager_rpc_port }}
   heap_memory: {{ taskmanager_heap_memory }}
   replicas: {{taskmanager_replicacount|default(1)}}
-
+user
 job_classname: {{ job_classname }}
 {{ taskmanager_liveness | to_nice_yaml }}
 
@@ -1209,7 +1209,7 @@ user-competency-updater:
       restart-strategy.delay = {{ user_competency_updater_restart_strategy_delay }} # in milli-seconds # on max restarts (3) within 4 min the job will fail.
       consumer.parallelism = {{ user_competency_updater_consumer_parallelism }}
       parallelism = {{ user_competency_updater_parallelism }}
-
+      competency.parallelism = 1
       checkpointing.interval = {{ user_competency_updater_checkpointing_interval }}
       checkpointing.pause.between.seconds = {{ user_competency_updater_checkpointing_pause_interval }}
     }
