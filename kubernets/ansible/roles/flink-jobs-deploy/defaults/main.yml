@@ -376,7 +376,7 @@ flink_job_names:
     taskslots: 1
     cpu_requests: 0.3
   user-competency-updater:
-    job_class_name: 'org.sunbird.job.aggregate.task.UserCompetencyPreUpdaterTask'
+    job_class_name: 'org.sunbird.job.usercompetencyupdate.task.UserCompetencyUpdaterTask'
     replica: 1
     jobmanager_memory: 1024m
     taskmanager_memory: 1024m
