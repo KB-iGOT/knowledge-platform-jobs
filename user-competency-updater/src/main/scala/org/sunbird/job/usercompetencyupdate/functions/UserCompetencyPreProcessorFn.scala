@@ -1,6 +1,7 @@
 package org.sunbird.job.usercompetencyupdate.functions
 
-import com.datastax.driver.core.Row
+import com.datastax.driver.core.{ConsistencyLevel, Row}
+import com.datastax.driver.core.querybuilder.{Delete, QueryBuilder, Select}
 import com.google.common.reflect.TypeToken
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.configuration.Configuration
@@ -149,16 +150,15 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       val userCompetencyTableFull =
         if (userCompetencyTable.contains(".")) userCompetencyTable
         else s"$dbName.$userCompetencyTable"
-      val selectQuery =
-        s"""
-         SELECT competency_details
-         FROM $userCompetencyTableFull
-         WHERE user_id='$userId'
-         AND competency_area_id='$areaId'
-         AND competency_theme_id='$themeId'
-         AND competency_subtheme_id='$subthemeId';
-       """
-      val existingRows = cassandraUtil.find(selectQuery)
+
+      // Build SELECT query using QueryBuilder
+      val selectQueryBuilt = QueryBuilder.select("competency_details")
+        .from(userCompetencyTableFull)
+        .where(QueryBuilder.eq("user_id", userId))
+        .and(QueryBuilder.eq("competency_area_id", areaId))
+        .and(QueryBuilder.eq("competency_theme_id", themeId))
+        .and(QueryBuilder.eq("competency_subtheme_id", subthemeId))
+      val existingRows = cassandraUtil.find(selectQueryBuilt.toString)
       var competencyDetails: Map[String, List[Map[String, String]]] = Map()
       if (existingRows != null && !existingRows.isEmpty) {
         val row = existingRows.get(0)
@@ -182,19 +182,18 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       val updatedDetails =
         competencyDetails + (config.externalTraining -> updatedList)
 
-      val cqlDetails = toCqlMap(updatedDetails)
+      val detailsJavaMap: java.util.Map[String, java.util.List[java.util.Map[String, String]]] =
+        updatedDetails.map { case (k, v) => k -> v.map(_.asJava).asJava }.asJava
 
-      val upsertQuery =
-        s"""
-         INSERT INTO $userCompetencyTableFull
-         (user_id, competency_area_id, competency_theme_id,
-          competency_subtheme_id, competency_details)
-         VALUES
-         ('$userId', '$areaId', '$themeId',
-          '$subthemeId', $cqlDetails);
-       """
+      val insertQuery = QueryBuilder.insertInto(userCompetencyTableFull)
+        .value("user_id", userId)
+        .value("competency_area_id", areaId)
+        .value("competency_theme_id", themeId)
+        .value("competency_subtheme_id", subthemeId)
+        .value("competency_details", detailsJavaMap)
+      insertQuery.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
 
-      cassandraUtil.upsert(upsertQuery)
+      cassandraUtil.upsert(insertQuery.toString)
     }
 
     metrics.incCounter(config.dbUpdateCount)
@@ -285,9 +284,15 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
                                            ): Unit = {
     //TODO change logger info to debug.
     logger.info(s"upsertUserCompetencyByContext - reading competency_details for userId=$userId area=$areaId theme=$themeId subtheme=$subthemeId key=$competencyKey")
-    val selectQuery =
-      s"SELECT competency_details FROM $userCompetencyTable WHERE user_id='$userId' AND competency_area_id='$areaId' AND competency_theme_id='$themeId' AND competency_subtheme_id='$subthemeId';"
-    val existingRows = cassandraUtil.find(selectQuery)
+
+    // Build SELECT query using QueryBuilder
+    val selectQueryBuilt = QueryBuilder.select("competency_details")
+      .from(userCompetencyTable)
+      .where(QueryBuilder.eq("user_id", userId))
+      .and(QueryBuilder.eq("competency_area_id", areaId))
+      .and(QueryBuilder.eq("competency_theme_id", themeId))
+      .and(QueryBuilder.eq("competency_subtheme_id", subthemeId))
+    val existingRows = cassandraUtil.find(selectQueryBuilt.toString)
     var competencyDetails: Map[String, List[Map[String, String]]] = Map()
     if (existingRows != null && !existingRows.isEmpty) {
       val typeToken =
@@ -307,19 +312,20 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
         .filterNot(_(config.acquiredContextIdKey) == detailsMap(config.acquiredContextIdKey)) :+ detailsMap
     val updatedDetails =
       competencyDetails + (competencyKey -> updatedList)
-    val cqlDetails = toCqlMap(updatedDetails)
-    val upsertQuery =
-      s"""
-       INSERT INTO $userCompetencyTable
-       (user_id, competency_area_id, competency_theme_id,
-        competency_subtheme_id, competency_details)
-       VALUES
-       ('$userId', '$areaId', '$themeId', '$subthemeId', $cqlDetails);
-     """
+
+    val detailsJavaMap: java.util.Map[String, java.util.List[java.util.Map[String, String]]] =
+      updatedDetails.map { case (k, v) => k -> v.map(_.asJava).asJava }.asJava
+
+    val insertQuery = QueryBuilder.insertInto(userCompetencyTable)
+      .value("user_id", userId)
+      .value("competency_area_id", areaId)
+      .value("competency_theme_id", themeId)
+      .value("competency_subtheme_id", subthemeId)
+      .value("competency_details", detailsJavaMap)
+    insertQuery.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
+
     logger.info(s"upsertUserCompetencyByContext - upserting competency for userId=$userId area=$areaId theme=$themeId subtheme=$subthemeId key=$competencyKey")
-    //TODO remove the logger statements post testing.
-    logger.info(s"upsertUserCompetencyByContext - upsertQuery=$upsertQuery")
-    cassandraUtil.upsert(upsertQuery)
+    cassandraUtil.upsert(insertQuery.toString)
     metrics.incCounter(config.dbUpdateCount)
   }
 
@@ -515,15 +521,18 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
                                     ): Unit = {
 
       logger.debug(s"upsertUserCompetency - selecting competency_details for userId=$userId areaId=$areaId themeId=$themeId subthemeId=$subthemeId")
-      val selectQuery =
-        s"SELECT competency_details FROM $userCompetencyTable WHERE user_id='$userId' AND competency_area_id='$areaId' AND competency_theme_id='$themeId' AND competency_subtheme_id='$subthemeId';"
-      val existingRows = cassandraUtil.find(selectQuery)
+
+      // Build SELECT query using QueryBuilder
+      val selectQueryBuilt = QueryBuilder.select("competency_details")
+        .from(userCompetencyTable)
+        .where(QueryBuilder.eq("user_id", userId))
+        .and(QueryBuilder.eq("competency_area_id", areaId))
+        .and(QueryBuilder.eq("competency_theme_id", themeId))
+        .and(QueryBuilder.eq("competency_subtheme_id", subthemeId))
+      val existingRows = cassandraUtil.find(selectQueryBuilt.toString)
       var competencyDetails: Map[String, List[Map[String, String]]] = Map()
 
       if (existingRows != null && !existingRows.isEmpty) {
-
-        import com.google.common.reflect.TypeToken
-        import scala.collection.JavaConverters._
 
         val typeToken =
           new TypeToken[java.util.Map[String, java.util.List[java.util.Map[String, String]]]]() {}
@@ -547,17 +556,20 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
 
       val updatedDetails =
         competencyDetails + (config.selfAchievement -> updatedList)
-      val cqlDetails = toCqlMap(updatedDetails)
-      val upsertQuery =
-        s"""
-         INSERT INTO $userCompetencyTable
-         (user_id, competency_area_id, competency_theme_id,
-          competency_subtheme_id, competency_details)
-         VALUES
-         ('$userId', '$areaId', '$themeId', '$subthemeId', $cqlDetails);
-       """
+
+      val detailsJavaMap: java.util.Map[String, java.util.List[java.util.Map[String, String]]] =
+        updatedDetails.map { case (k, v) => k -> v.map(_.asJava).asJava }.asJava
+
+      val insertQuery = QueryBuilder.insertInto(userCompetencyTable)
+        .value("user_id", userId)
+        .value("competency_area_id", areaId)
+        .value("competency_theme_id", themeId)
+        .value("competency_subtheme_id", subthemeId)
+        .value("competency_details", detailsJavaMap)
+      insertQuery.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
+
       logger.info(s"upsertUserCompetency - upserting selfAchievement for userId=$userId areaId=$areaId themeId=$themeId subthemeId=$subthemeId")
-      cassandraUtil.upsert(upsertQuery)
+      cassandraUtil.upsert(insertQuery.toString)
       metrics.incCounter(config.dbUpdateCount)
     }
 
@@ -570,9 +582,15 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
                                                  userCompetencyTable: String
                                                ): Unit = {
       logger.debug(s"removeAchievementFromCompetency - selecting competency_details for userId=$userId areaId=$areaId themeId=$themeId subthemeId=$subthemeId")
-      val selectQuery =
-        s"SELECT competency_details FROM $userCompetencyTable WHERE user_id='$userId' AND competency_area_id='$areaId' AND competency_theme_id='$themeId' AND competency_subtheme_id='$subthemeId';"
-      val existingRows = cassandraUtil.find(selectQuery)
+
+      // Build SELECT query using QueryBuilder
+      val selectQueryBuilt = QueryBuilder.select("competency_details")
+        .from(userCompetencyTable)
+        .where(QueryBuilder.eq("user_id", userId))
+        .and(QueryBuilder.eq("competency_area_id", areaId))
+        .and(QueryBuilder.eq("competency_theme_id", themeId))
+        .and(QueryBuilder.eq("competency_subtheme_id", subthemeId))
+      val existingRows = cassandraUtil.find(selectQueryBuilt.toString)
       var competencyDetails: Map[String, List[Map[String, String]]] = Map()
       if (existingRows != null && !existingRows.isEmpty) {
         val typeToken =
@@ -592,30 +610,33 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
               .getOrElse(config.selfAchievement, List())
               .filterNot(_(config.acquiredContextIdKey) == contentId)
           if (updatedList.isEmpty) {
-            val deleteQuery =
-              s"""
-               DELETE FROM $userCompetencyTable
-               WHERE user_id='$userId'
-               AND competency_area_id='$areaId'
-               AND competency_theme_id='$themeId'
-               AND competency_subtheme_id='$subthemeId';
-             """
+            val deleteQuery = QueryBuilder.delete()
+              .from(userCompetencyTable)
+              .where(QueryBuilder.eq("user_id", userId))
+              .and(QueryBuilder.eq("competency_area_id", areaId))
+              .and(QueryBuilder.eq("competency_theme_id", themeId))
+              .and(QueryBuilder.eq("competency_subtheme_id", subthemeId))
+            deleteQuery.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
+
             logger.info(s"removeAchievementFromCompetency - deleting competency row for userId=$userId areaId=$areaId themeId=$themeId subthemeId=$subthemeId")
-            cassandraUtil.upsert(deleteQuery)
+            cassandraUtil.upsert(deleteQuery.toString)
           } else {
             val updatedDetails =
               competencyDetails + (config.selfAchievement -> updatedList)
-            val cqlDetails = toCqlMap(updatedDetails)
-            val upsertQuery =
-              s"""
-               INSERT INTO $userCompetencyTable
-               (user_id, competency_area_id, competency_theme_id,
-                competency_subtheme_id, competency_details)
-               VALUES
-               ('$userId', '$areaId', '$themeId', '$subthemeId', $cqlDetails);
-             """
+
+            val detailsJavaMap: java.util.Map[String, java.util.List[java.util.Map[String, String]]] =
+              updatedDetails.map { case (k, v) => k -> v.map(_.asJava).asJava }.asJava
+
+            val insertQuery = QueryBuilder.insertInto(userCompetencyTable)
+              .value("user_id", userId)
+              .value("competency_area_id", areaId)
+              .value("competency_theme_id", themeId)
+              .value("competency_subtheme_id", subthemeId)
+              .value("competency_details", detailsJavaMap)
+            insertQuery.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
+
             logger.info(s"removeAchievementFromCompetency - updating competency_details for userId=$userId areaId=$areaId themeId=$themeId subthemeId=$subthemeId")
-            cassandraUtil.upsert(upsertQuery)
+            cassandraUtil.upsert(insertQuery.toString)
           }
         }
       }
@@ -750,22 +771,19 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       // Ensure userCompetencyTable is fully qualified with DB name from config
       val dbName = config.dbName // assuming config.dbName is set to "sunbird"
       val userCompetencyTableFull = if (userCompetencyTable.contains(".")) userCompetencyTable else s"$dbName.$userCompetencyTable"
-      val selectQuery =
-        s"""
-           SELECT competency_details
-           FROM $userCompetencyTableFull
-           WHERE user_id='$userId'
-           AND competency_area_id='$areaId'
-           AND competency_theme_id='$themeId'
-           AND competency_subtheme_id='$subthemeId';
-         """
-      val existingRows = cassandraUtil.find(selectQuery)
+
+      // Build SELECT query using QueryBuilder
+      val selectQueryBuilt = QueryBuilder.select("competency_details")
+        .from(userCompetencyTableFull)
+        .where(QueryBuilder.eq("user_id", userId))
+        .and(QueryBuilder.eq("competency_area_id", areaId))
+        .and(QueryBuilder.eq("competency_theme_id", themeId))
+        .and(QueryBuilder.eq("competency_subtheme_id", subthemeId))
+      val existingRows = cassandraUtil.find(selectQueryBuilt.toString)
       var competencyDetails: Map[String, List[Map[String, String]]] = Map()
       if (existingRows != null && !existingRows.isEmpty) {
 
         val row = existingRows.get(0)
-
-        import com.google.common.reflect.TypeToken
 
         val typeToken =
           new TypeToken[java.util.Map[String,
@@ -787,17 +805,19 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
           .filterNot(_("acquiredContextId") == courseId) :+ newDetail
       val updatedDetails =
         competencyDetails + ("iGOTCourses" -> updatedList)
-      val cqlDetails = toCqlMap(updatedDetails)
-      val upsertQuery =
-        s"""
-           INSERT INTO $userCompetencyTableFull
-           (user_id, competency_area_id, competency_theme_id,
-            competency_subtheme_id, competency_details)
-           VALUES
-           ('$userId', '$areaId', '$themeId',
-            '$subthemeId', $cqlDetails);
-         """
-      cassandraUtil.upsert(upsertQuery)
+
+      val detailsJavaMap: java.util.Map[String, java.util.List[java.util.Map[String, String]]] =
+        updatedDetails.map { case (k, v) => k -> v.map(_.asJava).asJava }.asJava
+
+      val insertQuery = QueryBuilder.insertInto(userCompetencyTableFull)
+        .value("user_id", userId)
+        .value("competency_area_id", areaId)
+        .value("competency_theme_id", themeId)
+        .value("competency_subtheme_id", subthemeId)
+        .value("competency_details", detailsJavaMap)
+      insertQuery.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
+
+      cassandraUtil.upsert(insertQuery.toString)
       logger.info(s"Processing competency: areaId=$areaId, themeId=$themeId, subthemeId=$subthemeId, description=$description")
     }
     metrics.incCounter(config.dbUpdateCount)
@@ -947,29 +967,23 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       )
       val dbName = config.dbName
       val userCompetencyTableFull = if (userCompetencyTable.contains(".")) userCompetencyTable else s"$dbName.$userCompetencyTable"
-      val selectQuery =
-        s"""
-           SELECT competency_details
-           FROM $userCompetencyTableFull
-           WHERE user_id='$userId'
-           AND competency_area_id='$areaId'
-           AND competency_theme_id='$themeId'
-           AND competency_subtheme_id='$subthemeId';
-         """
-      val existingRows = cassandraUtil.find(selectQuery)
+
+      // Build SELECT query using QueryBuilder
+      val selectQueryBuilt = QueryBuilder.select("competency_details")
+        .from(userCompetencyTableFull)
+        .where(QueryBuilder.eq("user_id", userId))
+        .and(QueryBuilder.eq("competency_area_id", areaId))
+        .and(QueryBuilder.eq("competency_theme_id", themeId))
+        .and(QueryBuilder.eq("competency_subtheme_id", subthemeId))
+      val existingRows = cassandraUtil.find(selectQueryBuilt.toString)
       var competencyDetails: Map[String, List[Map[String, String]]] = Map()
       if (existingRows != null && !existingRows.isEmpty) {
         val row = existingRows.get(0)
-
-        import com.google.common.reflect.TypeToken
-
         val typeToken =
           new TypeToken[java.util.Map[String,
             java.util.List[java.util.Map[String, String]]]]() {}
-
         val detailsObj =
           row.get(config.competencyDetails, typeToken)
-
         if (detailsObj != null) {
           competencyDetails =
             detailsObj.asScala.map { case (k, v) =>
@@ -983,17 +997,19 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
           .filterNot(_(config.acquiredContextIdKey) == courseId) :+ newDetail
       val updatedDetails =
         competencyDetails + (config.extCoursesContextType-> updatedList)
-      val cqlDetails = toCqlMap(updatedDetails)
-      val upsertQuery =
-        s"""
-           INSERT INTO $userCompetencyTableFull
-           (user_id, competency_area_id, competency_theme_id,
-            competency_subtheme_id, competency_details)
-           VALUES
-           ('$userId', '$areaId', '$themeId',
-            '$subthemeId', $cqlDetails);
-         """
-      cassandraUtil.upsert(upsertQuery)
+
+      val detailsJavaMap: java.util.Map[String, java.util.List[java.util.Map[String, String]]] =
+        updatedDetails.map { case (k, v) => k -> v.map(_.asJava).asJava }.asJava
+
+      val insertQuery = QueryBuilder.insertInto(userCompetencyTableFull)
+        .value("user_id", userId)
+        .value("competency_area_id", areaId)
+        .value("competency_theme_id", themeId)
+        .value("competency_subtheme_id", subthemeId)
+        .value("competency_details", detailsJavaMap)
+      insertQuery.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
+
+      cassandraUtil.upsert(insertQuery.toString)
       metrics.incCounter(config.dbUpdateCount)
       logger.info(s"Processing extCourse competency: areaId=$areaId, themeId=$themeId, subthemeId=$subthemeId")
     }
