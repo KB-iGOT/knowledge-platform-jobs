@@ -7,6 +7,7 @@ import org.apache.flink.streaming.api.scala.OutputTag
 import org.sunbird.job.BaseJobConfig
 import org.sunbird.job.postpublish.functions.PublishMetadata
 import scala.collection.immutable.Map
+import scala.collection.JavaConverters._
 import java.util
 
 class PostPublishProcessorConfig(override val config: Config) extends BaseJobConfig(config, "post-publish-processor") {
@@ -56,6 +57,16 @@ class PostPublishProcessorConfig(override val config: Config) extends BaseJobCon
   val lmsKeyspaceName = config.getString("lms-cassandra.keyspace")
   val sunbirdKeyspaceName = config.getString("lms-cassandra.sbKeyspace")
   val defaultCertTemplateId = config.getString("lms-cassandra.certTemplateId")
+
+  val resourceTypeCertTemplateMap: util.Map[String, String] = {
+    if (config.hasPath("lms-cassandra.resourceTypeCertTemplateMap")) {
+      val subConfig = config.getConfig("lms-cassandra.resourceTypeCertTemplateMap")
+      subConfig.entrySet().asScala.foldLeft(new util.HashMap[String, String]()) { (map, entry) =>
+        map.put(entry.getKey, String.valueOf(entry.getValue.unwrapped()))
+        map
+      }
+    } else new util.HashMap[String, String]()
+  }
   val sbSystemSettingsTableName = config.getString("lms-cassandra.systemSettingsTable")
   val batchTableName = config.getString("lms-cassandra.batchTable")
   val hierarchyStoreKeySpace = config.getString("lms-cassandra.hierarchyStoreKeySpace")
