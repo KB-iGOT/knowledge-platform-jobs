@@ -325,7 +325,10 @@ class CertificateGeneratorFunction(config: CertificateGeneratorConfig, httpUtil:
           val audit = ScalaJsonUtil.serialize(certificateAuditEvent)
           context.output(config.auditEventOutputTag, audit)
           logger.info("pushAuditEvent: certificate audit event success {}", audit)
-
+          val competencyEvent = buildCompetencyAcquiredEvent(certMetaData.userId, certMetaData.courseId)
+          logger.info(s"Firing competency mapping event for user: ${certMetaData.userId} course: ${certMetaData.courseId}")
+          context.output(config.competencyMappingOutputTag, competencyEvent)
+          logger.info("Competency mapping event fired successfully: {}", competencyEvent)
           if (config.enableUserNotification) {
             context.output(config.notifierOutputTag, NotificationMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId,
                certMetaData.templateId, event.partition, event.offset, event.providerName, event.coursePosterImage))
@@ -510,7 +513,10 @@ class CertificateGeneratorFunction(config: CertificateGeneratorConfig, httpUtil:
           val audit = ScalaJsonUtil.serialize(certificateAuditEvent)
           context.output(config.auditEventOutputTag, audit)
           logger.info("pushAuditEvent: certificate audit event success {}", audit)
-
+          val competencyEvent = buildCompetencyAcquiredEvent(certMetaData.userId, certMetaData.courseId)
+          logger.info(s"Firing competency mapping event for user: ${certMetaData.userId} course: ${certMetaData.courseId}")
+          context.output(config.competencyMappingOutputTag, competencyEvent)
+          logger.info("Competency mapping event fired successfully: {}", competencyEvent)
           if (config.enableUserNotification) {
             context.output(config.notifierOutputTag, NotificationMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId,
               certMetaData.templateId, event.partition, event.offset, event.providerName, event.coursePosterImage))
