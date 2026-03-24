@@ -325,6 +325,9 @@ class CertificateGeneratorFunction(config: CertificateGeneratorConfig, httpUtil:
           val audit = ScalaJsonUtil.serialize(certificateAuditEvent)
           context.output(config.auditEventOutputTag, audit)
           logger.info("pushAuditEvent: certificate audit event success {}", audit)
+          val badgeAwardEvent = buildBadgeAwardEvent(certMetaData.userId, certMetaData.courseId, "")
+          context.output(config.userBadgeAwardOutputTag, badgeAwardEvent)
+          logger.info("pushed Badge Award Event successfully {}", badgeAwardEvent)
           val competencyEvent = buildCompetencyAcquiredEvent(certMetaData.userId, certMetaData.courseId)
           logger.info(s"Firing competency mapping event for user: ${certMetaData.userId} course: ${certMetaData.courseId}")
           context.output(config.competencyMappingOutputTag, competencyEvent)
@@ -333,7 +336,6 @@ class CertificateGeneratorFunction(config: CertificateGeneratorConfig, httpUtil:
             context.output(config.notifierOutputTag, NotificationMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId,
                certMetaData.templateId, event.partition, event.offset, event.providerName, event.coursePosterImage))
           }
-          context.output(config.userBadgeAwardOutputTag, buildBadgeAwardEvent(certMetaData.userId, certMetaData.courseId, ""))
           //context.output(config.userFeedOutputTag, UserFeedMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId, event.partition, event.offset))
         } else {
           metrics.incCounter(config.failedEventCount)
