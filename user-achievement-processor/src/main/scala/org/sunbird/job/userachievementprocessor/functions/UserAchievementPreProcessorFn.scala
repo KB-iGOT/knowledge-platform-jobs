@@ -246,7 +246,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         s"Fetching course details from Content Service for Id: ${courseId}"
       )
       val url =
-        config.contentReadURL + "/" + courseId + "?fields=identifier,parentCollections,primaryCategory,childNodes,badgeDetails_v1"
+        config.contentReadURL + "/" + courseId + "?fields=identifier,name,parentCollections,primaryCategory,childNodes,badgeDetails_v1"
       val response = getAPICall(url, "content")(config, httpUtil, metrics)
       val primaryCategory = StringContext
         .processEscapes(
@@ -262,6 +262,8 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       val badgeDetails_v1 = response
         .getOrElse("badgeDetails_v1", List.empty[String])
         .asInstanceOf[List[String]]
+      val courseName = response
+        .getOrElse("name", "").asInstanceOf[String]
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
       courseInfoMap.put("courseId", courseId)
@@ -269,6 +271,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       courseInfoMap.put("primaryCategory", primaryCategory)
       courseInfoMap.put("childNodes", childNodes)
       courseInfoMap.put("badgeDetails_v1", badgeDetails_v1)
+      courseInfoMap.put("name", courseName)
       courseInfoMap
     } else {
       val primaryCategory = StringContext
@@ -281,6 +284,9 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       val parentCollections = courseMetadata
         .getOrElse("parentcollections", new java.util.ArrayList())
         .asInstanceOf[java.util.ArrayList[String]]
+      val courseName = courseMetadata
+        .getOrElse("name", "")
+        .asInstanceOf[String]
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
       courseInfoMap.put("courseId", courseId)
@@ -294,6 +300,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
           .getOrElse("badgedetailsv1", new java.util.ArrayList())
           .asInstanceOf[java.util.ArrayList[String]]
       courseInfoMap.put("badgeDetails_v1", badgeDetails_v1)
+      courseInfoMap.put("name", courseName)
       courseInfoMap
     }
   }
@@ -317,6 +324,12 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       if (badgeDetailsV1 != null) {
         courseMetadataMap.put(config.badgeDetailsV1Key, badgeDetailsV1)
       }
+
+      // Extract name if present
+      val courseName = contentMap.get("name")
+      if (courseName != null) {
+        courseMetadataMap.put("name", courseName)
+      }
     } else {
       logger.warn(
         s"Key '${config.extContentResponseKey}' not found in courseMetadata for courseId=$courseId. Falling back to API call."
@@ -327,6 +340,12 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       val badgeDetailsV1 = response.get(config.badgeDetailsV1Key)
       if (badgeDetailsV1 != null) {
         courseMetadataMap.put(config.badgeDetailsV1Key, badgeDetailsV1)
+      }
+
+      // Extract name if present
+      val courseName = response.get("name")
+      if (courseName != null) {
+        courseMetadataMap.put("name", courseName)
       }
     }
 
@@ -348,8 +367,11 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     try {
       import scala.collection.JavaConverters._
 
+      // Extract courseName from courseMetadata
+      val courseName = Option(courseMetadata.get("name")).map(_.toString).getOrElse(courseId)
+
       // EXISTING LOGIC: Process course-level badge awarding
-      processCourseLevelBadgeAwarding(userId, courseId, batchId, courseMetadata, metrics)
+      processCourseLevelBadgeAwarding(userId, courseId, batchId, courseMetadata, courseName, metrics)
 
       // NEW LOGIC: Process program-level badge awarding for curated programs
       val primaryCategory = Option(courseMetadata.get("primaryCategory")).map(_.toString).getOrElse("")
@@ -399,6 +421,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
                                                courseId: String,
                                                batchId: String,
                                                courseMetadata: java.util.Map[String, AnyRef],
+                                               courseName: String,
                                                metrics: Metrics
                                              ): Unit = {
     try {
@@ -583,7 +606,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         }
 
         // Send notification for badge award
-        sendBadgeAwardNotification(userId, badgeTitle, courseId)
+        sendBadgeAwardNotification(userId, badgeTitle, courseName)
 
         metrics.incCounter(config.dbUpdateCount)
       }
@@ -616,6 +639,9 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       }
 
       val programMetadata: java.util.Map[String, AnyRef] = getCourseInfo(programId)(metrics, config, cache, httpUtil)
+
+      // Extract program name from metadata
+      val programName = Option(programMetadata.get("name")).map(_.toString).getOrElse(programId)
 
       val badgeDetailsV1Raw = programMetadata.get(config.badgeDetailsV1Key)
       if (badgeDetailsV1Raw == null) {
@@ -865,7 +891,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       }
 
       // Send notification for badge award
-      sendBadgeAwardNotification(userId, badgeTitle, programId)
+      sendBadgeAwardNotification(userId, badgeTitle, programName)
 
       metrics.incCounter(config.dbUpdateCount)
     } catch {
@@ -941,6 +967,9 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
                                                ): Unit = {
     try {
       import scala.collection.JavaConverters._
+
+      // Extract courseName from courseMetadata
+      val courseName = Option(courseMetadata.get("name")).map(_.toString).getOrElse(courseId)
 
       // Check if badgeDetails_v1 exists in course metadata
       val badgeDetailsV1Raw = courseMetadata.get(config.badgeDetailsV1Key)
@@ -1117,7 +1146,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         }
 
         // Send notification for badge award
-        sendBadgeAwardNotification(userId, badgeTitle, courseId)
+        sendBadgeAwardNotification(userId, badgeTitle, courseName)
 
         metrics.incCounter(config.dbUpdateCount)
       }
