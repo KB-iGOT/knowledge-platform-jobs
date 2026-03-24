@@ -755,10 +755,7 @@ class CertificateGeneratorFunction  (config: EventCertificateGeneratorConfig, ht
             context.output(config.notifierOutputTag, NotificationMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.eventId,
               certMetaData.batchId, certMetaData.templateId, event.partition, event.offset, event.providerName, event.coursePosterImage))
           }
-          val competencyEvent = buildCompetencyAcquiredEvent(certMetaData.userId, certMetaData.eventId, certMetaData.batchId)
-          logger.info("Firing competency mapping event for user: {} course: {} batch: {}", certMetaData.userId, certMetaData.eventId, certMetaData.batchId)
-          context.output(config.competencyMappingOutputTag, competencyEvent)
-          logger.info("Competency mapping event fired successfully: {}", competencyEvent)
+
           //context.output(config.userFeedOutputTag, UserFeedMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId, event.partition, event.offset))
         } else {
           metrics.incCounter(config.failedEventCount)
