@@ -841,6 +841,7 @@ event-cert-generator:
       program.cert.output.topic= {{ env_name }}.event.generate.certificate.failed
       output.karma.point.topic = "{{env_name}}.user.claim.event.karma.points"
       output.dashboard.topic = "{{env_name}}.dashboard.user.state"
+      output.competency.topic = "{{env_name}}.user.competency.mapping.event"
     }
     task {
       restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
