@@ -356,6 +356,10 @@ post-publish-processor:
       hierarchyStoreKeySpace = "{{ env}}_hierarchy_store"
       eventBatchTable = "event_batch"
       eventCertTemplateId = karmayogiTalksCertTemplate
+      resourceTypeCertTemplateMap {
+        "Sadhana Saptah" = "sadhana_saptah_cert_template"
+        "Samuhik Charcha - NLW 2026" = "samuhik_charcha_nlw_2026_cert_template"
+      }
     }
     dialcode-cassandra {
       keyspace = "dialcodes"
