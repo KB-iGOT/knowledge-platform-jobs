@@ -811,7 +811,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         // Check if user has completed required number of courses
         if (completedCount >= requiredCompletionCount) {
           // Award badge
-          awardProgramBadge(userId, programId, batchId, badgeId, criteria, badgeTemplate, badgeTitle, currentTime, metrics)
+          awardProgramBadge(userId, programId, batchId, badgeId, criteria, badgeTemplate, badgeTitle, currentTime,programName, metrics)
         } else {
           logger.info(s"User has not completed required courses for programId=$programId")
         }
@@ -827,7 +827,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
    */
   private def awardProgramBadge(userId: String, programId: String, batchId: String, badgeId: String,
                                  criteria: String, badgeTemplate: String, badgeTitle: String,
-                                 currentTime: Long, metrics: Metrics): Unit = {
+                                 currentTime: Long,programName : String, metrics: Metrics): Unit = {
     try {
       import java.text.SimpleDateFormat
       import java.util.TimeZone
