@@ -356,6 +356,10 @@ post-publish-processor:
       hierarchyStoreKeySpace = "{{ env}}_hierarchy_store"
       eventBatchTable = "event_batch"
       eventCertTemplateId = karmayogiTalksCertTemplate
+      resourceTypeCertTemplateMap {
+        "Sadhana Saptah" = "sadhana_saptah_cert_template"
+        "Samuhik Charcha - NLW 2026" = "samuhik_charcha_nlw_2026_cert_template"
+      }
     }
     dialcode-cassandra {
       keyspace = "dialcodes"
@@ -367,7 +371,7 @@ post-publish-processor:
       learning_service.basePath = "{{ kp_learning_service_base_url }}"
       dial.basePath = "https://{{domain_name}}/dial/"
       content.basePath = "{{ kp_content_service_base_url }}"
-      batchCreation.event.categories = ["Karmayogi Saptah", "Karmayogi Talks", "Rajya Karmayogi Saptah", "Webinar", "Samuhik Charcha"]
+      batchCreation.event.categories = ["Karmayogi Saptah", "Karmayogi Talks", "Rajya Karmayogi Saptah", "Webinar", "Samuhik Charcha", "Sadhana Saptah", "Samuhik Charcha - NLW 2026"]
     }
 
   flink-conf: |+
@@ -841,6 +845,7 @@ event-cert-generator:
       program.cert.output.topic= {{ env_name }}.event.generate.certificate.failed
       output.karma.point.topic = "{{env_name}}.user.claim.event.karma.points"
       output.dashboard.topic = "{{env_name}}.dashboard.user.state"
+      output.competency.topic = "{{env_name}}.user.competency.mapping.event"
     }
     task {
       restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
@@ -859,6 +864,7 @@ event-cert-generator:
       certreg.table ="{{ cert_registry_table }}"
       user_event_enrolments.table = "user_entity_enrolments"
       event_batch.table = "event_batch"
+      user_external_training.table = "user_external_training_enrolments"
     }
     cert_domain_url = "{{ cert_domain_url }}"
     web.portal.url = "{{ cert_domain_url }}"
