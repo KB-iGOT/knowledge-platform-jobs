@@ -833,10 +833,10 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         return
       }
 
-      // Check if user is enrolled in the program
+      // Check if user is enrolled in the program and get batchId
       val programEnrollmentQuery =
         s"""
-           SELECT userid
+           SELECT batchid
            FROM ${config.coursesdb}.${config.enrolmentTable}
            WHERE userid='$userId'
            AND courseid='$programId';
@@ -844,11 +844,13 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
       val programEnrollmentRows = cassandraUtil.find(programEnrollmentQuery)
       if (programEnrollmentRows == null || programEnrollmentRows.isEmpty) {
-        logger.info(s"User not enrolled in program. userId=$userId, programId=$programId, batchId=$batchId. Skipping badge award.")
+        logger.info(s"User not enrolled in program. userId=$userId, programId=$programId. Skipping badge award.")
         return
       }
 
-      logger.info(s"User enrolled in program verified. userId=$userId, programId=$programId")
+      // Get the actual batchId from enrollment record
+      val programBatchId = programEnrollmentRows.get(0).getString("batchid")
+      logger.info(s"User enrolled in program verified. userId=$userId, programId=$programId, batchId=$programBatchId")
 
       // Check badgeEarningDateEnabled
       val badgeEarningDateEnabled = Option(badgeDetailsObj.get(config.badgeEarningDateEnabledKey))
@@ -932,8 +934,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
         // Check if user has completed required number of courses
         if (completedCount >= requiredCompletionCount) {
-          // Award badge
-          awardProgramBadge(userId, programId, batchId, badgeId, criteria, badgeTemplate, badgeTitle, currentTime,programName, metrics)
+          awardProgramBadge(userId, programId, programBatchId, badgeId, criteria, badgeTemplate, badgeTitle, currentTime,programName, metrics)
         } else {
           logger.info(s"User has not completed required courses for programId=$programId")
         }
@@ -973,7 +974,8 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
            UPDATE ${config.coursesdb}.${config.enrolmentTable}
            SET issued_badges = ?
            WHERE userid='$userId'
-           AND courseid='$programId';
+           AND courseid='$programId'
+           AND batchid='$batchId';
          """
 
       val preparedStmt = cassandraUtil.session.prepare(updateEnrolmentQuery)
