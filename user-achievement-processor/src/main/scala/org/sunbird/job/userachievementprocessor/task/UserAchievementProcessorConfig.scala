@@ -49,6 +49,7 @@ class UserBadgeAwardingConfig(override val config: Config) extends BaseJobConfig
 
   // Content and External Content config
   val contentReadURL: String = config.getString("content.read.url")
+  val contentHierarchyURL: String = config.getString("content.hierarchy.url")
   val extContentUrl: String = config.getString("extcontent.read.url")
   val extCoursesContextType: String = config.getString("extcontent.extCourses")
   val iGOTCoursesContextType: String = config.getString("extcontent.iGOTCourses")

@@ -305,6 +305,130 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     }
   }
 
+  /**
+   * Fetch program hierarchy with children using hierarchy API
+   * This extracts all children identifiers from the program hierarchy
+   */
+  def getProgramHierarchy(programId: String)(
+    metrics: Metrics,
+    config: UserBadgeAwardingConfig,
+    httpUtil: HttpUtil
+  ): java.util.Map[String, AnyRef] = {
+    try {
+      // Step 1: Fetch badgeDetails_v1 from content read API
+      val readUrl = s"${config.contentReadURL}${programId}?fields=identifier,name,badgeDetails_v1,primaryCategory"
+      logger.info(s"Fetching program badgeDetails from content read API: $readUrl")
+
+      val readResponse = httpUtil.get(readUrl, config.defaultHeaders)
+
+      if (readResponse.status != 200) {
+        logger.error(s"Error fetching program content for programId=$programId: ${readResponse.status} - ${readResponse.body}")
+        return new java.util.HashMap[String, AnyRef]()
+      }
+
+      val readResultMap = JSONUtil.deserialize[Map[String, AnyRef]](readResponse.body)
+      val readResult = readResultMap.getOrElse("result", Map[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
+      val readContent = readResult.getOrElse("content", Map[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
+
+      val programName = readContent.getOrElse("name", "").asInstanceOf[String]
+      val badgeDetails_v1 = readContent.getOrElse("badgeDetails_v1", new java.util.ArrayList())
+      val primaryCategory = readContent.getOrElse("primaryCategory", "").asInstanceOf[String]
+
+      // Check if badgeDetails_v1 is empty - if so, don't call hierarchy API
+      val isBadgeDetailsEmpty = badgeDetails_v1 match {
+        case jl: java.util.List[_] => jl.isEmpty
+        case al: java.util.ArrayList[_] => al.isEmpty
+        case l: List[_] => l.isEmpty
+        case _ => true
+      }
+
+      if (isBadgeDetailsEmpty) {
+        logger.info(s"badgeDetails_v1 is empty for programId=$programId, skipping hierarchy API call")
+        val emptyProgramInfoMap: java.util.Map[String, AnyRef] = new java.util.HashMap[String, AnyRef]()
+        emptyProgramInfoMap.put("courseId", programId)
+        emptyProgramInfoMap.put("name", programName)
+        emptyProgramInfoMap.put("badgeDetails_v1", badgeDetails_v1)
+        emptyProgramInfoMap.put("primaryCategory", primaryCategory)
+        emptyProgramInfoMap.put("childNodes", new java.util.ArrayList[String]())
+        emptyProgramInfoMap.put("parentCollections", new java.util.ArrayList[String]())
+        return emptyProgramInfoMap
+      }
+      logger.info(s"Fetched badgeDetails_v1 from content read API for programId=$programId")
+      // Step 2: Fetch children from hierarchy API
+      val hierarchyUrl = s"${config.contentHierarchyURL}${programId}?edit=mode"
+      logger.info(s"Fetching program hierarchy from: $hierarchyUrl")
+
+      val hierarchyResponse = httpUtil.get(hierarchyUrl, config.defaultHeaders)
+
+      if (hierarchyResponse.status != 200) {
+        logger.error(s"Error fetching program hierarchy for programId=$programId: ${hierarchyResponse.status} - ${hierarchyResponse.body}")
+        return new java.util.HashMap[String, AnyRef]()
+      }
+
+      val hierarchyResultMap = JSONUtil.deserialize[Map[String, AnyRef]](hierarchyResponse.body)
+      val hierarchyResult = hierarchyResultMap.getOrElse("result", Map[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
+      val hierarchyContent = hierarchyResult.getOrElse("content", Map[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
+
+      // Extract all child identifiers from the hierarchy
+      val childNodes = extractLeafNodesFromHierarchy(hierarchyContent)
+
+      logger.info(s"Extracted ${childNodes.size()} child identifiers from program hierarchy for programId=$programId")
+
+      // Step 3: Combine results from both APIs
+      val programInfoMap: java.util.Map[String, AnyRef] = new java.util.HashMap[String, AnyRef]()
+      programInfoMap.put("courseId", programId)
+      programInfoMap.put("name", programName)
+      programInfoMap.put("badgeDetails_v1", badgeDetails_v1)
+      programInfoMap.put("primaryCategory", primaryCategory)
+      programInfoMap.put("childNodes", childNodes)
+      programInfoMap.put("parentCollections", new java.util.ArrayList[String]())
+
+      programInfoMap
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Error fetching program data for programId=$programId", ex)
+        new java.util.HashMap[String, AnyRef]()
+    }
+  }
+
+  /**
+   * Extract identifiers from the immediate children array of the program
+   * Only fetches identifiers from the first level children, not nested children
+   */
+  private def extractLeafNodesFromHierarchy(content: Map[String, AnyRef]): java.util.List[String] = {
+    import scala.collection.JavaConverters._
+    val leafNodes = new java.util.ArrayList[String]()
+
+    // Get the children array from the content
+    val children = content.get("children") match {
+      case Some(c: java.util.List[_]) => c.asScala.toList
+      case Some(c: List[_]) => c
+      case _ => List.empty
+    }
+
+    // Extract identifier from each child in the children array
+    children.foreach {
+      case childMap: Map[_, _] =>
+        val child = childMap.asInstanceOf[Map[String, AnyRef]]
+        val identifier = child.getOrElse("identifier", "").asInstanceOf[String]
+        if (identifier.nonEmpty) {
+          leafNodes.add(identifier)
+          logger.debug(s"Found child identifier: $identifier")
+        }
+      case childJavaMap: java.util.Map[_, _] =>
+        val child = childJavaMap.asInstanceOf[java.util.Map[String, AnyRef]].asScala.toMap
+        val identifier = child.getOrElse("identifier", "").asInstanceOf[String]
+        if (identifier.nonEmpty) {
+          leafNodes.add(identifier)
+          logger.debug(s"Found child identifier: $identifier")
+        }
+      case _ => // Skip unexpected types
+    }
+
+    logger.info(s"Extracted ${leafNodes.size()} identifiers from children array: ${leafNodes.asScala.mkString(", ")}")
+    leafNodes
+  }
+
   // Add new method for extCourses
   private def processExtCourses(event: Event, metrics: Metrics): Unit = {
     val userId = event.userId
@@ -638,7 +762,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         return
       }
 
-      val programMetadata: java.util.Map[String, AnyRef] = getCourseInfo(programId)(metrics, config, cache, httpUtil)
+      val programMetadata: java.util.Map[String, AnyRef] = getProgramHierarchy(programId)(metrics, config, httpUtil)
 
       // Extract program name from metadata
       val programName = Option(programMetadata.get("name")).map(_.toString).getOrElse(programId)
@@ -740,7 +864,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         isEligible = true
         logger.info(s"badgeEarningDateEnabled=false for programId=$programId, user is eligible")
       } else {
-        // If badgeEarningDateEnabled is true, check badgeEarningDateTime > currentTime
         val badgeEarningDateTime: Long = Option(badgeDetailsObj.get(config.badgeEarningDateTimeKey))
           .map(value => parseBadgeEarningDateTime(value))
           .getOrElse(0L)
