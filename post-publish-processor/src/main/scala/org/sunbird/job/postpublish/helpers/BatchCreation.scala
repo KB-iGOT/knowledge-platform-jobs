@@ -154,8 +154,8 @@ trait BatchCreation {
       certTemplateAddPath = config.batchAddCertTemplateAPIPathForEvent
       reqIdKey = "eventId"
       // Check config-based resourceType → certTemplate mapping (overrides default)
-      val resourceType = Option(eData.get(config.resourseType)).collect { case s: String => s }.getOrElse("")
-      Option(config.resourceTypeCertTemplateMap.get(resourceType)).filter(_.nonEmpty).foreach { mappedTemplateId =>
+      val resourceType = Option(eData.get(config.resourseType)).collect { case s: String => s }.getOrElse("").trim
+      config.resourceTypeCertTemplateMap.asScala.get(resourceType).filter(_.nonEmpty).foreach { mappedTemplateId =>
         certTemplateId = mappedTemplateId
         logger.info(s"Using resourceType-specific cert template: $certTemplateId for resourceType: $resourceType")
       }
