@@ -355,7 +355,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       }
       logger.info(s"Fetched badgeDetails_v1 from content read API for programId=$programId")
       // Step 2: Fetch children from hierarchy API
-      val hierarchyUrl = s"${config.contentHierarchyURL}${programId}?hierarchyType=detail"
+      val hierarchyUrl = s"${config.contentHierarchyURL}${programId}?edit=mode"
       logger.info(s"Fetching program hierarchy from: $hierarchyUrl")
 
       val hierarchyResponse = httpUtil.get(hierarchyUrl, config.defaultHeaders)
