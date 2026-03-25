@@ -307,7 +307,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
   /**
    * Fetch program hierarchy with children using hierarchy API
-   * This extracts all leaf node identifiers from the program hierarchy
+   * This extracts all children identifiers from the program hierarchy
    */
   def getProgramHierarchy(programId: String)(
     metrics: Metrics,
