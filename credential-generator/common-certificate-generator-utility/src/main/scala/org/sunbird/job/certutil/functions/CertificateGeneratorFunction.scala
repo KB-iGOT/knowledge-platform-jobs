@@ -512,6 +512,9 @@ class CertificateGeneratorFunction(config: CertificateGeneratorConfig, httpUtil:
           val audit = ScalaJsonUtil.serialize(certificateAuditEvent)
           context.output(config.auditEventOutputTag, audit)
           logger.info("pushAuditEvent: certificate audit event success {}", audit)
+          val badgeAwardEvent = buildBadgeAwardEvent(certMetaData.userId, certMetaData.courseId, "")
+          context.output(config.userBadgeAwardOutputTag, badgeAwardEvent)
+          logger.info("pushed Badge Award Event successfully {}", badgeAwardEvent)
 
           if (config.enableUserNotification) {
             context.output(config.notifierOutputTag, NotificationMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId,
