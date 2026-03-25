@@ -691,8 +691,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
              UPDATE ${config.coursesdb}.${config.enrolmentTable}
              SET issued_badges = ?
              WHERE userid='$userId'
-             AND courseid='$courseId'
-             AND batchid='$batchId';
+             AND courseid='$courseId';
            """
 
         val preparedStmt = cassandraUtil.session.prepare(updateQuery)
@@ -974,8 +973,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
            UPDATE ${config.coursesdb}.${config.enrolmentTable}
            SET issued_badges = ?
            WHERE userid='$userId'
-           AND courseid='$programId'
-           AND batchid='$batchId';
+           AND courseid='$programId';
          """
 
       val preparedStmt = cassandraUtil.session.prepare(updateEnrolmentQuery)
