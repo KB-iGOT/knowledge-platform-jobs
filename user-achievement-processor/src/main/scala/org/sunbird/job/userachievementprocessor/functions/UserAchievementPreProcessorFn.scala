@@ -29,7 +29,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     super.open(parameters)
     cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
     val redisConnect = new RedisConnect(config)
-    cache = new DataCache(config, redisConnect, config.collectionCacheStore, List())
+    cache = new DataCache(config, redisConnect, config.badgeCountCacheStore, List())
     cache.init()
     dataCache = new DataCache(config, redisConnect, config.badgeCacheStore, List())
     dataCache.init()
@@ -1065,7 +1065,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
    * Delete badge count cache from Redis
    * This is called after a badge is awarded to invalidate the cached badge count
    */
-  private def deleteBadgeCountCache(userId: String): Unit = {
+  private def updateBadgeCountCache(userId: String): Unit = {
     try {
       val redisKey = s"user:badgeCount_$userId"
 
