@@ -1007,7 +1007,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       logger.info(s"Successfully awarded badge for userId=$userId, programId=$programId, badgeId=$badgeId")
 
       // Delete badge count cache from Redis
-      deleteBadgeCountCache(userId)
+      updateBadgeCountCache(userId)
 
       // Push recent badge activity to Redis
       if (badgeTitle.nonEmpty) {
@@ -1069,13 +1069,27 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     try {
       val redisKey = s"user:badgeCount_$userId"
 
-      // Use DataCache to delete from Redis (index 0)
-      cache.delWithRetry(redisKey)
+      // Query badge count from user_badge_lookup table
+      val badgeCountQuery =
+        s"""
+           SELECT COUNT(*) as badge_count
+           FROM ${config.coursesdb}.${config.badgeLookUpTable}
+           WHERE userid='$userId';
+         """
 
-      logger.info(s"Deleted badge count cache from Redis (index 0) for userId=$userId, key=$redisKey")
+      val badgeCountRows = cassandraUtil.find(badgeCountQuery)
+
+      if (badgeCountRows != null && !badgeCountRows.isEmpty) {
+        val badgeCount = badgeCountRows.get(0).getLong("badge_count")
+        cache.set(redisKey, badgeCount.toString)
+        logger.info(s"Updated badge count cache in Redis (index 2) for userId=$userId, key=$redisKey, count=$badgeCount")
+      } else {
+        cache.set(redisKey, "0")
+        logger.info(s"Updated badge count cache in Redis (index 2) for userId=$userId, key=$redisKey, count=0")
+      }
     } catch {
       case ex: Exception =>
-        logger.error(s"Error deleting badge count cache from Redis for userId=$userId", ex)
+        logger.error(s"Error updating badge count cache from Redis for userId=$userId", ex)
     }
   }
 
@@ -1262,7 +1276,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         logger.info(s"Inserted badge into lookup table: userId=$userId, courseId=$courseId, badgeId=$badgeId")
 
         // Delete badge count cache from Redis
-        deleteBadgeCountCache(userId)
+        updateBadgeCountCache(userId)
 
         // Push recent badge activity to Redis
         if (badgeTitle.nonEmpty) {
