@@ -316,7 +316,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
   ): java.util.Map[String, AnyRef] = {
     try {
       // Step 1: Fetch badgeDetails_v1 from content read API
-      val readUrl = s"${config.contentReadURL}${programId}?fields=identifier,name,badgeDetails_v1,primaryCategory"
+      val readUrl = config.contentReadURL + "/" + programId + "?fields=identifier,name,badgeDetails_v1,primaryCategory"
       logger.info(s"Fetching program badgeDetails from content read API: $readUrl")
 
       val readResponse = httpUtil.get(readUrl, config.defaultHeaders)
