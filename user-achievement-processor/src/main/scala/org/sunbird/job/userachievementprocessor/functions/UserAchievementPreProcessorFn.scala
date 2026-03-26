@@ -722,7 +722,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         logger.info(s"Inserted badge into lookup table: userId=$userId, courseId=$courseId, badgeId=$badgeId")
 
         // Delete badge count cache from Redis
-        deleteBadgeCountCache(userId)
+        updateBadgeCountCache(userId)
 
         // Push recent badge activity to Redis
         if (badgeTitle.nonEmpty) {
