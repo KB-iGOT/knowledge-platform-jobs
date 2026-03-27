@@ -726,6 +726,7 @@ program-cert-pre-processor:
       output.topic = {{ env_name }}.issue.certificate.request
       output.failed.topic = {{ env_name }}.issue.certificate.failed
       groupId = {{ env_name }}-program-cert-pre-processor-group
+      badge.output.topic = {{ env_name }}.user.badge.award.request
     }
     task {
       restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
