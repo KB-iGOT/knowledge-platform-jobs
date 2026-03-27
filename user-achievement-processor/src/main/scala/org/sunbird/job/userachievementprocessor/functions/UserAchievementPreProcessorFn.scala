@@ -552,7 +552,20 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
                                              ): Unit = {
     try {
       import scala.collection.JavaConverters._
+      val badgeCheckQuery =
+        s"""
+           SELECT badgeid
+           FROM ${config.coursesdb}.${config.badgeLookUpTable}
+           WHERE userid='$userId'
+           AND courseid='$courseId';
+         """
 
+      val existingBadgeRows = cassandraUtil.find(badgeCheckQuery)
+      if (existingBadgeRows != null && !existingBadgeRows.isEmpty) {
+        logger.debug(s"Badge already awarded for userId=$userId, programId=$courseId (found in lookup table). Skipping badge processing.")
+        metrics.incCounter(config.skippedEventCount)
+        return
+      }
       // Check if badgeDetails_v1 exists in course metadata
       val badgeDetailsV1Raw = courseMetadata.get(config.badgeDetailsV1Key)
       if (badgeDetailsV1Raw == null) {
@@ -730,7 +743,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         if (badgeTitle.nonEmpty) {
           pushRecentBadgeActivity(userId, badgeId, badgeTitle)
         }
-        logger.info("processCourseLevelBadgeAwarding before sendBadgeAwardNotification: userId=" + userId + ", badgeTitle=" + badgeTitle + ", courseName=" + courseName)
         // Send notification for badge award
         sendBadgeAwardNotification(userId, badgeTitle, courseName)
 
@@ -759,28 +771,9 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
       val existingBadgeRows = cassandraUtil.find(badgeCheckQuery)
       if (existingBadgeRows != null && !existingBadgeRows.isEmpty) {
-        logger.info(s"Badge already awarded for userId=$userId, programId=$programId (found in lookup table). Skipping badge processing.")
+        logger.debug(s"Badge already awarded for userId=$userId, programId=$programId (found in lookup table). Skipping badge processing.")
         metrics.incCounter(config.skippedEventCount)
         return
-      }
-
-      val enrolmentCheckQuery =
-        s"""
-           SELECT issued_badges
-           FROM ${config.coursesdb}.${config.enrolmentTable}
-           WHERE userid='$userId'
-           AND courseid='$programId';
-         """
-
-      val enrolmentRows = cassandraUtil.find(enrolmentCheckQuery)
-      if (enrolmentRows != null && !enrolmentRows.isEmpty) {
-        val row = enrolmentRows.get(0)
-        val issuedBadges = row.getList("issued_badges", classOf[java.util.Map[String, String]])
-        if (issuedBadges != null && !issuedBadges.isEmpty) {
-          logger.info(s"Badge already awarded for userId=$userId, programId=$programId (found in enrolment table). Skipping badge processing.")
-          metrics.incCounter(config.skippedEventCount)
-          return
-        }
       }
 
       val programMetadata: java.util.Map[String, AnyRef] = getProgramHierarchy(programId)(metrics, config, httpUtil)
@@ -1033,7 +1026,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       if (badgeTitle.nonEmpty) {
         pushRecentBadgeActivity(userId, badgeId, badgeTitle)
       }
-      logger.info("awardProgramBadge - before sending notification for userId=$userId, badgeTitle=$badgeTitle, programName=$programName")
       // Send notification for badge award
       sendBadgeAwardNotification(userId, badgeTitle, programName)
 
@@ -1302,7 +1294,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         if (badgeTitle.nonEmpty) {
           pushRecentBadgeActivity(userId, badgeId, badgeTitle)
         }
-        logger.info("processBadgeAwardingForExtCourses - before sending notification")
         // Send notification for badge award
         sendBadgeAwardNotification(userId, badgeTitle, courseName)
 
@@ -1336,7 +1327,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
       val existingBadgeRows = cassandraUtil.find(badgeCheckQuery)
       if (existingBadgeRows != null && !existingBadgeRows.isEmpty) {
-        logger.info(s"Badge already awarded for userId=$userId, programId=$programId. Skipping badge processing (duplicate guard).")
+        logger.debug(s"Badge already awarded for userId=$userId, programId=$programId. Skipping badge processing (duplicate guard).")
         metrics.incCounter(config.skippedEventCount)
         return
       }

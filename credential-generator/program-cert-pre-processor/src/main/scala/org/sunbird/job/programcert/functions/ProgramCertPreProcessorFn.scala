@@ -311,13 +311,10 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
   def checkAndEmitBadgeEvent(userId: String, batchId: String, programId: String, progressCount: Int,
                             context: KeyedProcessFunction[String, Event, String]#Context)(implicit metrics: Metrics): Unit = {
     try {
-      // Fetch program metadata to check badgeDetails_v1
       val programMetadata = getCourseInfo(programId)(metrics, config, cache, httpUtil)
 
-      // Check if badgeDetails_v1 exists
       val badgeDetailsV1Raw = programMetadata.get(config.badgeDetailsV1)
       if (badgeDetailsV1Raw == null) {
-        logger.info(s"No badgeDetails_v1 found for programId=$programId, skipping badge event emission")
         return
       }
 
@@ -333,7 +330,6 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
       }
 
       if (badgeDetailsList.isEmpty) {
-        logger.info(s"badgeDetails_v1 is empty for programId=$programId, skipping badge event emission")
         return
       }
 
@@ -349,7 +345,6 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
       // Check if criteria is partialRandomCompletion
       val criteria = Option(badgeDetailsObj.get(config.criteria)).map(_.toString).getOrElse("")
       if (!criteria.equalsIgnoreCase(config.partialRandomCompletion)) {
-        logger.info(s"Badge criteria is not 'partialRandomCompletion' for programId=$programId, skipping badge event emission")
         return
       }
 
@@ -373,11 +368,6 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
         }
         .getOrElse(0)
 
-//      if (requiredCompletionCount == 0) {
-//        logger.warn(s"requiredCompletionCount is 0 or invalid for programId=$programId, skipping badge event emission")
-//        return
-//      }
-
       // Check if progressCount >= requiredCompletionCount
       if (progressCount >= requiredCompletionCount) {
         logger.info(s"Badge criteria met: progressCount=$progressCount >= requiredCompletionCount=$requiredCompletionCount for programId=$programId")
@@ -393,7 +383,6 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
         if (!badgeEarningDateEnabled) {
           // If badgeEarningDateEnabled is false, emit badge event
           shouldEmitBadgeEvent = true
-          logger.info(s"badgeEarningDateEnabled=false for programId=$programId, emitting badge event")
         } else {
           // If badgeEarningDateEnabled is true, check badgeEarningDateTime > currentTime
           val badgeEarningDateTime: Long = Option(badgeDetailsObj.get(config.badgeEarningDateTime))
@@ -427,9 +416,8 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
 
           if (badgeEarningDateTime > currentTime) {
             shouldEmitBadgeEvent = true
-            logger.info(s"badgeEarningDateTime ($badgeEarningDateTime) > currentTime ($currentTime) for programId=$programId, emitting badge event")
           } else {
-            logger.info(s"badgeEarningDateTime ($badgeEarningDateTime) <= currentTime ($currentTime) for programId=$programId, not eligible for badge")
+            logger.debug(s"badgeEarningDateTime ($badgeEarningDateTime) <= currentTime ($currentTime) for programId=$programId, not eligible for badge")
           }
         }
 
