@@ -14,7 +14,7 @@ import org.sunbird.job.cache.{DataCache, RedisConnect}
 import org.sunbird.job.exception.InvalidEventException
 import org.sunbird.job.programcert.domain.Event
 import org.sunbird.job.programcert.task.ProgramCertPreProcessorConfig
-import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil}
+import org.sunbird.job.util.{CassandraUtil, HttpUtil, ScalaJsonUtil}
 import org.sunbird.job.{BaseProcessKeyedFunction, Metrics}
 
 import java.util.{Date, UUID, Map => JMap}
@@ -157,6 +157,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
               val programContentStatus = Option(programEnrollmentRow.get.getMap(
                 config.contentStatus, TypeToken.of(classOf[String]), TypeToken.of(classOf[Integer]))).head
               var progressCount: Integer = Option(programEnrollmentRow.get.getInt(config.progress)).head
+              logger.info("The progressCount from DB before update:" + progressCount)
               val keyForLeafNodesForProgram = s"$courseParentId:$courseParentId:${config.leafNodesKey}"
               val leafNodesForProgram = readFromRelationCache(keyForLeafNodesForProgram, metrics).distinct
 
@@ -181,6 +182,9 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
                 isProgramCertificateToBeGenerated = false
               }
               updateEnrolment(event.userId, batchId, courseParentId, programContentStatus, status, progressCount, programCompletedOn)(metrics)
+
+              // After updating enrolment, check if badge should be awarded
+              checkAndEmitBadgeEvent(event.userId, batchId, courseParentId, progressCount, context)(metrics)
             }
 
             if (isProgramCertificateToBeGenerated) {
@@ -298,6 +302,166 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
     logger.info("o/p event:  " + event)
     context.output(config.generateCertificateOutputTag, event)
     metrics.incCounter(config.programCertIssueEventsCount)
+  }
+
+  /**
+   * Check if badge should be awarded and emit badge event
+   * This checks program metadata for badgeDetails_v1 with partialRandomCompletion criteria
+   */
+  def checkAndEmitBadgeEvent(userId: String, batchId: String, programId: String, progressCount: Int,
+                            context: KeyedProcessFunction[String, Event, String]#Context)(implicit metrics: Metrics): Unit = {
+    try {
+      // Fetch program metadata to check badgeDetails_v1
+      val programMetadata = getCourseInfo(programId)(metrics, config, cache, httpUtil)
+
+      // Check if badgeDetails_v1 exists
+      val badgeDetailsV1Raw = programMetadata.get(config.badgeDetailsV1)
+      if (badgeDetailsV1Raw == null) {
+        logger.info(s"No badgeDetails_v1 found for programId=$programId, skipping badge event emission")
+        return
+      }
+
+      import scala.collection.JavaConverters._
+
+      // badgeDetails_v1 is an array/list of badge objects
+      val badgeDetailsList = badgeDetailsV1Raw match {
+        case jl: java.util.List[_] => jl.asScala.toList
+        case sl: Seq[_] => sl.toList
+        case _ =>
+          logger.warn(s"badgeDetails_v1 is not a list for programId=$programId")
+          return
+      }
+
+      if (badgeDetailsList.isEmpty) {
+        logger.info(s"badgeDetails_v1 is empty for programId=$programId, skipping badge event emission")
+        return
+      }
+
+      // Get the first badge details object
+      val badgeDetailsObj = badgeDetailsList.head match {
+        case jm: java.util.Map[_, _] => jm.asInstanceOf[java.util.Map[String, AnyRef]]
+        case sm: Map[_, _] => new java.util.HashMap[String, AnyRef](sm.asInstanceOf[Map[String, AnyRef]].asJava)
+        case _ =>
+          logger.warn(s"Unexpected badge details type for programId=$programId")
+          return
+      }
+
+      // Check if criteria is partialRandomCompletion
+      val criteria = Option(badgeDetailsObj.get(config.criteria)).map(_.toString).getOrElse("")
+      if (!criteria.equalsIgnoreCase(config.partialRandomCompletion)) {
+        logger.info(s"Badge criteria is not 'partialRandomCompletion' for programId=$programId, skipping badge event emission")
+        return
+      }
+
+      // Get required course completions
+      val requiredCompletionCount = Option(badgeDetailsObj.get(config.requiredCourseCompletions))
+        .map { value =>
+          try {
+            value match {
+              case d: java.lang.Double => d.toInt
+              case f: java.lang.Float => f.toInt
+              case i: java.lang.Integer => i.intValue()
+              case l: java.lang.Long => l.toInt
+              case s: String => s.toDouble.toInt
+              case _ => value.toString.toDouble.toInt
+            }
+          } catch {
+            case ex: Exception =>
+              logger.error(s"Failed to parse requiredCompletionCount: $value", ex)
+              0
+          }
+        }
+        .getOrElse(0)
+
+//      if (requiredCompletionCount == 0) {
+//        logger.warn(s"requiredCompletionCount is 0 or invalid for programId=$programId, skipping badge event emission")
+//        return
+//      }
+
+      // Check if progressCount >= requiredCompletionCount
+      if (progressCount >= requiredCompletionCount) {
+        logger.info(s"Badge criteria met: progressCount=$progressCount >= requiredCompletionCount=$requiredCompletionCount for programId=$programId")
+
+        // Check badgeEarningDateEnabled
+        val badgeEarningDateEnabled = Option(badgeDetailsObj.get(config.badgeEarningDateEnabled))
+          .map(_.toString.toBoolean)
+          .getOrElse(false)
+
+        val currentTime = System.currentTimeMillis()
+        var shouldEmitBadgeEvent = false
+
+        if (!badgeEarningDateEnabled) {
+          // If badgeEarningDateEnabled is false, emit badge event
+          shouldEmitBadgeEvent = true
+          logger.info(s"badgeEarningDateEnabled=false for programId=$programId, emitting badge event")
+        } else {
+          // If badgeEarningDateEnabled is true, check badgeEarningDateTime > currentTime
+          val badgeEarningDateTime: Long = Option(badgeDetailsObj.get(config.badgeEarningDateTime))
+            .map { value =>
+              try {
+                value match {
+                  case d: java.lang.Double => d.toLong
+                  case f: java.lang.Float => f.toLong
+                  case i: java.lang.Integer => i.toLong
+                  case l: java.lang.Long => l.longValue()
+                  case s: String =>
+                    try {
+                      s.toDouble.toLong
+                    } catch {
+                      case _: NumberFormatException => s.toLong
+                    }
+                  case _ => value.toString.toDouble.toLong
+                }
+              } catch {
+                case ex: Exception =>
+                  logger.error(s"Failed to parse badgeEarningDateTime: $value", ex)
+                  0L
+              }
+            }
+            .getOrElse(0L)
+
+          if (badgeEarningDateTime == 0L) {
+            logger.warn(s"badgeEarningDateTime not found or invalid for programId=$programId, skipping badge event emission")
+            return
+          }
+
+          if (badgeEarningDateTime > currentTime) {
+            shouldEmitBadgeEvent = true
+            logger.info(s"badgeEarningDateTime ($badgeEarningDateTime) > currentTime ($currentTime) for programId=$programId, emitting badge event")
+          } else {
+            logger.info(s"badgeEarningDateTime ($badgeEarningDateTime) <= currentTime ($currentTime) for programId=$programId, not eligible for badge")
+          }
+        }
+
+        // Emit badge event if eligible
+        if (shouldEmitBadgeEvent) {
+          createBadgeEvent(programId, userId, batchId, context)(metrics)
+        }
+      } else {
+        logger.info(s"Badge criteria not met: progressCount=$progressCount < requiredCompletionCount=$requiredCompletionCount for programId=$programId")
+      }
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Error checking and emitting badge event for userId=$userId, programId=$programId", ex)
+    }
+  }
+
+  /**
+   * Create and emit badge event for program
+   */
+  private def createBadgeEvent(programId: String, userId: String, batchId: String,
+                                context: KeyedProcessFunction[String, Event, String]#Context)(implicit metrics: Metrics): Unit = {
+    val edata = Map[String, AnyRef](
+      "userId" -> userId,
+      "action" -> "award-badge",
+      "batchId" -> batchId,
+      "contentId" -> programId,
+      "contextType" -> config.programEnrolmentContextType
+    )
+    val event = ScalaJsonUtil.serialize(Map[String, AnyRef]("edata" -> edata))
+    logger.info("Badge event created: " + event)
+    context.output(config.generateBadgeOutputTag, event)
+    logger.info(s"Badge event emitted for userId=$userId, programId=$programId, batchId=$batchId")
   }
 
   def getAllEnrolments(userId: String)(implicit metrics: Metrics): java.util.List[Row] = {

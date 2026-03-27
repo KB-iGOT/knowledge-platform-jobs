@@ -54,6 +54,7 @@ class UserBadgeAwardingConfig(override val config: Config) extends BaseJobConfig
   val extContentUrl: String = config.getString("extcontent.read.url")
   val extCoursesContextType: String = config.getString("extcontent.extCourses")
   val iGOTCoursesContextType: String = config.getString("extcontent.iGOTCourses")
+  val curatedProgramContextType: String = config.getString("extcontent.curatedProgram")
   val extContentResponseKey: String = config.getString("extcontent.responseKey")
   val extContentUserExternalEnrolmentsIssuedCertificatesKey: String = config.getString("extcontent.issuedCertificatesKey")
   val lastIssuedOnKey: String = config.getString("extcontent.lastIssuedOnKey")
