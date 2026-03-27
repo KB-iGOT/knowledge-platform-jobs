@@ -85,6 +85,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
             var isFailedEvent: Boolean = false;
             var lastCourseCompleteOn: Date = null
             var programCompletedOn: Date = null
+            var completedCoursesCount: Int = 0
             for (courseId <- programChildrenCourses) {
               val courseMetadata: java.util.Map[String, AnyRef] = getCourseInfo(courseId)(metrics, config, cache, httpUtil)
               val primaryCategory = courseMetadata.get(config.primaryCategory).asInstanceOf[String]
@@ -97,6 +98,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
                 logger.info("Is Certificate Available for courseId: " + courseId + " userId:" + userId + " :" + isCertificateIssued)
                 var courseCompletedOn: Date = null;
                 if (isCertificateIssued) {
+                  completedCoursesCount += 1
                   courseCompletedOn = courseEnrollmentRow.get.getTimestamp("completedon")
                   if (lastCourseCompleteOn == null) {
                     lastCourseCompleteOn = courseCompletedOn
@@ -182,9 +184,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
                 isProgramCertificateToBeGenerated = false
               }
               updateEnrolment(event.userId, batchId, courseParentId, programContentStatus, status, progressCount, programCompletedOn)(metrics)
-
-              // After updating enrolment, check if badge should be awarded
-              checkAndEmitBadgeEvent(event.userId, batchId, courseParentId, progressCount, context)(metrics)
+              checkAndEmitBadgeEvent(event.userId, batchId, courseParentId, completedCoursesCount, context)(metrics)
             }
 
             if (isProgramCertificateToBeGenerated) {
