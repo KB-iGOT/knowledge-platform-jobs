@@ -770,8 +770,11 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       )
       // Ensure userCompetencyTable is fully qualified with DB name from config
       val dbName = config.dbName // assuming config.dbName is set to "sunbird"
+      //TODO remove the logger statements post testing.
+      logger.info(s"dbName or keyspace: keyspace=$dbName")
       val userCompetencyTableFull = if (userCompetencyTable.contains(".")) userCompetencyTable else s"$dbName.$userCompetencyTable"
-
+      //TODO remove the logger statements post testing.
+      logger.info(s"dbName or fullTable: fulltable=$userCompetencyTableFull")
       // Build SELECT query using QueryBuilder
       val selectQueryBuilt = QueryBuilder.select("competency_details")
         .from(userCompetencyTableFull)
@@ -779,6 +782,8 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
         .and(QueryBuilder.eq("competency_area_id", areaId))
         .and(QueryBuilder.eq("competency_theme_id", themeId))
         .and(QueryBuilder.eq("competency_subtheme_id", subthemeId))
+      //TODO remove the logger statements post testing.
+      logger.info(s"dbName or competencyQuery: competencyQuery=$selectQueryBuilt")
       val existingRows = cassandraUtil.find(selectQueryBuilt.toString)
       var competencyDetails: Map[String, List[Map[String, String]]] = Map()
       if (existingRows != null && !existingRows.isEmpty) {
