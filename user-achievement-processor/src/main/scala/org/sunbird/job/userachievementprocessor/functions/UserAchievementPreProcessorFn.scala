@@ -730,7 +730,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         if (badgeTitle.nonEmpty) {
           pushRecentBadgeActivity(userId, badgeId, badgeTitle)
         }
-
+        logger.info("processCourseLevelBadgeAwarding before sendBadgeAwardNotification: userId=" + userId + ", badgeTitle=" + badgeTitle + ", courseName=" + courseName)
         // Send notification for badge award
         sendBadgeAwardNotification(userId, badgeTitle, courseName)
 
@@ -1033,7 +1033,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       if (badgeTitle.nonEmpty) {
         pushRecentBadgeActivity(userId, badgeId, badgeTitle)
       }
-
+      logger.info("awardProgramBadge - before sending notification for userId=$userId, badgeTitle=$badgeTitle, programName=$programName")
       // Send notification for badge award
       sendBadgeAwardNotification(userId, badgeTitle, programName)
 
@@ -1302,7 +1302,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         if (badgeTitle.nonEmpty) {
           pushRecentBadgeActivity(userId, badgeId, badgeTitle)
         }
-
+        logger.info("processBadgeAwardingForExtCourses - before sending notification")
         // Send notification for badge award
         sendBadgeAwardNotification(userId, badgeTitle, courseName)
 
