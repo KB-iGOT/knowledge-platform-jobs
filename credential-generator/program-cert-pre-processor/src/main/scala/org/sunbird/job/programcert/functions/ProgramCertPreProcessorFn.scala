@@ -14,7 +14,7 @@ import org.sunbird.job.cache.{DataCache, RedisConnect}
 import org.sunbird.job.exception.InvalidEventException
 import org.sunbird.job.programcert.domain.Event
 import org.sunbird.job.programcert.task.ProgramCertPreProcessorConfig
-import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil}
+import org.sunbird.job.util.{CassandraUtil, HttpUtil, ScalaJsonUtil}
 import org.sunbird.job.{BaseProcessKeyedFunction, Metrics}
 
 import java.util.{Date, UUID, Map => JMap}
@@ -85,6 +85,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
             var isFailedEvent: Boolean = false;
             var lastCourseCompleteOn: Date = null
             var programCompletedOn: Date = null
+            var completedCoursesCount: Int = 0
             for (courseId <- programChildrenCourses) {
               val courseMetadata: java.util.Map[String, AnyRef] = getCourseInfo(courseId)(metrics, config, cache, httpUtil)
               val primaryCategory = courseMetadata.get(config.primaryCategory).asInstanceOf[String]
@@ -97,6 +98,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
                 logger.info("Is Certificate Available for courseId: " + courseId + " userId:" + userId + " :" + isCertificateIssued)
                 var courseCompletedOn: Date = null;
                 if (isCertificateIssued) {
+                  completedCoursesCount += 1
                   courseCompletedOn = courseEnrollmentRow.get.getTimestamp("completedon")
                   if (lastCourseCompleteOn == null) {
                     lastCourseCompleteOn = courseCompletedOn
@@ -157,6 +159,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
               val programContentStatus = Option(programEnrollmentRow.get.getMap(
                 config.contentStatus, TypeToken.of(classOf[String]), TypeToken.of(classOf[Integer]))).head
               var progressCount: Integer = Option(programEnrollmentRow.get.getInt(config.progress)).head
+              logger.info("The progressCount from DB before update:" + progressCount)
               val keyForLeafNodesForProgram = s"$courseParentId:$courseParentId:${config.leafNodesKey}"
               val leafNodesForProgram = readFromRelationCache(keyForLeafNodesForProgram, metrics).distinct
 
@@ -181,6 +184,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
                 isProgramCertificateToBeGenerated = false
               }
               updateEnrolment(event.userId, batchId, courseParentId, programContentStatus, status, progressCount, programCompletedOn)(metrics)
+              checkAndEmitBadgeEvent(event.userId, batchId, courseParentId, completedCoursesCount, context)(metrics)
             }
 
             if (isProgramCertificateToBeGenerated) {
@@ -300,6 +304,154 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
     metrics.incCounter(config.programCertIssueEventsCount)
   }
 
+  /**
+   * Check if badge should be awarded and emit badge event
+   * This checks program metadata for badgeDetails_v1 with partialRandomCompletion criteria
+   */
+  def checkAndEmitBadgeEvent(userId: String, batchId: String, programId: String, progressCount: Int,
+                            context: KeyedProcessFunction[String, Event, String]#Context)(implicit metrics: Metrics): Unit = {
+    try {
+      val programMetadata = getCourseInfo(programId)(metrics, config, cache, httpUtil)
+
+      val badgeDetailsV1Raw = programMetadata.get(config.badgeDetailsV1)
+      if (badgeDetailsV1Raw == null) {
+        return
+      }
+
+      import scala.collection.JavaConverters._
+
+      // badgeDetails_v1 is an array/list of badge objects
+      val badgeDetailsList = badgeDetailsV1Raw match {
+        case jl: java.util.List[_] => jl.asScala.toList
+        case sl: Seq[_] => sl.toList
+        case _ =>
+          logger.warn(s"badgeDetails_v1 is not a list for programId=$programId")
+          return
+      }
+
+      if (badgeDetailsList.isEmpty) {
+        return
+      }
+
+      // Get the first badge details object
+      val badgeDetailsObj = badgeDetailsList.head match {
+        case jm: java.util.Map[_, _] => jm.asInstanceOf[java.util.Map[String, AnyRef]]
+        case sm: Map[_, _] => new java.util.HashMap[String, AnyRef](sm.asInstanceOf[Map[String, AnyRef]].asJava)
+        case _ =>
+          logger.warn(s"Unexpected badge details type for programId=$programId")
+          return
+      }
+
+      // Check if criteria is partialRandomCompletion
+      val criteria = Option(badgeDetailsObj.get(config.criteria)).map(_.toString).getOrElse("")
+      if (!criteria.equalsIgnoreCase(config.partialRandomCompletion)) {
+        return
+      }
+
+      // Get required course completions
+      val requiredCompletionCount = Option(badgeDetailsObj.get(config.requiredCourseCompletions))
+        .map { value =>
+          try {
+            value match {
+              case d: java.lang.Double => d.toInt
+              case f: java.lang.Float => f.toInt
+              case i: java.lang.Integer => i.intValue()
+              case l: java.lang.Long => l.toInt
+              case s: String => s.toDouble.toInt
+              case _ => value.toString.toDouble.toInt
+            }
+          } catch {
+            case ex: Exception =>
+              logger.error(s"Failed to parse requiredCompletionCount: $value", ex)
+              0
+          }
+        }
+        .getOrElse(0)
+
+      // Check if progressCount >= requiredCompletionCount
+      if (progressCount >= requiredCompletionCount) {
+        logger.info(s"Badge criteria met: progressCount=$progressCount >= requiredCompletionCount=$requiredCompletionCount for programId=$programId")
+
+        // Check badgeEarningDateEnabled
+        val badgeEarningDateEnabled = Option(badgeDetailsObj.get(config.badgeEarningDateEnabled))
+          .map(_.toString.toBoolean)
+          .getOrElse(false)
+
+        val currentTime = System.currentTimeMillis()
+        var shouldEmitBadgeEvent = false
+
+        if (!badgeEarningDateEnabled) {
+          // If badgeEarningDateEnabled is false, emit badge event
+          shouldEmitBadgeEvent = true
+        } else {
+          // If badgeEarningDateEnabled is true, check badgeEarningDateTime > currentTime
+          val badgeEarningDateTime: Long = Option(badgeDetailsObj.get(config.badgeEarningDateTime))
+            .map { value =>
+              try {
+                value match {
+                  case d: java.lang.Double => d.toLong
+                  case f: java.lang.Float => f.toLong
+                  case i: java.lang.Integer => i.toLong
+                  case l: java.lang.Long => l.longValue()
+                  case s: String =>
+                    try {
+                      s.toDouble.toLong
+                    } catch {
+                      case _: NumberFormatException => s.toLong
+                    }
+                  case _ => value.toString.toDouble.toLong
+                }
+              } catch {
+                case ex: Exception =>
+                  logger.error(s"Failed to parse badgeEarningDateTime: $value", ex)
+                  0L
+              }
+            }
+            .getOrElse(0L)
+
+          if (badgeEarningDateTime == 0L) {
+            logger.warn(s"badgeEarningDateTime not found or invalid for programId=$programId, skipping badge event emission")
+            return
+          }
+
+          if (badgeEarningDateTime > currentTime) {
+            shouldEmitBadgeEvent = true
+          } else {
+            logger.debug(s"badgeEarningDateTime ($badgeEarningDateTime) <= currentTime ($currentTime) for programId=$programId, not eligible for badge")
+          }
+        }
+
+        // Emit badge event if eligible
+        if (shouldEmitBadgeEvent) {
+          createBadgeEvent(programId, userId, batchId, context)(metrics)
+        }
+      } else {
+        logger.info(s"Badge criteria not met: progressCount=$progressCount < requiredCompletionCount=$requiredCompletionCount for programId=$programId")
+      }
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Error checking and emitting badge event for userId=$userId, programId=$programId", ex)
+    }
+  }
+
+  /**
+   * Create and emit badge event for program
+   */
+  private def createBadgeEvent(programId: String, userId: String, batchId: String,
+                                context: KeyedProcessFunction[String, Event, String]#Context)(implicit metrics: Metrics): Unit = {
+    val edata = Map[String, AnyRef](
+      "userId" -> userId,
+      "action" -> "award-badge",
+      "batchId" -> batchId,
+      "contentId" -> programId,
+      "contextType" -> config.programEnrolmentContextType
+    )
+    val event = ScalaJsonUtil.serialize(Map[String, AnyRef]("edata" -> edata))
+    logger.info("Badge event created: " + event)
+    context.output(config.generateBadgeOutputTag, event)
+    logger.info(s"Badge event emitted for userId=$userId, programId=$programId, batchId=$batchId")
+  }
+
   def getAllEnrolments(userId: String)(implicit metrics: Metrics): java.util.List[Row] = {
     val selectWhere: Select.Where = QueryBuilder.select(config.dbUserId, config.dbCourseId, config.dbBatchId, config.contentStatus, config.progress, config.issuedCertificates, "completedon", "active", config.status, config.langContentStatus)
       .from(config.keyspace, config.userEnrolmentsTable).where()
@@ -339,7 +491,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
     val courseMetadata = cache.getWithRetry(courseId)
     if (null == courseMetadata || courseMetadata.isEmpty) {
       val url =
-        config.contentReadURL + courseId + "?fields=identifier,primaryCategory,leafNodes,language,languageMapV1"
+        config.contentReadURL + courseId + "?fields=identifier,primaryCategory,leafNodes,language,languageMapV1,badgeDetails_v1"
       val response = getAPICall(url, "content")(config, httpUtil, metrics)
       val primaryCategory = StringContext
         .processEscapes(
@@ -350,12 +502,15 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
         .getOrElse(config.leafNodes, List.empty[String]).asInstanceOf[List[String]]
       val language = response
         .getOrElse(config.language, List.empty[String]).asInstanceOf[List[String]]
+      val badgeDetailsV1 = response
+        .getOrElse(config.badgeDetailsV1, new java.util.ArrayList())
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
       courseInfoMap.put("courseId", courseId)
       courseInfoMap.put(config.primaryCategory, primaryCategory)
       courseInfoMap.put(config.leafNodes, leafNodes.asJava)
       courseInfoMap.put(config.language, language.asJava)
+      courseInfoMap.put(config.badgeDetailsV1, badgeDetailsV1)
       courseInfoMap
     } else {
       val primaryCategory = StringContext
@@ -369,12 +524,15 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
         .getOrElse("leafnodes", new java.util.ArrayList()).asInstanceOf[java.util.List[String]]
       val language = courseMetadata
         .getOrElse(config.language, new java.util.ArrayList()).asInstanceOf[java.util.List[String]]
+      val badgeDetailsV1 = courseMetadata
+        .getOrElse("badgedetailsv1", new java.util.ArrayList())
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
       courseInfoMap.put("courseId", courseId)
       courseInfoMap.put(config.primaryCategory, primaryCategory)
       courseInfoMap.put(config.leafNodes, leafNodes)
       courseInfoMap.put(config.language, language)
+      courseInfoMap.put(config.badgeDetailsV1, badgeDetailsV1)
       courseInfoMap
     }
 
