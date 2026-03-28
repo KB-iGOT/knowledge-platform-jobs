@@ -726,6 +726,7 @@ program-cert-pre-processor:
       output.topic = {{ env_name }}.issue.certificate.request
       output.failed.topic = {{ env_name }}.issue.certificate.failed
       groupId = {{ env_name }}-program-cert-pre-processor-group
+      badge.output.topic = {{ env_name }}.user.badge.award.request
     }
     task {
       restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
@@ -899,7 +900,7 @@ event-cert-generator:
     
     enable.suppress.exception = {{ event_cert_generator_enable_suppress_exception | lower }}
     enable.rc.certificate = false
-    specialEventCertificateExceptionEvents = ["Karmayogi Talks", "Karmayogi Saptah", "Rajya Karmayogi Saptah"]
+    specialEventCertificateExceptionEvents = ["Karmayogi Talks", "Karmayogi Saptah", "Rajya Karmayogi Saptah", "Sadhana Saptah", "Samuhik Charcha - NLW 2026"]
 
 
   flink-conf: |+
@@ -997,6 +998,7 @@ karma-points-persist-processor:
       firstEnrolmentQuotaKarmaPoints = 5
       nonAcbpCourseQuota = 4
       eventQuotaKarmaPoints = 10
+      enableCapping = false
     }
     cassandra {
       sunbird.keyspace = "sunbird"
@@ -1395,6 +1397,7 @@ user-achievement-processor:
       issuedOnKey = "issuedOn"
       templateUrlKey = "templateUrl"
       badgeTemplateKey = "badgeTemplate"
+      curatedProgram = "curatedProgram"
     }
 
     notification {
