@@ -712,7 +712,8 @@ collection-cert-pre-processor:
     }
     assessment.metrics.supported.contenttype = ["SelfAssess"]
     allowed.course.category.certificate.processor = ["Course","Moderated Course","Invite-Only Program","Moderated Program","Blended Program","Standalone Assessment","Moderated Assessment","Invite-Only Assessment","External Redirect","Comprehensive Assessment Program","Multilingual Course","Pre Enrolment Assessment"]
-
+    specialEventCertificateName = "NLW_2026"
+  
   flink-conf: |+
     jobmanager.memory.flink.size: {{ flink_job_names['collection-cert-pre-processor'].jobmanager_memory }}
     taskmanager.memory.flink.size: {{ flink_job_names['collection-cert-pre-processor'].taskmanager_memory }}
