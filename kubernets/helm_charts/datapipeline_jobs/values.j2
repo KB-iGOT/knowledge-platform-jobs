@@ -359,6 +359,8 @@ post-publish-processor:
       resourceTypeCertTemplateMap {
         "Sadhana Saptah" = "sadhana_saptah_cert_template"
         "Samuhik Charcha - NLW 2026" = "samuhik_charcha_nlw_2026_cert_template"
+        Webinar = "slwCetrificateTemplateAndaman"
+        Karmayogi Talks = "karmayogiTalksCertTemplate"
       }
     }
     dialcode-cassandra {
@@ -372,12 +374,6 @@ post-publish-processor:
       dial.basePath = "https://{{domain_name}}/dial/"
       content.basePath = "{{ kp_content_service_base_url }}"
       batchCreation.event.categories = ["Karmayogi Saptah", "Karmayogi Talks", "Rajya Karmayogi Saptah", "Webinar", "Samuhik Charcha", "Sadhana Saptah", "Samuhik Charcha - NLW 2026"]
-    }
-    resourceTypeCertTemplateMap {
-      Sadhana Saptah = "sadhana_saptah_cert_template"
-      Samuhik Charcha - NLW 2026 = "samuhik_charcha_nlw_2026_cert_template"
-      Webinar = "slwCetrificateTemplateAndaman"
-      Karmayogi Talks = "karmayogiTalksCertTemplate"
     }
 
   flink-conf: |+
