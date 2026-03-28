@@ -29,7 +29,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     super.open(parameters)
     cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
     val redisConnect = new RedisConnect(config)
-    cache = new DataCache(config, redisConnect, config.collectionCacheStore, List())
+    cache = new DataCache(config, redisConnect, config.badgeCountCacheStore, List())
     cache.init()
     dataCache = new DataCache(config, redisConnect, config.badgeCacheStore, List())
     dataCache.init()
@@ -156,6 +156,8 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         processIGOTCourses(event, metrics)
       } else if (contextType != null && contextType.equalsIgnoreCase(config.extCoursesContextType)) {
         processExtCourses(event, metrics)
+      } else if (contextType != null && contextType.equalsIgnoreCase(config.curatedProgramContextType)) {
+        processProgramEnrolment(event, metrics)
       }
     } catch {
       case ex: Exception =>
@@ -246,7 +248,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         s"Fetching course details from Content Service for Id: ${courseId}"
       )
       val url =
-        config.contentReadURL + "/" + courseId + "?fields=identifier,parentCollections,primaryCategory,childNodes,badgeDetails_v1"
+        config.contentReadURL + "/" + courseId + "?fields=identifier,name,parentCollections,primaryCategory,childNodes,badgeDetails_v1"
       val response = getAPICall(url, "content")(config, httpUtil, metrics)
       val primaryCategory = StringContext
         .processEscapes(
@@ -262,6 +264,8 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       val badgeDetails_v1 = response
         .getOrElse("badgeDetails_v1", List.empty[String])
         .asInstanceOf[List[String]]
+      val courseName = response
+        .getOrElse("name", "").asInstanceOf[String]
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
       courseInfoMap.put("courseId", courseId)
@@ -269,6 +273,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       courseInfoMap.put("primaryCategory", primaryCategory)
       courseInfoMap.put("childNodes", childNodes)
       courseInfoMap.put("badgeDetails_v1", badgeDetails_v1)
+      courseInfoMap.put("name", courseName)
       courseInfoMap
     } else {
       val primaryCategory = StringContext
@@ -281,6 +286,9 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       val parentCollections = courseMetadata
         .getOrElse("parentcollections", new java.util.ArrayList())
         .asInstanceOf[java.util.ArrayList[String]]
+      val courseName = courseMetadata
+        .getOrElse("name", "")
+        .asInstanceOf[String]
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
       courseInfoMap.put("courseId", courseId)
@@ -294,8 +302,133 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
           .getOrElse("badgedetailsv1", new java.util.ArrayList())
           .asInstanceOf[java.util.ArrayList[String]]
       courseInfoMap.put("badgeDetails_v1", badgeDetails_v1)
+      courseInfoMap.put("name", courseName)
       courseInfoMap
     }
+  }
+
+  /**
+   * Fetch program hierarchy with children using hierarchy API
+   * This extracts all children identifiers from the program hierarchy
+   */
+  def getProgramHierarchy(programId: String)(
+    metrics: Metrics,
+    config: UserBadgeAwardingConfig,
+    httpUtil: HttpUtil
+  ): java.util.Map[String, AnyRef] = {
+    try {
+      // Step 1: Fetch badgeDetails_v1 from content read API
+      val readUrl = config.contentReadURL + "/" + programId + "?fields=identifier,name,badgeDetails_v1,primaryCategory"
+      logger.info(s"Fetching program badgeDetails from content read API: $readUrl")
+
+      val readResponse = httpUtil.get(readUrl, config.defaultHeaders)
+
+      if (readResponse.status != 200) {
+        logger.error(s"Error fetching program content for programId=$programId: ${readResponse.status} - ${readResponse.body}")
+        return new java.util.HashMap[String, AnyRef]()
+      }
+
+      val readResultMap = JSONUtil.deserialize[Map[String, AnyRef]](readResponse.body)
+      val readResult = readResultMap.getOrElse("result", Map[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
+      val readContent = readResult.getOrElse("content", Map[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
+
+      val programName = readContent.getOrElse("name", "").asInstanceOf[String]
+      val badgeDetails_v1 = readContent.getOrElse("badgeDetails_v1", new java.util.ArrayList())
+      val primaryCategory = readContent.getOrElse("primaryCategory", "").asInstanceOf[String]
+
+      // Check if badgeDetails_v1 is empty - if so, don't call hierarchy API
+      val isBadgeDetailsEmpty = badgeDetails_v1 match {
+        case jl: java.util.List[_] => jl.isEmpty
+        case al: java.util.ArrayList[_] => al.isEmpty
+        case l: List[_] => l.isEmpty
+        case _ => true
+      }
+
+      if (isBadgeDetailsEmpty) {
+        logger.info(s"badgeDetails_v1 is empty for programId=$programId, skipping hierarchy API call")
+        val emptyProgramInfoMap: java.util.Map[String, AnyRef] = new java.util.HashMap[String, AnyRef]()
+        emptyProgramInfoMap.put("courseId", programId)
+        emptyProgramInfoMap.put("name", programName)
+        emptyProgramInfoMap.put("badgeDetails_v1", badgeDetails_v1)
+        emptyProgramInfoMap.put("primaryCategory", primaryCategory)
+        emptyProgramInfoMap.put("childNodes", new java.util.ArrayList[String]())
+        emptyProgramInfoMap.put("parentCollections", new java.util.ArrayList[String]())
+        return emptyProgramInfoMap
+      }
+      logger.info(s"Fetched badgeDetails_v1 from content read API for programId=$programId")
+      // Step 2: Fetch children from hierarchy API
+      val hierarchyUrl = s"${config.contentHierarchyURL}${programId}?edit=mode"
+      logger.info(s"Fetching program hierarchy from: $hierarchyUrl")
+
+      val hierarchyResponse = httpUtil.get(hierarchyUrl, config.defaultHeaders)
+
+      if (hierarchyResponse.status != 200) {
+        logger.error(s"Error fetching program hierarchy for programId=$programId: ${hierarchyResponse.status} - ${hierarchyResponse.body}")
+        return new java.util.HashMap[String, AnyRef]()
+      }
+
+      val hierarchyResultMap = JSONUtil.deserialize[Map[String, AnyRef]](hierarchyResponse.body)
+      val hierarchyResult = hierarchyResultMap.getOrElse("result", Map[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
+      val hierarchyContent = hierarchyResult.getOrElse("content", Map[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
+
+      // Extract all child identifiers from the hierarchy
+      val childNodes = extractLeafNodesFromHierarchy(hierarchyContent)
+
+      logger.info(s"Extracted ${childNodes.size()} child identifiers from program hierarchy for programId=$programId")
+
+      // Step 3: Combine results from both APIs
+      val programInfoMap: java.util.Map[String, AnyRef] = new java.util.HashMap[String, AnyRef]()
+      programInfoMap.put("courseId", programId)
+      programInfoMap.put("name", programName)
+      programInfoMap.put("badgeDetails_v1", badgeDetails_v1)
+      programInfoMap.put("primaryCategory", primaryCategory)
+      programInfoMap.put("childNodes", childNodes)
+      programInfoMap.put("parentCollections", new java.util.ArrayList[String]())
+
+      programInfoMap
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Error fetching program data for programId=$programId", ex)
+        new java.util.HashMap[String, AnyRef]()
+    }
+  }
+
+  /**
+   * Extract identifiers from the immediate children array of the program
+   * Only fetches identifiers from the first level children, not nested children
+   */
+  private def extractLeafNodesFromHierarchy(content: Map[String, AnyRef]): java.util.List[String] = {
+    import scala.collection.JavaConverters._
+    val leafNodes = new java.util.ArrayList[String]()
+
+    // Get the children array from the content
+    val children = content.get("children") match {
+      case Some(c: java.util.List[_]) => c.asScala.toList
+      case Some(c: List[_]) => c
+      case _ => List.empty
+    }
+
+    // Extract identifier from each child in the children array
+    children.foreach {
+      case childMap: Map[_, _] =>
+        val child = childMap.asInstanceOf[Map[String, AnyRef]]
+        val identifier = child.getOrElse("identifier", "").asInstanceOf[String]
+        if (identifier.nonEmpty) {
+          leafNodes.add(identifier)
+          logger.debug(s"Found child identifier: $identifier")
+        }
+      case childJavaMap: java.util.Map[_, _] =>
+        val child = childJavaMap.asInstanceOf[java.util.Map[String, AnyRef]].asScala.toMap
+        val identifier = child.getOrElse("identifier", "").asInstanceOf[String]
+        if (identifier.nonEmpty) {
+          leafNodes.add(identifier)
+          logger.debug(s"Found child identifier: $identifier")
+        }
+      case _ => // Skip unexpected types
+    }
+
+    logger.info(s"Extracted ${leafNodes.size()} identifiers from children array: ${leafNodes.asScala.mkString(", ")}")
+    leafNodes
   }
 
   // Add new method for extCourses
@@ -317,6 +450,12 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       if (badgeDetailsV1 != null) {
         courseMetadataMap.put(config.badgeDetailsV1Key, badgeDetailsV1)
       }
+
+      // Extract name if present
+      val courseName = contentMap.get("name")
+      if (courseName != null) {
+        courseMetadataMap.put("name", courseName)
+      }
     } else {
       logger.warn(
         s"Key '${config.extContentResponseKey}' not found in courseMetadata for courseId=$courseId. Falling back to API call."
@@ -327,6 +466,12 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       val badgeDetailsV1 = response.get(config.badgeDetailsV1Key)
       if (badgeDetailsV1 != null) {
         courseMetadataMap.put(config.badgeDetailsV1Key, badgeDetailsV1)
+      }
+
+      // Extract name if present
+      val courseName = response.get("name")
+      if (courseName != null) {
+        courseMetadataMap.put("name", courseName)
       }
     }
 
@@ -348,8 +493,11 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     try {
       import scala.collection.JavaConverters._
 
+      // Extract courseName from courseMetadata
+      val courseName = Option(courseMetadata.get("name")).map(_.toString).getOrElse(courseId)
+
       // EXISTING LOGIC: Process course-level badge awarding
-      processCourseLevelBadgeAwarding(userId, courseId, batchId, courseMetadata, metrics)
+      processCourseLevelBadgeAwarding(userId, courseId, batchId, courseMetadata, courseName, metrics)
 
       // NEW LOGIC: Process program-level badge awarding for curated programs
       val primaryCategory = Option(courseMetadata.get("primaryCategory")).map(_.toString).getOrElse("")
@@ -399,11 +547,25 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
                                                courseId: String,
                                                batchId: String,
                                                courseMetadata: java.util.Map[String, AnyRef],
+                                               courseName: String,
                                                metrics: Metrics
                                              ): Unit = {
     try {
       import scala.collection.JavaConverters._
+      val badgeCheckQuery =
+        s"""
+           SELECT badgeid
+           FROM ${config.coursesdb}.${config.badgeLookUpTable}
+           WHERE userid='$userId'
+           AND courseid='$courseId';
+         """
 
+      val existingBadgeRows = cassandraUtil.find(badgeCheckQuery)
+      if (existingBadgeRows != null && !existingBadgeRows.isEmpty) {
+        logger.debug(s"Badge already awarded for userId=$userId, programId=$courseId (found in lookup table). Skipping badge processing.")
+        metrics.incCounter(config.skippedEventCount)
+        return
+      }
       // Check if badgeDetails_v1 exists in course metadata
       val badgeDetailsV1Raw = courseMetadata.get(config.badgeDetailsV1Key)
       if (badgeDetailsV1Raw == null) {
@@ -575,15 +737,14 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         logger.info(s"Inserted badge into lookup table: userId=$userId, courseId=$courseId, badgeId=$badgeId")
 
         // Delete badge count cache from Redis
-        deleteBadgeCountCache(userId)
+        updateBadgeCountCache(userId)
 
         // Push recent badge activity to Redis
         if (badgeTitle.nonEmpty) {
           pushRecentBadgeActivity(userId, badgeId, badgeTitle)
         }
-
         // Send notification for badge award
-        sendBadgeAwardNotification(userId, badgeTitle, courseId)
+        sendBadgeAwardNotification(userId, badgeTitle, courseName)
 
         metrics.incCounter(config.dbUpdateCount)
       }
@@ -600,7 +761,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     try {
       import scala.collection.JavaConverters._
 
-      // Check if badge already awarded for this program
       val badgeCheckQuery =
         s"""
            SELECT badgeid
@@ -611,11 +771,14 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
       val existingBadgeRows = cassandraUtil.find(badgeCheckQuery)
       if (existingBadgeRows != null && !existingBadgeRows.isEmpty) {
-        logger.info(s"Badge already awarded for userId=$userId, programId=$programId. Skipping badge processing.")
+        logger.debug(s"Badge already awarded for userId=$userId, programId=$programId (found in lookup table). Skipping badge processing.")
+        metrics.incCounter(config.skippedEventCount)
         return
       }
 
-      val programMetadata: java.util.Map[String, AnyRef] = getCourseInfo(programId)(metrics, config, cache, httpUtil)
+      val programMetadata: java.util.Map[String, AnyRef] = getProgramHierarchy(programId)(metrics, config, httpUtil)
+
+      val programName = Option(programMetadata.get("name")).map(_.toString).getOrElse(programId)
 
       val badgeDetailsV1Raw = programMetadata.get(config.badgeDetailsV1Key)
       if (badgeDetailsV1Raw == null) {
@@ -684,10 +847,10 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         return
       }
 
-      // Check if user is enrolled in the program
+      // Check if user is enrolled in the program and get batchId
       val programEnrollmentQuery =
         s"""
-           SELECT userid
+           SELECT batchid
            FROM ${config.coursesdb}.${config.enrolmentTable}
            WHERE userid='$userId'
            AND courseid='$programId';
@@ -695,11 +858,13 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
       val programEnrollmentRows = cassandraUtil.find(programEnrollmentQuery)
       if (programEnrollmentRows == null || programEnrollmentRows.isEmpty) {
-        logger.info(s"User not enrolled in program. userId=$userId, programId=$programId, batchId=$batchId. Skipping badge award.")
+        logger.info(s"User not enrolled in program. userId=$userId, programId=$programId. Skipping badge award.")
         return
       }
 
-      logger.info(s"User enrolled in program verified. userId=$userId, programId=$programId")
+      // Get the actual batchId from enrollment record
+      val programBatchId = programEnrollmentRows.get(0).getString("batchid")
+      logger.info(s"User enrolled in program verified. userId=$userId, programId=$programId, batchId=$programBatchId")
 
       // Check badgeEarningDateEnabled
       val badgeEarningDateEnabled = Option(badgeDetailsObj.get(config.badgeEarningDateEnabledKey))
@@ -714,7 +879,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         isEligible = true
         logger.info(s"badgeEarningDateEnabled=false for programId=$programId, user is eligible")
       } else {
-        // If badgeEarningDateEnabled is true, check badgeEarningDateTime > currentTime
         val badgeEarningDateTime: Long = Option(badgeDetailsObj.get(config.badgeEarningDateTimeKey))
           .map(value => parseBadgeEarningDateTime(value))
           .getOrElse(0L)
@@ -784,8 +948,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
         // Check if user has completed required number of courses
         if (completedCount >= requiredCompletionCount) {
-          // Award badge
-          awardProgramBadge(userId, programId, batchId, badgeId, criteria, badgeTemplate, badgeTitle, currentTime, metrics)
+          awardProgramBadge(userId, programId, programBatchId, badgeId, criteria, badgeTemplate, badgeTitle, currentTime,programName, metrics)
         } else {
           logger.info(s"User has not completed required courses for programId=$programId")
         }
@@ -801,7 +964,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
    */
   private def awardProgramBadge(userId: String, programId: String, batchId: String, badgeId: String,
                                  criteria: String, badgeTemplate: String, badgeTitle: String,
-                                 currentTime: Long, metrics: Metrics): Unit = {
+                                 currentTime: Long,programName : String, metrics: Metrics): Unit = {
     try {
       import java.text.SimpleDateFormat
       import java.util.TimeZone
@@ -857,15 +1020,14 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       logger.info(s"Successfully awarded badge for userId=$userId, programId=$programId, badgeId=$badgeId")
 
       // Delete badge count cache from Redis
-      deleteBadgeCountCache(userId)
+      updateBadgeCountCache(userId)
 
       // Push recent badge activity to Redis
       if (badgeTitle.nonEmpty) {
         pushRecentBadgeActivity(userId, badgeId, badgeTitle)
       }
-
       // Send notification for badge award
-      sendBadgeAwardNotification(userId, badgeTitle, programId)
+      sendBadgeAwardNotification(userId, badgeTitle, programName)
 
       metrics.incCounter(config.dbUpdateCount)
     } catch {
@@ -915,17 +1077,31 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
    * Delete badge count cache from Redis
    * This is called after a badge is awarded to invalidate the cached badge count
    */
-  private def deleteBadgeCountCache(userId: String): Unit = {
+  private def updateBadgeCountCache(userId: String): Unit = {
     try {
       val redisKey = s"user:badgeCount_$userId"
 
-      // Use DataCache to delete from Redis (index 0)
-      cache.delWithRetry(redisKey)
+      // Query badge count from user_badge_lookup table
+      val badgeCountQuery =
+        s"""
+           SELECT COUNT(*) as badge_count
+           FROM ${config.coursesdb}.${config.badgeLookUpTable}
+           WHERE userid='$userId';
+         """
 
-      logger.info(s"Deleted badge count cache from Redis (index 0) for userId=$userId, key=$redisKey")
+      val badgeCountRows = cassandraUtil.find(badgeCountQuery)
+
+      if (badgeCountRows != null && !badgeCountRows.isEmpty) {
+        val badgeCount = badgeCountRows.get(0).getLong("badge_count")
+        cache.set(redisKey, badgeCount.toString)
+        logger.info(s"Updated badge count cache in Redis (index 2) for userId=$userId, key=$redisKey, count=$badgeCount")
+      } else {
+        cache.set(redisKey, "0")
+        logger.info(s"Updated badge count cache in Redis (index 2) for userId=$userId, key=$redisKey, count=0")
+      }
     } catch {
       case ex: Exception =>
-        logger.error(s"Error deleting badge count cache from Redis for userId=$userId", ex)
+        logger.error(s"Error updating badge count cache from Redis for userId=$userId", ex)
     }
   }
 
@@ -941,6 +1117,9 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
                                                ): Unit = {
     try {
       import scala.collection.JavaConverters._
+
+      // Extract courseName from courseMetadata
+      val courseName = Option(courseMetadata.get("name")).map(_.toString).getOrElse(courseId)
 
       // Check if badgeDetails_v1 exists in course metadata
       val badgeDetailsV1Raw = courseMetadata.get(config.badgeDetailsV1Key)
@@ -1109,21 +1288,138 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         logger.info(s"Inserted badge into lookup table: userId=$userId, courseId=$courseId, badgeId=$badgeId")
 
         // Delete badge count cache from Redis
-        deleteBadgeCountCache(userId)
+        updateBadgeCountCache(userId)
 
         // Push recent badge activity to Redis
         if (badgeTitle.nonEmpty) {
           pushRecentBadgeActivity(userId, badgeId, badgeTitle)
         }
-
         // Send notification for badge award
-        sendBadgeAwardNotification(userId, badgeTitle, courseId)
+        sendBadgeAwardNotification(userId, badgeTitle, courseName)
 
         metrics.incCounter(config.dbUpdateCount)
       }
     } catch {
       case ex: Exception =>
         logger.error(s"Error processing badge awarding for extCourses userId=$userId, courseId=$courseId", ex)
+    }
+  }
+
+  /**
+   * Process program enrolment events for badge awarding
+   * This method is called when contextType is "programEnrolment"
+   */
+  private def processProgramEnrolment(event: Event, metrics: Metrics): Unit = {
+    try {
+      val userId = event.userId
+      val programId = event.contentId
+      val batchId = event.batchId
+
+      logger.info(s"Processing program enrolment event for userId=$userId, programId=$programId, batchId=$batchId")
+
+      val badgeCheckQuery =
+        s"""
+           SELECT badgeid
+           FROM ${config.coursesdb}.${config.badgeLookUpTable}
+           WHERE userid='$userId'
+           AND courseid='$programId';
+         """
+
+      val existingBadgeRows = cassandraUtil.find(badgeCheckQuery)
+      if (existingBadgeRows != null && !existingBadgeRows.isEmpty) {
+        logger.debug(s"Badge already awarded for userId=$userId, programId=$programId. Skipping badge processing (duplicate guard).")
+        metrics.incCounter(config.skippedEventCount)
+        return
+      }
+      logger.info(s"No existing badge found for userId=$userId, programId=$programId. Proceeding with badge processing.")
+      // Fetch program metadata using hierarchy API
+      val programMetadata: java.util.Map[String, AnyRef] = getCourseInfo(programId)(metrics, config, cache, httpUtil)
+      // Extract program name from metadata
+      val programName = Option(programMetadata.get("name")).map(_.toString).getOrElse(programId)
+      // Check if badgeDetails_v1 exists
+      val badgeDetailsV1Raw = programMetadata.get(config.badgeDetailsV1Key)
+      if (badgeDetailsV1Raw == null) {
+        logger.info(s"No badgeDetails_v1 found for programId=$programId. Skipping badge award.")
+        metrics.incCounter(config.skippedEventCount)
+        return
+      }
+
+      import scala.collection.JavaConverters._
+      // badgeDetails_v1 is an array/list of badge objects
+      val badgeDetailsList = badgeDetailsV1Raw match {
+        case jl: java.util.List[_] => jl.asScala.toList
+        case sl: Seq[_] => sl.toList
+        case _ =>
+          logger.warn(s"badgeDetails_v1 is not a list for programId=$programId")
+          metrics.incCounter(config.skippedEventCount)
+          return
+      }
+
+      if (badgeDetailsList.isEmpty) {
+        logger.info(s"badgeDetails_v1 is empty for programId=$programId")
+        metrics.incCounter(config.skippedEventCount)
+        return
+      }
+
+      // Convert to Java Map
+      val badgeDetailsObj = badgeDetailsList.head match {
+        case jm: java.util.Map[_, _] => jm.asInstanceOf[java.util.Map[String, AnyRef]]
+        case sm: Map[_, _] => new java.util.HashMap[String, AnyRef](sm.asInstanceOf[Map[String, AnyRef]].asJava)
+        case _ =>
+          logger.warn(s"Unexpected badge details type for programId=$programId")
+          metrics.incCounter(config.skippedEventCount)
+          return
+      }
+
+      // Validate criteria
+      val criteria = Option(badgeDetailsObj.get(config.criteriaKey)).map(_.toString).getOrElse("")
+      if (!criteria.equalsIgnoreCase("partialRandomCompletion")) {
+        logger.info(s"Criteria is not 'partialRandomCompletion' for programId=$programId. Found: $criteria. Skipping.")
+        metrics.incCounter(config.skippedEventCount)
+        return
+      }
+
+      val badgeTemplate = Option(badgeDetailsObj.get(config.badgeTemplateKey)).map(_.toString).getOrElse("")
+      val badgeId = Option(badgeDetailsObj.get(config.badgeIdKey)).map(_.toString).getOrElse("")
+      val badgeTitle = Option(badgeDetailsObj.get("badgeTitle")).map(_.toString).getOrElse("")
+
+      if (badgeTemplate.isEmpty || badgeId.isEmpty) {
+        logger.warn(s"Incomplete badge details for programId=$programId. Skipping badge award.")
+        metrics.incCounter(config.skippedEventCount)
+        return
+      }
+
+      // Check if user is enrolled in the program
+      val programEnrollmentQuery =
+        s"""
+           SELECT batchid
+           FROM ${config.coursesdb}.${config.enrolmentTable}
+           WHERE userid='$userId'
+           AND courseid='$programId';
+         """
+
+      val programEnrollmentRows = cassandraUtil.find(programEnrollmentQuery)
+      if (programEnrollmentRows == null || programEnrollmentRows.isEmpty) {
+        logger.info(s"User not enrolled in program. userId=$userId, programId=$programId. Skipping badge award.")
+        metrics.incCounter(config.skippedEventCount)
+        return
+      }
+
+      // Get the actual batchId from enrollment record
+      val programBatchId = programEnrollmentRows.get(0).getString("batchid")
+      logger.info(s"User enrolled in program verified. userId=$userId, programId=$programId, batchId=$programBatchId")
+
+      // Award the badge using the existing awardProgramBadge method
+      val currentTime = System.currentTimeMillis()
+      awardProgramBadge(userId, programId, programBatchId, badgeId, criteria, badgeTemplate, badgeTitle, currentTime, programName, metrics)
+
+      logger.info(s"Successfully processed program enrolment badge award for userId=$userId, programId=$programId")
+      metrics.incCounter(config.successEventCount)
+
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Error processing program enrolment event for userId=${event.userId}, programId=${event.contentId}", ex)
+        metrics.incCounter(config.failedEventCount)
     }
   }
 }

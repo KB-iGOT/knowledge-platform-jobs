@@ -166,7 +166,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
           new TypeToken[java.util.Map[String,
             java.util.List[java.util.Map[String, String]]]]() {}
         val detailsObj =
-          row.get(config.competencies, typeToken)
+          row.get(config.competencyDetails, typeToken)
         if (detailsObj != null) {
           competencyDetails =
             detailsObj.asScala.map { case (k, v) =>

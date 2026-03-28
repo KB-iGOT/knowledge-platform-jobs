@@ -359,9 +359,6 @@ post-publish-processor:
       resourceTypeCertTemplateMap {
         "Sadhana Saptah" = "sadhana_saptah_cert_template"
         "Samuhik Charcha - NLW 2026" = "samuhik_charcha_nlw_2026_cert_template"
-        Webinar = "slwCetrificateTemplateAndaman"
-        Karmayogi Talks = "karmayogiTalksCertTemplate"
-        "Karmayogi Saptah" = "karmayogiTalksCertTemplate"
       }
     }
     dialcode-cassandra {
@@ -1375,10 +1372,10 @@ user-achievement-processor:
     }
     content {
       read {
-        url = "{{ core_content_service_base_url }}content/v4/read"
+        url = "{{ content_service_base_url }}/v4/read/"
       }
       hierarchy {
-        url = "{{ core_content_service_base_url }}content/v3/hierarchy/"
+        url = "{{ content_service_base_url }}/v3/hierarchy/"
       }
     }
     extcontent {
