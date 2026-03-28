@@ -359,6 +359,9 @@ post-publish-processor:
       resourceTypeCertTemplateMap {
         "Sadhana Saptah" = "sadhana_saptah_cert_template"
         "Samuhik Charcha - NLW 2026" = "samuhik_charcha_nlw_2026_cert_template"
+        "Webinar" = "slwCetrificateTemplateAndaman"
+        "Karmayogi Talks" = "karmayogiTalksCertTemplate"
+        "Karmayogi Saptah" = "karmayogiTalksCertTemplate"
       }
     }
     dialcode-cassandra {
@@ -1203,131 +1206,7 @@ content-publish:
     jobmanager.execution.failover-strategy: region
     taskmanager.memory.network.fraction: 0.1
 
-user-competency-updater:
-  user-competency-updater: |+
-    include file("/data/flink/conf/base-config.conf")
-    kafka {
-      input.topic = "{{ env_name }}.user.competency.mapping.event"
-      groupId = "{{ env_name }}-user-competency-mapping-event-group"
-      failed.topic = "{{ env_name }}.user.competency.mapping.event.failed"
-      failed.groupId = "{{ env_name }}-competency-mapping-event-failed-group"
-    }
-    task {
-      restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
-      restart-strategy.delay = {{ user_competency_updater_restart_strategy_delay }} # in milli-seconds # on max restarts (3) within 4 min the job will fail.
-      consumer.parallelism = {{ user_competency_updater_consumer_parallelism }}
-      parallelism = {{ user_competency_updater_parallelism }}
-      competency.parallelism = 1
-      checkpointing.interval = {{ user_competency_updater_checkpointing_interval }}
-      checkpointing.pause.between.seconds = {{ user_competency_updater_checkpointing_pause_interval }}
-    }
-    lms-cassandra {
-      keyspace = "sunbird"
-      user {
-        table = "user"
-        competency {
-          table = "user_competency_mapping"
-        }
-      }
-      learner {
-        achievement {
-          table = "learner_achievements_v2"
-        }
-      }
-      sunbird{
-        db = "sunbird"
-        }
-      }
-    redis {
-      host = {{data_redis_host}}
-      port = {{data_redis_port}}
-      connection {
-        max = 2
-        idle.min = 1
-        idle.max = 2
-        minEvictableIdleTimeSeconds = 120
-        timeBetweenEvictionRunsSeconds = 300
-      }
-    }
-    content {
-      hierarchy {
-        table = "content_hierarchy"
-      }
-      read {
-        url = "{{core_content_service_base_url}}content/v4/read/"
-      }
-      competencies = "competencies_v6"
-    }
-    certificate {
-      preprocessor {
-        consumer = "user-competency-mapping-event-group"
-      }
-    }
-    postgres {
-      host = "{{igot_postgres_db_ip}}"
-      port = "5432"
-      database = "sunbird"
-      username = "{{postgresql_username_sunbird}}"
-      password = "{{postgresql_password_sunbird}}"
-    }
-    extcontent {
-      read {
-        url = "{{cb_pores_service_base_url}}cios/v1/content/read/"
-      }
-      responseKey = "content"
-      extCourses= "extCourses"
-      db = "sunbird_courses"
-      table = "user_external_enrolments"
-      issuedCertificatesKey = "issued_certificates"
-      version = "version"
-      version2Value = "v2"
-      identifierKey = "identifier"
-      lastIssuedOnKey = "lastIssuedOn"
-      competencyAreaIdentifierKey = "competencyAreaRefId"
-      competencyThemeIdentifierKey = "competencyThemeRefId"
-      competencySubThemeIdentifierKey = "competencySubThemeRefId"
-      acquiredContextIdKey = "acquiredContextId"
-      acquiredAtKey = "acquired_at"
-      certificateIdKey = "certificateId"
-      competenciesDetails="competency_details"
-      achievements= "achievements"
-      competencyAreaId = "competencyAreaId"
-      competencyThemeId = "competencyThemeId"
-      compSubThemeId = "competencySubThemeId"
-      action = "action"
-      contextdata = "contextdata"
-      uuid = "uuid"
-      issuedDate = "issuedDate"
-      selfAchievemt = "selfAchievement"
-      update = "UPDATE "
-      delete = "DELETE"
-      removed = "removed"
-      added = "added"
-      firstTimeUserFetchLimit = 100
-      courseid = "courseid"
-      enrolmenttable = "user_enrolments_v2"
-      status = "status"
-      batchid = "batchid"
-      iGOTCourses = "iGOTCourses"
-      url = "url"
-      externallyUploaded = "externallyUploaded"
-      trueValue = "true"
-      falseValue = "false"
-      uploadedDocumentUrl = "uploadedDocumentUrl"
-      externalTraining = "externalTraining"
-      userEntityEnrolmentsTable = "user_external_training_enrolments"
-      competencyAreaIdentifier = "competencyAreaId"
-      competencySubThemeId = "competencyThemeId"
-      competencySubThemeId = "competencySubThemeId"
-    }
 
-  flink-conf: |+
-    jobmanager.memory.flink.size: {{ flink_job_names['user-competency-updater'].jobmanager_memory }}
-    taskmanager.memory.flink.size: {{ flink_job_names['user-competency-updater'].taskmanager_memory }}
-    taskmanager.numberOfTaskSlots: {{ flink_job_names['user-competency-updater'].taskslots }}
-    parallelism.default: 1
-    jobmanager.execution.failover-strategy: region
-    taskmanager.memory.network.fraction: 0.1
 
 user-achievement-processor:
   user-achievement-processor: |+
@@ -1372,10 +1251,10 @@ user-achievement-processor:
     }
     content {
       read {
-        url = "{{ content_service_base_url }}/v4/read/"
+        url = "{{ core_content_service_base_url }}content/v4/read/"
       }
       hierarchy {
-        url = "{{ content_service_base_url }}/v3/hierarchy/"
+        url = "{{ core_content_service_base_url }}content/v3/hierarchy/"
       }
     }
     extcontent {
