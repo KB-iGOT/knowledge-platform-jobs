@@ -1238,8 +1238,8 @@ user-achievement-processor:
       badgeLookupTable = "user_badge_lookup"
     }
     redis {
-      host = {{data_redis_host}}
-      port = {{data_redis_port}}
+      host = {{ dp_redis_host }}
+      port = 6379
       recentBadgeActivityKey = "dashboard_recent_badge_activity"
       recentBadgeActivityMaxSize = 10
       connection {
