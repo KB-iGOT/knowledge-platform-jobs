@@ -115,6 +115,8 @@ base_config: |
     }
     specialEventCertificateName = "{{ special_event_certificatename | default('RepublicDay_2025') }}"
 
+    skip.Enrichment='true'
+
 activity-aggregate-updater:
   activity-aggregate-updater: |+
     include file("/data/flink/conf/base-config.conf")
