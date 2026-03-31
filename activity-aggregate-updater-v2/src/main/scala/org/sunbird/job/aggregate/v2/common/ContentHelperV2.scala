@@ -10,17 +10,25 @@ import scala.collection.JavaConverters._
 trait ContentHelperV2 {
 
   private[this] val logger = LoggerFactory.getLogger(classOf[ContentHelperV2])
+  val courseInfoCache = new java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)]()
+
   def getCourseInfo(courseId: String)(
     metrics: Metrics,
     config: ActivityAggregateUpdaterConfigV2,
     contentCache: DataCache,
     httpUtil: HttpUtil
   ): java.util.Map[String, AnyRef] = {
+    val currentTime = System.currentTimeMillis()
+    val cacheEntry = courseInfoCache.get(courseId)
+    if (cacheEntry != null && cacheEntry._2 > currentTime) {
+      return cacheEntry._1
+    }
+
     logger.info(
       s"Fetching course details from Redis for Id: ${courseId}, Configured Index: " + contentCache.getDBConfigIndex() + ", Current Index: " + contentCache.getDBIndex()
     )
     val courseMetadata = Option(contentCache).flatMap(c => Option(c.getWithRetry(courseId))).getOrElse(null)
-    if (null == courseMetadata || courseMetadata.isEmpty) {
+    val finalCourseInfoMap = if (null == courseMetadata || courseMetadata.isEmpty) {
       logger.error(
         s"Fetching course details from Content Service for Id: ${courseId}"
       )
@@ -137,6 +145,8 @@ trait ContentHelperV2 {
       courseInfoMap
     }
 
+    courseInfoCache.put(courseId, (finalCourseInfoMap, currentTime + config.courseCacheExpiry))
+    finalCourseInfoMap
   }
 
   def getAPICall(url: String, responseParam: String)(

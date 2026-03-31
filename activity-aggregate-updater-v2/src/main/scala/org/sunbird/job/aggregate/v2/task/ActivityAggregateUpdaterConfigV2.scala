@@ -127,6 +127,7 @@ class ActivityAggregateUpdaterConfigV2(override val config: Config) extends Base
   val moduleAggEnabled: Boolean = config.getBoolean("activity.module.aggs.enabled")
   val dedupEnabled: Boolean = config.getBoolean("activity.input.dedup.enabled")
   val statusCacheExpirySec: Int = config.getInt("activity.collection.status.cache.expiry")
+  val courseCacheExpiry: Long = if (config.hasPath("activity.course.cache.expiry")) config.getLong("activity.course.cache.expiry") else 3600000L
   val filterCompletedEnrolments: Boolean =  if (config.hasPath("activity.filter.processed.enrolments")) config.getBoolean("activity.filter.processed.enrolments") else true
 
   // Other services configuration
