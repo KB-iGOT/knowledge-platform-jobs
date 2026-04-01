@@ -163,10 +163,13 @@ user_activity_analysis_updater_consumer_parallelism: 1
 user_activity_analysis_updater_parallelism: 1
 user_activity_analysis_updater_enable_suppress_exception: false
 user_activity_analysis_updater_enable_rc_certificate: true
+user_activity_generate_certificate_parallelism: 1
+user_activity_enerate_event_certificate_parallelism: 1
 
 ### Program Cert Pre Processor
 program_cert_pre_processor_consumer_parallelism: 1
 generate_certificate_parallelism: 1
+program_cert_pre_processor_parallelism: 1
 middleware_course_batch_table: "course_batch"
 middleware_user_enrolments_table: "user_enrolments_v2"
 middleware_assessment_aggregator_table: "assessment_aggregator"
