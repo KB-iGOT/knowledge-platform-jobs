@@ -121,6 +121,7 @@ video_stream_generator_max_retries: 10
 ### Enrolment Reconciliation
 enrolment_reconciliation_consumer_parallelism: 1
 enrolment_reconciliation_parallelism: 1
+reconciliation_enrolment_complete_parallelism: 1
 enrolment_reconciliation_batch_write_size: 10
 enrolment_reconciliation_filter_processe_enabled: true
 enrolment_reconciliation_collection_status_cache_expiry_time: 3600
