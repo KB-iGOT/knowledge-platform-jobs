@@ -306,8 +306,16 @@ class DataCache(val config: BaseJobConfig, val redisConnect: RedisConnect, val d
       redisConnection.lpush(key, value)
     } catch {
       case ex: JedisException =>
-        logger.error("Error in lpush: ", ex)
-        0L
+        logger.error("Error in lpush, retrying after reconnection: ", ex)
+        close()
+        this.redisConnection = redisConnect.getConnection(dbIndex)
+        try {
+          redisConnection.lpush(key, value)
+        } catch {
+          case retryEx: Exception =>
+            logger.error("Error in lpush retry: ", retryEx)
+            0L
+        }
     }
   }
 
@@ -320,7 +328,15 @@ class DataCache(val config: BaseJobConfig, val redisConnect: RedisConnect, val d
       redisConnection.ltrim(key, start, end)
     } catch {
       case ex: JedisException =>
-        logger.error("Error in ltrim: ", ex)
+        logger.error("Error in ltrim, retrying after reconnection: ", ex)
+        close()
+        this.redisConnection = redisConnect.getConnection(dbIndex)
+        try {
+          redisConnection.ltrim(key, start, end)
+        } catch {
+          case retryEx: Exception =>
+            logger.error("Error in ltrim retry: ", retryEx)
+        }
     }
   }
 }
