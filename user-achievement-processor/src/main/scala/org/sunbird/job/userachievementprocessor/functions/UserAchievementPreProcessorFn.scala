@@ -48,6 +48,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
   /**
    * Push recent badge activity to Redis
    * Maintains a list of max 10 recent badge awards
+   * This is a non-critical operation - failures should not stop badge awarding
    */
   private def pushRecentBadgeActivity(userId: String, badgeId: String, badgeTitle: String): Unit = {
     try {
@@ -71,7 +72,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     } catch {
       case ex: Exception =>
         logger.error(s"Error pushing recent badge activity to Redis for userId=$userId, badgeTitle=$badgeTitle", ex)
-        throw new InvalidEventException(ex.getMessage, Map("userId" -> userId, "badgeTitle" -> badgeTitle), ex)
+        // Don't fail the entire badge awarding process if Redis update fails (non-critical operation)
     }
   }
 
@@ -430,6 +431,22 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
   private def processExtCourses(event: Event, metrics: Metrics): Unit = {
     val userId = event.userId
     val courseId = event.contentId
+
+    val badgeCheckQuery =
+      s"""
+           SELECT badgeid
+           FROM ${config.coursesdb}.${config.badgeLookUpTable}
+           WHERE userid='$userId'
+           AND courseid='$courseId';
+         """
+
+    val existingBadgeRows = cassandraUtil.find(badgeCheckQuery)
+    if (existingBadgeRows != null && !existingBadgeRows.isEmpty) {
+      logger.debug(s"Badge already awarded for userId=$userId, programId=$courseId (found in lookup table). Skipping badge processing.")
+      metrics.incCounter(config.skippedEventCount)
+      return
+    }
+
     val extContentReadUrl = config.extContentUrl
     val contentUrl = s"$extContentReadUrl$courseId"
     val cachedMetadata = cache.getWithRetry(courseId)
