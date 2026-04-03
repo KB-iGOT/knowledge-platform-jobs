@@ -308,7 +308,7 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
       val contentObj: java.util.Map[String, AnyRef] =
         getCourseInfo(courseId)(metrics, config, contentCache, httpUtil)
       if (!contentObj.isEmpty) {
-        val leafNodes = contentObj.get(config.leafNodes).asInstanceOf[java.util.ArrayList[String]]
+        val leafNodes = contentObj.get(config.leafNodesKey).asInstanceOf[java.util.ArrayList[String]]
         if (leafNodes != null && !leafNodes.isEmpty) {
           cache.addKeyMembers(key, leafNodes.asScala.toList, config.relationCacheExpiry)
           logger.info("Redis cache added the (smembers): " + key)
