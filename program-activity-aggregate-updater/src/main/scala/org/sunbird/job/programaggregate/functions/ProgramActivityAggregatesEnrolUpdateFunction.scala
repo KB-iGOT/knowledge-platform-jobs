@@ -14,6 +14,7 @@ import org.apache.flink.streaming.api.scala.function.ProcessWindowFunction
 import org.apache.flink.streaming.api.windowing.windows.GlobalWindow
 import org.slf4j.LoggerFactory
 import org.sunbird.job.cache.{DataCache, RedisConnect}
+import org.sunbird.job.programaggregate.common.ContentHelper
 import org.sunbird.job.programaggregate.domain._
 import org.sunbird.job.programaggregate.task.ProgramActivityAggregateUpdaterConfig
 import org.sunbird.job.util.{CassandraUtil, HttpUtil}
@@ -28,7 +29,7 @@ import scala.collection.mutable.ListBuffer
 
 class ProgramActivityAggregatesEnrolUpdateFunction(config: ProgramActivityAggregateUpdaterConfig, httpUtil: HttpUtil, @transient var cassandraUtil: CassandraUtil = null)
                                                   (implicit val stringTypeInfo: TypeInformation[String])
-  extends WindowBaseProcessFunction[Map[String, AnyRef], String, Int](config) {
+  extends WindowBaseProcessFunction[Map[String, AnyRef], String, Int](config) with ContentHelper{
 
   private[this] val logger = LoggerFactory.getLogger(classOf[ProgramActivityAggregatesEnrolUpdateFunction])
   private var cache: DataCache = _
@@ -156,6 +157,16 @@ class ProgramActivityAggregatesEnrolUpdateFunction(config: ProgramActivityAggreg
     if (CollectionUtils.isEmpty(list)) {
       metrics.incCounter(config.cacheMissCount)
       logger.info("Redis cache (smembers) not available for key: " + key)
+      val contentObj: java.util.Map[String, AnyRef] =
+        getCourseInfo(key)(metrics, config, cache, httpUtil)
+      if (!contentObj.isEmpty) {
+        val leafNodes = contentObj.get(config.leafNodes).asInstanceOf[java.util.ArrayList[String]]
+        if (leafNodes != null && !leafNodes.isEmpty) {
+          cache.addKeyMembers(key, leafNodes.asScala.toList, config.relationCacheExpiry)
+          logger.info("Redis cache added the (smembers): " + key)
+          return leafNodes.asScala.toList
+        }
+      }
     }
     list.asScala.toList
   }

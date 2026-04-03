@@ -58,6 +58,8 @@ class ProgramActivityAggregateUpdaterConfig(override val config: Config) extends
   val deDupRedisPort: Int = config.getInt("dedup-redis.port")
   val deDupStore: Int = config.getInt("dedup-redis.database.index")
   val deDupExpirySec: Int = config.getInt("dedup-redis.database.expiry")
+  val courseCacheExpiry: Int = if (config.hasPath("activity.course.cache.expiry")) config.getInt("activity.course.cache.expiry") else 3600000
+  val relationCacheExpiry: Int = if (config.hasPath("activity.course.relation.cache.expiry")) config.getInt("activity.course.relation.cache.expiry") else 3600000
 
   // Tags
   val uniqueConsumptionOutputTagName = "program-unique-consumption-events"
