@@ -148,6 +148,9 @@ class ProgramActivityAggregateUpdaterConfig(override val config: Config) extends
   val userAccBlockedErrCode = "UOS_USRRED0006"
   val name: String = "name"
   val validProgramPrimaryCategory = List[String]("Program","Curated Program","Blended Program")
+  val coursecategory = "coursecategory"
+  val preliminaryAssessment = "preliminaryAssessment"
+  val preliminary_Assessment_Key = "preliminaryassessment"
 
 
 }

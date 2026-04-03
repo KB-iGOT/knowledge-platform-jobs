@@ -1,16 +1,22 @@
 package org.sunbird.job.aggregate.v2.common
 
+import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import org.slf4j.LoggerFactory
 import org.sunbird.job.Metrics
 import org.sunbird.job.aggregate.v2.task.ActivityAggregateUpdaterConfigV2
 import org.sunbird.job.cache.DataCache
 import org.sunbird.job.util.{HttpUtil, ScalaJsonUtil}
+
 import scala.collection.JavaConverters._
 
 trait ContentHelperV2 {
 
   private[this] val logger = LoggerFactory.getLogger(classOf[ContentHelperV2])
+  protected val objectMapper: ObjectMapper = new ObjectMapper()
+    .registerModule(DefaultScalaModule)
+    .setSerializationInclusion(JsonInclude.Include.NON_EMPTY)
   //val courseInfoCache = new java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)]()
 
   def getCourseInfo(courseId: String)(
@@ -20,7 +26,6 @@ trait ContentHelperV2 {
     httpUtil: HttpUtil
   ): java.util.Map[String, AnyRef] = {
     val currentTime = System.currentTimeMillis()
-    val objectMapper = new ObjectMapper()
     /*val cacheEntry = courseInfoCache.get(courseId)
     if (cacheEntry != null && cacheEntry._2 > currentTime) {
       return cacheEntry._1
