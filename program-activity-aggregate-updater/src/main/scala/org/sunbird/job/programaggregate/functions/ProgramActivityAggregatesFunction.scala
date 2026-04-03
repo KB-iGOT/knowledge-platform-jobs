@@ -32,6 +32,7 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
   val mapType: Type = new TypeToken[Map[String, AnyRef]]() {}.getType
   private[this] val logger = LoggerFactory.getLogger(classOf[ProgramActivityAggregatesFunction])
   private var cache: DataCache = _
+  private var contentCache: DataCache = _
   private var collectionStatusCache: TTLCache[String, String] = _
   lazy private val gson = new Gson()
 
@@ -44,6 +45,8 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
     cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
     cache = new DataCache(config, new RedisConnect(config), config.nodeStore, List())
     cache.init()
+    contentCache = new DataCache(config, new RedisConnect(config), config.contentStoreIndex, List())
+    contentCache.init()
     collectionStatusCache = TTLCache[String, String](Duration.apply(config.statusCacheExpirySec, TimeUnit.SECONDS))
   }
 
@@ -53,6 +56,9 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
     }
     if (cache != null) {
       cache.close()
+    }
+    if (contentCache != null) {
+      contentCache.close()
     }
     super.close()
   }
@@ -300,7 +306,7 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
       metrics.incCounter(config.cacheMissCount)
       logger.info("Redis cache (smembers) not available for key: " + key)
       val contentObj: java.util.Map[String, AnyRef] =
-        getCourseInfo(courseId)(metrics, config, cache, httpUtil)
+        getCourseInfo(courseId)(metrics, config, contentCache, httpUtil)
       if (!contentObj.isEmpty) {
         val leafNodes = contentObj.get(config.leafNodes).asInstanceOf[java.util.ArrayList[String]]
         if (leafNodes != null && !leafNodes.isEmpty) {
