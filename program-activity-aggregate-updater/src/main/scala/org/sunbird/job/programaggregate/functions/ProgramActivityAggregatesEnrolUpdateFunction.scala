@@ -151,14 +151,14 @@ class ProgramActivityAggregatesEnrolUpdateFunction(config: ProgramActivityAggreg
     }
   }
 
-  def readFromCache(key: String, metrics: Metrics): List[String] = {
+  def readFromCache(courseId: String, key: String, metrics: Metrics): List[String] = {
     metrics.incCounter(config.cacheHitCount)
     val list = cache.getKeyMembers(key)
     if (CollectionUtils.isEmpty(list)) {
       metrics.incCounter(config.cacheMissCount)
       logger.info("Redis cache (smembers) not available for key: " + key)
       val contentObj: java.util.Map[String, AnyRef] =
-        getCourseInfo(key)(metrics, config, cache, httpUtil)
+        getCourseInfo(courseId)(metrics, config, cache, httpUtil)
       if (!contentObj.isEmpty) {
         val leafNodes = contentObj.get(config.leafNodes).asInstanceOf[java.util.ArrayList[String]]
         if (leafNodes != null && !leafNodes.isEmpty) {
@@ -210,7 +210,7 @@ class ProgramActivityAggregatesEnrolUpdateFunction(config: ProgramActivityAggreg
     val userId = userConsumption.userId
     val contextId = "cb:" + userConsumption.batchId
     val key = s"$courseId:$courseId:${config.leafNodes}"
-    val leafNodes = readFromCache(key, metrics).distinct
+    val leafNodes = readFromCache(courseId, key, metrics).distinct
     if (leafNodes.isEmpty) {
       logger.error(s"leaf nodes are not available for: $key")
       //context.output(config.failedEventOutputTag, gson.toJson(userConsumption))

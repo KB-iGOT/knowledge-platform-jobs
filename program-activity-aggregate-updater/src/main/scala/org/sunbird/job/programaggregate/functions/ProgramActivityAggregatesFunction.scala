@@ -138,7 +138,7 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
     val userId = userConsumption.userId
     val contextId = "cb:" + userConsumption.batchId
     val key = s"$courseId:$courseId:${config.leafNodes}"
-    val leafNodes = readFromCache(key, metrics).distinct
+    val leafNodes = readFromCache(courseId, key, metrics).distinct
     if (leafNodes.isEmpty) {
       logger.error(s"leaf nodes are not available for: $key")
       context.output(config.failedEventOutputTag, gson.toJson(userConsumption))
@@ -180,12 +180,12 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
     // These are the child collections which require computation of aggregates - for this user.
     val ancestors = userConsumption.contents.mapValues(content => {
       val contentId = content.contentId
-      readFromCache(key = s"$courseId:$contentId:${config.ancestors}", metrics)
+      readFromCache(courseId, key = s"$courseId:$contentId:${config.ancestors}", metrics)
     }).values.flatten.filter(a => !StringUtils.equals(a, courseId)).toList.distinct
 
     // LeafNodes of the identified child collections - for this user.
     val collectionsWithLeafNodes = ancestors.map(unitId => {
-      (unitId, readFromCache(key = s"$courseId:$unitId:${config.leafNodes}", metrics).distinct)
+      (unitId, readFromCache(courseId, key = s"$courseId:$unitId:${config.leafNodes}", metrics).distinct)
     }).toMap
 
     // Content completed - By this user.
@@ -293,14 +293,14 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
     })
   }
 
-  def readFromCache(key: String, metrics: Metrics): List[String] = {
+  def readFromCache(courseId: String, key: String, metrics: Metrics): List[String] = {
     metrics.incCounter(config.cacheHitCount)
     val list = cache.getKeyMembers(key)
     if (CollectionUtils.isEmpty(list)) {
       metrics.incCounter(config.cacheMissCount)
       logger.info("Redis cache (smembers) not available for key: " + key)
       val contentObj: java.util.Map[String, AnyRef] =
-        getCourseInfo(key)(metrics, config, cache, httpUtil)
+        getCourseInfo(courseId)(metrics, config, cache, httpUtil)
       if (!contentObj.isEmpty) {
         val leafNodes = contentObj.get(config.leafNodes).asInstanceOf[java.util.ArrayList[String]]
         if (leafNodes != null && !leafNodes.isEmpty) {
@@ -312,6 +312,7 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
     }
     list.asScala.toList
   }
+
 
   def getUserAggQuery(progress: UserActivityAgg):
   Update.Where = {

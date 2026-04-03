@@ -153,4 +153,7 @@ class ActivityAggregateUpdaterConfigV2(override val config: Config) extends Base
       config.getStringList("activity.aggregate.excluded.primaryCategories").asScala.toSet
     else
       Set("Program", "Curated Program", "Blended Program")
+
+  val contentReadFields: String = if (config.hasPath("content.read.fields")) config.getString("content.read.fields") else
+    "identifier,name,versionKey,parentCollections,primaryCategory,courseCategory,languageMapV1,leafNodes,language,milestones_v1,preliminaryAssessment"
 }

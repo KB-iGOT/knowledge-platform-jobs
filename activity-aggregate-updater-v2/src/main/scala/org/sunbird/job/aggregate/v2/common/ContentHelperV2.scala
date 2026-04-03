@@ -14,9 +14,10 @@ import scala.collection.JavaConverters._
 trait ContentHelperV2 {
 
   private[this] val logger = LoggerFactory.getLogger(classOf[ContentHelperV2])
-  protected val objectMapper: ObjectMapper = new ObjectMapper()
-    .registerModule(DefaultScalaModule)
-    .setSerializationInclusion(JsonInclude.Include.NON_EMPTY)
+  @transient lazy val objectMapper: ObjectMapper =
+    new ObjectMapper()
+      .registerModule(DefaultScalaModule)
+      .setSerializationInclusion(JsonInclude.Include.NON_EMPTY)
   //val courseInfoCache = new java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)]()
 
   def getCourseInfo(courseId: String)(
@@ -41,7 +42,7 @@ trait ContentHelperV2 {
       )
       //TODO: FETCH LANGUAGE ALSO.
       val url =
-        config.contentReadURL + "/" + courseId + "?fields=identifier,name,versionKey,parentCollections,primaryCategory,courseCategory,languageMapV1,leafNodes,language,milestones_v1,preliminaryAssessment"
+        config.contentReadURL + "/" + courseId + "?fields=" + config.contentReadFields
       val response = getAPICall(url, "content")(config, httpUtil, metrics)
       val courseName = StringContext
         .processEscapes(
