@@ -37,7 +37,7 @@ trait ContentHelperV2 {
     )
     val courseMetadata = Option(contentCache).flatMap(c => Option(c.getWithRetry(courseId))).getOrElse(null)
     val finalCourseInfoMap = if (null == courseMetadata || courseMetadata.isEmpty) {
-      logger.error(
+      logger.info(
         s"Fetching course details from Content Service for Id: ${courseId}"
       )
       //TODO: FETCH LANGUAGE ALSO.
