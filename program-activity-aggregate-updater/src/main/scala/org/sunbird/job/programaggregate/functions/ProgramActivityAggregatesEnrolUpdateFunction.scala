@@ -166,16 +166,28 @@ class ProgramActivityAggregatesEnrolUpdateFunction(config: ProgramActivityAggreg
       val contentObj: java.util.Map[String, AnyRef] =
         getCourseInfo(courseId)(metrics, config, contentCache, httpUtil)
       if (!contentObj.isEmpty) {
-        val leafNodes = contentObj.get(config.leafNodesKey).asInstanceOf[java.util.ArrayList[String]]
-        if (leafNodes != null && !leafNodes.isEmpty) {
-          cache.addKeyMembers(key, leafNodes.asScala.toList, config.relationCacheExpiry)
+        val raw = contentObj.get(config.leafNodesKey)
+        val leafNodes =
+          raw match {
+            case l: java.util.List[_] =>
+              l.asScala.toList.map(_.toString)
+
+            case l: scala.collection.Seq[_] =>
+              l.toList.map(_.toString)
+
+            case _ =>
+              List.empty[String]
+          }
+        if (leafNodes.nonEmpty) {
+          cache.addKeyMembers(key, leafNodes, config.relationCacheExpiry)
           logger.info("Redis cache added the (smembers): " + key)
-          return leafNodes.asScala.toList
+          return leafNodes
         }
       }
     }
     list.asScala.toList
   }
+
 
   def updateEnrolContentConsumption(userConsumption: UserContentConsumption)(implicit metrics: Metrics): UserContentConsumption = {
     val programEnrollmentStatus = getEnrolment(userConsumption.userId, userConsumption.courseId)(metrics)
