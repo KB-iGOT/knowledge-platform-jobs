@@ -33,6 +33,7 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
   private[this] val logger = LoggerFactory.getLogger(classOf[ProgramActivityAggregatesFunction])
   private var cache: DataCache = _
   private var contentCache: DataCache = _
+  private var contentKpCache: DataCache = _
   private var collectionStatusCache: TTLCache[String, String] = _
   lazy private val gson = new Gson()
 
@@ -43,10 +44,12 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
     cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
-    cache = new DataCache(config, new RedisConnect(config), config.nodeStore, List())
+    cache = new DataCache(config, new RedisConnect(config, Option(config.deDupRedisHost), Option(config.deDupRedisPort)), config.nodeStore, List())
     cache.init()
-    contentCache = new DataCache(config, new RedisConnect(config), config.contentStoreIndex, List())
+    contentCache = new DataCache(config, new RedisConnect(config, Option(config.deDupRedisHost), Option(config.deDupRedisPort)), config.contentStoreIndex, List())
     contentCache.init()
+    contentKpCache = new DataCache(config, new RedisConnect(config), config.nodeStore, List())
+    contentKpCache.init()
     collectionStatusCache = TTLCache[String, String](Duration.apply(config.statusCacheExpirySec, TimeUnit.SECONDS))
   }
 
@@ -186,7 +189,7 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
     // These are the child collections which require computation of aggregates - for this user.
     val ancestors = userConsumption.contents.mapValues(content => {
       val contentId = content.contentId
-      readFromCache(courseId, key = s"$courseId:$contentId:${config.ancestors}", metrics)
+      readFromCacheForAncestorsValue(key = s"$courseId:$contentId:${config.ancestors}", metrics)
     }).values.flatten.filter(a => !StringUtils.equals(a, courseId)).toList.distinct
 
     // LeafNodes of the identified child collections - for this user.
@@ -319,7 +322,23 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
     list.asScala.toList
   }
 
-
+  def readFromCacheForAncestorsValue(key: String, metrics: Metrics): List[String] = {
+    metrics.incCounter(config.cacheHitCount)
+    val list = cache.getKeyMembers(key)
+    if (CollectionUtils.isEmpty(list)) {
+      metrics.incCounter(config.cacheMissCount)
+      logger.info("Redis cache (smembers) not available for key: " + key + "for ancestors value, reading from KP Redis")
+      val kpCacheAncestorsList = contentKpCache.getKeyMembers(key)
+      if (!kpCacheAncestorsList.isEmpty) {
+          cache.addKeyMembers(key, kpCacheAncestorsList.asScala.toList, config.relationCacheExpiry)
+          logger.info("Redis cache added the (smembers): " + key)
+          return kpCacheAncestorsList.asScala.toList
+      } else {
+        logger.info("Redis cache (smembers) not available for key: " + key + " in KP Redis as well.")
+      }
+    }
+    list.asScala.toList
+  }
   def getUserAggQuery(progress: UserActivityAgg):
   Update.Where = {
     QueryBuilder.update(config.dbKeyspace, config.dbUserActivityAggTable)
