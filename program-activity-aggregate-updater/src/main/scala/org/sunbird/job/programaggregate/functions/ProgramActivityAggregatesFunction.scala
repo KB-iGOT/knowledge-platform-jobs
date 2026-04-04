@@ -16,6 +16,7 @@ import org.apache.flink.streaming.api.scala.function.ProcessWindowFunction
 import org.apache.flink.streaming.api.windowing.windows.GlobalWindow
 import org.slf4j.LoggerFactory
 import org.sunbird.job.cache.{DataCache, RedisConnect}
+import org.sunbird.job.programaggregate.common.ContentHelper
 import org.sunbird.job.programaggregate.domain._
 import org.sunbird.job.programaggregate.task.ProgramActivityAggregateUpdaterConfig
 import org.sunbird.job.util.{CassandraUtil, HttpUtil, ScalaJsonUtil}
@@ -26,11 +27,13 @@ import scala.collection.mutable
 
 class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterConfig, httpUtil: HttpUtil, @transient var cassandraUtil: CassandraUtil = null)
                                        (implicit val stringTypeInfo: TypeInformation[String])
-  extends WindowBaseProcessFunction[Map[String, AnyRef], String, Int](config) {
+  extends WindowBaseProcessFunction[Map[String, AnyRef], String, Int](config) with ContentHelper{
 
   val mapType: Type = new TypeToken[Map[String, AnyRef]]() {}.getType
   private[this] val logger = LoggerFactory.getLogger(classOf[ProgramActivityAggregatesFunction])
   private var cache: DataCache = _
+  private var contentCache: DataCache = _
+  private var contentKpCache: DataCache = _
   private var collectionStatusCache: TTLCache[String, String] = _
   lazy private val gson = new Gson()
 
@@ -41,8 +44,12 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
     cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
-    cache = new DataCache(config, new RedisConnect(config), config.nodeStore, List())
+    cache = new DataCache(config, new RedisConnect(config, Option(config.deDupRedisHost), Option(config.deDupRedisPort)), config.nodeStore, List())
     cache.init()
+    contentCache = new DataCache(config, new RedisConnect(config, Option(config.deDupRedisHost), Option(config.deDupRedisPort)), config.contentStoreIndex, List())
+    contentCache.init()
+    contentKpCache = new DataCache(config, new RedisConnect(config), config.nodeStore, List())
+    contentKpCache.init()
     collectionStatusCache = TTLCache[String, String](Duration.apply(config.statusCacheExpirySec, TimeUnit.SECONDS))
   }
 
@@ -52,6 +59,9 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
     }
     if (cache != null) {
       cache.close()
+    }
+    if (contentCache != null) {
+      contentCache.close()
     }
     super.close()
   }
@@ -137,7 +147,7 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
     val userId = userConsumption.userId
     val contextId = "cb:" + userConsumption.batchId
     val key = s"$courseId:$courseId:${config.leafNodes}"
-    val leafNodes = readFromCache(key, metrics).distinct
+    val leafNodes = readFromCache(courseId, key, metrics).distinct
     if (leafNodes.isEmpty) {
       logger.error(s"leaf nodes are not available for: $key")
       context.output(config.failedEventOutputTag, gson.toJson(userConsumption))
@@ -179,12 +189,12 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
     // These are the child collections which require computation of aggregates - for this user.
     val ancestors = userConsumption.contents.mapValues(content => {
       val contentId = content.contentId
-      readFromCache(key = s"$courseId:$contentId:${config.ancestors}", metrics)
+      readFromCacheForAncestorsValue(key = s"$courseId:$contentId:${config.ancestors}", metrics)
     }).values.flatten.filter(a => !StringUtils.equals(a, courseId)).toList.distinct
 
     // LeafNodes of the identified child collections - for this user.
     val collectionsWithLeafNodes = ancestors.map(unitId => {
-      (unitId, readFromCache(key = s"$courseId:$unitId:${config.leafNodes}", metrics).distinct)
+      (unitId, readFromCache(courseId, key = s"$courseId:$unitId:${config.leafNodes}", metrics).distinct)
     }).toMap
 
     // Content completed - By this user.
@@ -292,16 +302,54 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
     })
   }
 
-  def readFromCache(key: String, metrics: Metrics): List[String] = {
+  def readFromCache(courseId: String, key: String, metrics: Metrics): List[String] = {
     metrics.incCounter(config.cacheHitCount)
     val list = cache.getKeyMembers(key)
     if (CollectionUtils.isEmpty(list)) {
       metrics.incCounter(config.cacheMissCount)
       logger.info("Redis cache (smembers) not available for key: " + key)
+      val contentObj: java.util.Map[String, AnyRef] =
+        getCourseInfo(courseId)(metrics, config, contentCache, httpUtil)
+      if (!contentObj.isEmpty) {
+        val raw = contentObj.get(config.leafNodesKey)
+        val leafNodes =
+          raw match {
+            case l: java.util.List[_] =>
+              l.asScala.toList.map(_.toString)
+
+            case l: scala.collection.Seq[_] =>
+              l.toList.map(_.toString)
+
+            case _ =>
+              List.empty[String]
+          }
+        if (leafNodes.nonEmpty) {
+          cache.addKeyMembers(key, leafNodes, config.relationCacheExpiry)
+          logger.info("Redis cache added the (smembers): " + key)
+          return leafNodes
+        }
+      }
     }
     list.asScala.toList
   }
 
+  def readFromCacheForAncestorsValue(key: String, metrics: Metrics): List[String] = {
+    metrics.incCounter(config.cacheHitCount)
+    val list = cache.getKeyMembers(key)
+    if (CollectionUtils.isEmpty(list)) {
+      metrics.incCounter(config.cacheMissCount)
+      logger.info("Redis cache (smembers) not available for key: " + key + "for ancestors value, reading from KP Redis")
+      val kpCacheAncestorsList = contentKpCache.getKeyMembers(key)
+      if (!kpCacheAncestorsList.isEmpty) {
+          cache.addKeyMembers(key, kpCacheAncestorsList.asScala.toList, config.relationCacheExpiry)
+          logger.info("Redis cache added the (smembers): " + key)
+          return kpCacheAncestorsList.asScala.toList
+      } else {
+        logger.info("Redis cache (smembers) not available for key: " + key + " in KP Redis as well.")
+      }
+    }
+    list.asScala.toList
+  }
   def getUserAggQuery(progress: UserActivityAgg):
   Update.Where = {
     QueryBuilder.update(config.dbKeyspace, config.dbUserActivityAggTable)

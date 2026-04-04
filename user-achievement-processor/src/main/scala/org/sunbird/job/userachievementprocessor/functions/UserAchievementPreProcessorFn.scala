@@ -7,6 +7,7 @@ import org.apache.flink.configuration.Configuration
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction
 import org.slf4j.LoggerFactory
 import org.sunbird.job.cache.{DataCache, RedisConnect}
+import org.sunbird.job.exception.InvalidEventException
 import org.sunbird.job.userbadgeawarding.domain.Event
 import org.sunbird.job.userbadgeawarding.task.UserBadgeAwardingConfig
 import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil, ScalaJsonUtil}
@@ -47,6 +48,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
   /**
    * Push recent badge activity to Redis
    * Maintains a list of max 10 recent badge awards
+   * This is a non-critical operation - failures should not stop badge awarding
    */
   private def pushRecentBadgeActivity(userId: String, badgeId: String, badgeTitle: String): Unit = {
     try {
@@ -70,7 +72,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     } catch {
       case ex: Exception =>
         logger.error(s"Error pushing recent badge activity to Redis for userId=$userId, badgeTitle=$badgeTitle", ex)
-      // Don't fail the entire badge awarding process if Redis update fails
+        // Don't fail the entire badge awarding process if Redis update fails (non-critical operation)
     }
   }
 
@@ -97,7 +99,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     } catch {
       case ex: Exception =>
         logger.error(s"Failed to parse badgeEarningDateTime: $value", ex)
-        0L
+        throw new InvalidEventException(ex.getMessage, Map("badgeEarningDateTimeValue" -> value.toString), ex)
     }
   }
 
@@ -116,7 +118,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     } catch {
       case ex: Exception =>
         logger.error(s"Error parsing date string: $dateString", ex)
-        0L
+        throw new InvalidEventException(ex.getMessage, Map("dateString" -> dateString), ex)
     }
   }
 
@@ -142,7 +144,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     } catch {
       case ex: Exception =>
         logger.error(s"Error fetching user name for userId=$userId", ex)
-        userId
+        throw new InvalidEventException(ex.getMessage, Map("userId" -> userId), ex)
     }
   }
 
@@ -150,6 +152,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
   override def processElement(event: Event,
                               context: KeyedProcessFunction[String, Event, String]#Context,
                               metrics: Metrics): Unit = {
+    metrics.incCounter(config.totalEventsCount)
     try {
       val contextType = event.contextType
       if (contextType != null && contextType.equalsIgnoreCase(config.iGOTCoursesContextType)) {
@@ -159,10 +162,11 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       } else if (contextType != null && contextType.equalsIgnoreCase(config.curatedProgramContextType)) {
         processProgramEnrolment(event, metrics)
       }
+      metrics.incCounter(config.successEventCount)
     } catch {
       case ex: Exception =>
         metrics.incCounter(config.failedEventCount)
-        logger.error("Error processing event: " + ex.getMessage, ex)
+        throw new InvalidEventException(ex.getMessage, Map("partition" -> event.partition, "offset" -> event.offset), ex)
     }
   }
 
@@ -188,10 +192,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       } else {
         new java.util.HashMap[String, AnyRef]()
       }
-    } else if (400 == response.status && response.body.contains(config.userAccBlockedErrCode)) {
-      metrics.incCounter(config.skippedEventCount)
-      logger.error(s"Error while fetching user details for ${url}: " + response.status + " :: " + response.body)
-      new java.util.HashMap[String, AnyRef]()
     } else {
       throw new Exception(s"Error from get API : ${url}, with response: ${response}")
     }
@@ -213,10 +213,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       } else {
         new java.util.HashMap[String, AnyRef]()
       }
-    } else if (400 == response.status && response.body.contains(config.userAccBlockedErrCode)) {
-      metrics.incCounter(config.skippedEventCount)
-      logger.error(s"Error while fetching extcontent details for ${url}: " + response.status + " :: " + response.body)
-      new java.util.HashMap[String, AnyRef]()
     } else {
       throw new Exception(s"Error from extcontent get API : ${url}, with response: ${response}")
     }
@@ -325,7 +321,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
       if (readResponse.status != 200) {
         logger.error(s"Error fetching program content for programId=$programId: ${readResponse.status} - ${readResponse.body}")
-        return new java.util.HashMap[String, AnyRef]()
+        throw new Exception(s"Error fetching program content for programId=$programId: ${readResponse.status} - ${readResponse.body}")
       }
 
       val readResultMap = JSONUtil.deserialize[Map[String, AnyRef]](readResponse.body)
@@ -364,7 +360,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
       if (hierarchyResponse.status != 200) {
         logger.error(s"Error fetching program hierarchy for programId=$programId: ${hierarchyResponse.status} - ${hierarchyResponse.body}")
-        return new java.util.HashMap[String, AnyRef]()
+        throw new Exception(s"Error fetching program hierarchy for programId=$programId: ${hierarchyResponse.status} - ${hierarchyResponse.body}")
       }
 
       val hierarchyResultMap = JSONUtil.deserialize[Map[String, AnyRef]](hierarchyResponse.body)
@@ -389,7 +385,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     } catch {
       case ex: Exception =>
         logger.error(s"Error fetching program data for programId=$programId", ex)
-        new java.util.HashMap[String, AnyRef]()
+        throw new Exception(s"Error fetching program data for programId=$programId: ${ex.getMessage}", ex)
     }
   }
 
@@ -435,6 +431,22 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
   private def processExtCourses(event: Event, metrics: Metrics): Unit = {
     val userId = event.userId
     val courseId = event.contentId
+
+    val badgeCheckQuery =
+      s"""
+           SELECT badgeid
+           FROM ${config.coursesdb}.${config.badgeLookUpTable}
+           WHERE userid='$userId'
+           AND courseid='$courseId';
+         """
+
+    val existingBadgeRows = cassandraUtil.find(badgeCheckQuery)
+    if (existingBadgeRows != null && !existingBadgeRows.isEmpty) {
+      logger.debug(s"Badge already awarded for userId=$userId, programId=$courseId (found in lookup table). Skipping badge processing.")
+      metrics.incCounter(config.skippedEventCount)
+      return
+    }
+
     val extContentReadUrl = config.extContentUrl
     val contentUrl = s"$extContentReadUrl$courseId"
     val cachedMetadata = cache.getWithRetry(courseId)
@@ -535,6 +547,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     } catch {
       case ex: Exception =>
         logger.error(s"Error processing badge awarding for iGOTCourses userId=$userId, courseId=$courseId, batchId=$batchId", ex)
+        throw new InvalidEventException(ex.getMessage, Map("userId" -> userId, "courseId" -> courseId, "batchId" -> batchId), ex)
     }
   }
 
@@ -751,6 +764,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     } catch {
       case ex: Exception =>
         logger.error(s"Error processing course-level badge awarding for userId=$userId, courseId=$courseId, batchId=$batchId", ex)
+        throw new InvalidEventException(ex.getMessage, Map("userId" -> userId, "courseId" -> courseId, "batchId" -> batchId), ex)
     }
   }
 
@@ -837,7 +851,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
           } catch {
             case ex: Exception =>
               logger.error(s"Failed to parse requiredCompletionCount: $value", ex)
-              0
+              throw new Exception(s"Invalid requiredCompletionCount value: $value", ex)
           }
         }
         .getOrElse(0)
@@ -1069,7 +1083,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     } catch {
       case ex: Exception =>
         logger.error(s"Error sending notification for userId=$userId, badgeTitle=$badgeTitle", ex)
-      // Don't fail badge awarding if notification fails
+        throw new Exception(s"Error sending notification for userId=$userId, badgeTitle=$badgeTitle: ${ex.getMessage}", ex)
     }
   }
 
@@ -1093,7 +1107,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
       if (badgeCountRows != null && !badgeCountRows.isEmpty) {
         val badgeCount = badgeCountRows.get(0).getLong("badge_count")
-        cache.set(redisKey, badgeCount.toString)
+        cache.setWithRetryAndTTL(redisKey, badgeCount.toString)
         logger.info(s"Updated badge count cache in Redis (index 2) for userId=$userId, key=$redisKey, count=$badgeCount")
       } else {
         cache.set(redisKey, "0")
