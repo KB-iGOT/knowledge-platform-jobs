@@ -207,6 +207,8 @@ program-activity-aggregate-updater:
       database {
         relationCache.id = 10
       }
+      host = {{ dedup_redis_host }}
+      port = 6379
     }
     dedup-redis {
       host = {{ dedup_redis_host }}
@@ -268,6 +270,8 @@ activity-aggregate-updater-v2:
       database {
         relationCache.id = 10
       }
+      host = {{ dedup_redis_host }}
+      port = 6379
     }
     dedup-redis {
       host = {{ dedup_redis_host }}
