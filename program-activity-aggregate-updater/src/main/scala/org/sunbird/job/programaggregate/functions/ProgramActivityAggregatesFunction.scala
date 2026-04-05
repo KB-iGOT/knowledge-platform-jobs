@@ -32,6 +32,7 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
   private[this] val logger = LoggerFactory.getLogger(classOf[ProgramActivityAggregatesFunction])
   private var cache: DataCache = _
   private var collectionStatusCache: TTLCache[String, String] = _
+  private val windowCache: mutable.Map[String, List[String]] = mutable.Map.empty
   lazy private val gson = new Gson()
 
   override def metricsList(): List[String] = {
@@ -60,6 +61,7 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
                        context: ProcessWindowFunction[Map[String, AnyRef], String, Int, GlobalWindow]#Context,
                        events: Iterable[Map[String, AnyRef]],
                        metrics: Metrics): Unit = {
+    windowCache.clear()
     logger.info("Event Info Inside ProgramActivityAggregrator: " + events)
     val inputUserConsumptionList: List[UserContentConsumption] = events
       .groupBy(key => (key.get(config.courseId), key.get(config.batchId), key.get(config.userId)))
@@ -293,13 +295,15 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
   }
 
   def readFromCache(key: String, metrics: Metrics): List[String] = {
-    metrics.incCounter(config.cacheHitCount)
-    val list = cache.getKeyMembers(key)
-    if (CollectionUtils.isEmpty(list)) {
-      metrics.incCounter(config.cacheMissCount)
-      logger.info("Redis cache (smembers) not available for key: " + key)
-    }
-    list.asScala.toList
+    windowCache.getOrElseUpdate(key, {
+      metrics.incCounter(config.cacheHitCount)
+      val list = cache.getKeyMembers(key)
+      if (CollectionUtils.isEmpty(list)) {
+        metrics.incCounter(config.cacheMissCount)
+        logger.info("Redis cache (smembers) not available for key: " + key)
+      }
+      list.asScala.toList
+    })
   }
 
   def getUserAggQuery(progress: UserActivityAgg):
