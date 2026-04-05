@@ -195,7 +195,7 @@ program-activity-aggregate-updater:
       consumer.parallelism = {{ program_activity_agg_consumer_parallelism }}
       dedup.parallelism = {{ program_activity_agg_dedup_parallelism }}
       activity.agg.parallelism = {{ program_activity_agg_parallelism }}
-      enrolment.complete.parallelism = {{ enrolment_complete_parallelism }}
+      enrolment.complete.parallelism = {{ program_activity_enrolment_complete_parallelism }}
     }
     lms-cassandra {
       keyspace = "{{ middleware_course_keyspace }}"
