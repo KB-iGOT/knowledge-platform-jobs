@@ -189,12 +189,12 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
     // These are the child collections which require computation of aggregates - for this user.
     val ancestors = userConsumption.contents.mapValues(content => {
       val contentId = content.contentId
-      readFromCacheForAncestorsValue(key = s"$courseId:$contentId:${config.ancestors}", metrics)
+      readFromCacheForAncestorsAndUnitValue(key = s"$courseId:$contentId:${config.ancestors}", metrics)
     }).values.flatten.filter(a => !StringUtils.equals(a, courseId)).toList.distinct
 
     // LeafNodes of the identified child collections - for this user.
     val collectionsWithLeafNodes = ancestors.map(unitId => {
-      (unitId, readFromCache(courseId, key = s"$courseId:$unitId:${config.leafNodes}", metrics).distinct)
+      (unitId, readFromCacheForAncestorsAndUnitValue(key = s"$courseId:$unitId:${config.leafNodes}", metrics).distinct)
     }).toMap
 
     // Content completed - By this user.
@@ -333,22 +333,31 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
     list.asScala.toList
   }
 
-  def readFromCacheForAncestorsValue(key: String, metrics: Metrics): List[String] = {
-    metrics.incCounter(config.cacheHitCount)
-    val list = cache.getKeyMembers(key)
-    if (CollectionUtils.isEmpty(list)) {
-      metrics.incCounter(config.cacheMissCount)
-      logger.info("Redis cache (smembers) not available for key: " + key + "for ancestors value, reading from KP Redis")
-      val kpCacheAncestorsList = contentKpCache.getKeyMembers(key)
-      if (!kpCacheAncestorsList.isEmpty) {
-          cache.addKeyMembers(key, kpCacheAncestorsList.asScala.toList, config.relationCacheExpiry)
-          logger.info("Redis cache added the (smembers): " + key)
-          return kpCacheAncestorsList.asScala.toList
-      } else {
-        logger.info("Redis cache (smembers) not available for key: " + key + " in KP Redis as well.")
-      }
+  def readFromCacheForAncestorsAndUnitValue(key: String, metrics: Metrics): List[String] = {
+    logger.info(s"Reading from cache for key: $key for ancestors and unit value")
+    val keyExists = cache.isExists(key)
+    if (keyExists) {
+      metrics.incCounter(config.cacheHitCount)
+      val list = cache.getKeyMembers(key)
+      return if (list != null) list.asScala.toList else List.empty
     }
-    list.asScala.toList
+
+    // Key does NOT exist → first time miss
+    metrics.incCounter(config.cacheMissCount)
+    logger.info(s"Cache miss for key: $key. Checking KP Redis")
+
+    val kpCacheList = contentKpCache.getKeyMembers(key)
+
+    if (kpCacheList != null && !kpCacheList.isEmpty) {
+      val result = kpCacheList.asScala.toList
+      cache.addKeyMembers(key, result, config.relationCacheExpiry)
+      logger.info(s"Added KP Redis data to cache for key: $key")
+      result
+    } else {
+      cache.addKeyMembers(key, List.empty[String], config.relationCacheExpiry)
+      logger.info(s"No data found in KP Redis. Stored empty set for key: $key")
+      List.empty
+    }
   }
   def getUserAggQuery(progress: UserActivityAgg):
   Update.Where = {

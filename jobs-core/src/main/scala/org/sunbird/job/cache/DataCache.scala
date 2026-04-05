@@ -360,7 +360,15 @@ class DataCache(val config: BaseJobConfig, val redisConnect: RedisConnect, val d
 
   /* Set a string value with TTL (in seconds) */
   def set(key: String, value: String, ttlSeconds: Int): Unit = {
-    redisConnection.setex(key, ttlSeconds, value)
+    try {
+      redisConnection.setex(key, ttlSeconds, value)
+    } catch {
+      case ex@(_: JedisConnectionException | _: JedisException) =>
+        logger.error("Exception when update data to redis cache", ex)
+        close()
+        this.redisConnection = redisConnect.getConnection(dbIndex);
+        redisConnection.setex(key, ttlSeconds, value)
+    }
   }
 }
 
