@@ -207,11 +207,11 @@ program-activity-aggregate-updater:
       database {
         relationCache.id = 10
       }
-      host = {{ dp_redis_host }}
+      host = {{ dedup_redis_host }}
       port = 6379
     }
     dedup-redis {
-      host = {{ prgm_act_redis_host }}
+      host = {{ dedup_redis_host }}
       port = 6379
       database.index = {{ activity_agg_dedup_index }}
       database.expiry = {{ activity_agg_dedup_expiry }}
