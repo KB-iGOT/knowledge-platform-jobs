@@ -50,11 +50,11 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
   override def processElement(event: Event,
                               ctx: KeyedProcessFunction[String, Event, Event]#Context,
                               out: Collector[Event]): Unit = {
+    val userId = event.userId
+    val courseId = event.courseId
+    val batchId = event.batchId
+    val language = event.language
     try {
-      val userId = event.userId
-      val courseId = event.courseId
-      val batchId = event.batchId
-      val language = event.language
       val contents = event.contents
 
       val (isValid, category) = verifyPrimaryCategory(courseId)(metrics, config, httpUtil, contentCache)
@@ -106,7 +106,8 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       out.collect(event)
     } catch {
       case ex: Exception =>
-        logger.error("Error processing event", ex)
+        logger.error("Error processing event userId: " + userId + " courseId: " + courseId +
+          " batchId: " + batchId + " language: " + language, ex)
     }
   }
 
