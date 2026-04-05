@@ -296,6 +296,11 @@ class DataCache(val config: BaseJobConfig, val redisConnect: RedisConnect, val d
         0
     }
   }
+
+  /* Set a string value with TTL (in seconds) */
+  def set(key: String, value: String, ttlSeconds: Int): Unit = {
+    redisConnection.setex(key, ttlSeconds, value)
+  }
 }
 
 // $COVERAGE-ON$

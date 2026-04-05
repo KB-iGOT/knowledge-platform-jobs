@@ -152,4 +152,6 @@ class ActivityAggregateUpdaterConfigV2(override val config: Config) extends Base
       config.getStringList("activity.aggregate.excluded.primaryCategories").asScala.toSet
     else
       Set("Program", "Curated Program", "Blended Program")
+
+  val courseCacheExpiry: Int = if (config.hasPath("activity.course.cache.expiry")) config.getInt("activity.course.cache.expiry") else 3600000
 }

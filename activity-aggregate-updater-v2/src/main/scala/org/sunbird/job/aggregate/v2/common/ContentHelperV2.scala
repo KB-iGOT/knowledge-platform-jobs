@@ -1,5 +1,8 @@
 package org.sunbird.job.aggregate.v2.common
 
+import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import org.slf4j.LoggerFactory
 import org.sunbird.job.Metrics
 import org.sunbird.job.aggregate.v2.task.ActivityAggregateUpdaterConfigV2
@@ -10,6 +13,11 @@ import scala.collection.JavaConverters._
 trait ContentHelperV2 {
 
   private[this] val logger = LoggerFactory.getLogger(classOf[ContentHelperV2])
+  @transient lazy val objectMapper: ObjectMapper =
+    new ObjectMapper()
+      .registerModule(DefaultScalaModule)
+      .setSerializationInclusion(JsonInclude.Include.NON_EMPTY)
+
   def getCourseInfo(courseId: String)(
     metrics: Metrics,
     config: ActivityAggregateUpdaterConfigV2,
@@ -21,7 +29,7 @@ trait ContentHelperV2 {
     )
     val courseMetadata = Option(contentCache).flatMap(c => Option(c.getWithRetry(courseId))).getOrElse(null)
     if (null == courseMetadata || courseMetadata.isEmpty) {
-      logger.error(
+      logger.info(
         s"Fetching course details from Content Service for Id: ${courseId}"
       )
       //TODO: FETCH LANGUAGE ALSO.
@@ -77,6 +85,8 @@ trait ContentHelperV2 {
           .getOrElse(JsonKeys.MILESTONES_V1, List.empty[Map[String, AnyRef]])
           .asInstanceOf[List[Map[String, AnyRef]]]
       courseInfoMap.put(JsonKeys.MILESTONES_V1, milestonesV1.asInstanceOf[AnyRef])
+      val courseInfoMapString = objectMapper.writeValueAsString(courseInfoMap)
+      contentCache.set(courseId, courseInfoMapString, config.courseCacheExpiry)
       courseInfoMap
     } else {
       val courseName = StringContext
