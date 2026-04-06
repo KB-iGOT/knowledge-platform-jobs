@@ -29,17 +29,17 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
 
   @transient private var metrics: Metrics = _
   private[this] val logger = LoggerFactory.getLogger(classOf[ActivityAggregatesFunctionV2])
-  private var cache: DataCache = _
+//  private var cache: DataCache = _
   private var contentCache: DataCache = _
   var deDupEngine: DeDupEngine = _
 
   override def open(parameters: Configuration): Unit = {
     if (cassandraUtil == null)
       cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
-    cache = new DataCache(config, new RedisConnect(config), config.nodeStore, List())
-    cache.init()
+   /*cache = new DataCache(config, new RedisConnect(config), config.nodeStore, List())
+    cache.init()*/
 
-    contentCache = new DataCache(config, new RedisConnect(config), config.contentStoreIndex, List())
+    contentCache = new DataCache(config, new RedisConnect(config, Option(config.deDupRedisHost), Option(config.deDupRedisPort)), config.contentStoreIndex, List())
     contentCache.init()
 
     metrics = Metrics(new ConcurrentHashMap[String, AtomicLong]())
@@ -435,7 +435,7 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
 
   override def close(): Unit = {
     if (cassandraUtil != null) cassandraUtil.close()
-    cache.close()
+    //cache.close()
     contentCache.close()
     super.close()
   }
