@@ -744,7 +744,7 @@ program-cert-pre-processor:
       restart-strategy.delay = 240000 # in milli-seconds # on max restarts (3) within 4 min the job will fail.
       parallelism = {{program_cert_pre_processor_parallelism}}
       consumer.parallelism = {{ program_cert_pre_processor_consumer_parallelism }}
-      generate_certificate.parallelism = {{generate_certificate_parallelism}}
+      generate_certificate.parallelism = {{program_cert_generate_certificate_parallelism}}
     }
     lms-cassandra {
       keyspace = "{{ middleware_course_keyspace }}"
