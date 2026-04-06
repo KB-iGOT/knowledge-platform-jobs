@@ -271,14 +271,14 @@ activity-aggregate-updater-v2:
     }
     redis {
       database {
-        relationCache.id = 10
+        relationCache.id = 11
         contentCache.id = 8
       }
-      host = {{ act_agr_dedup_redis_host }}
+      host = {{ dedup_redis_host }}
       port = 6379
     }
     dedup-redis {
-      host = {{ act_agr_dedup_redis_host }}
+      host = {{ dedup_redis_host }}
       port = 6379
       database.index = {{ activity_agg_v2_dedup_index }}
       database.expiry = {{ activity_agg_v2_dedup_expiry }}
