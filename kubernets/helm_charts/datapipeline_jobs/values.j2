@@ -225,7 +225,7 @@ program-activity-aggregate-updater:
       input.dedup.enabled = true
       filter.processed.enrolments = true
       collection.status.cache.expiry = {{ activity_agg_collection_status_cache_expiry_time }}
-      course.cache.expiry = 28800
+      course.cache.expiry = 28800000
       course.relation.cache.expiry = 28800
     }
     service {
