@@ -19,6 +19,7 @@ trait ContentHelper {
       .registerModule(DefaultScalaModule)
       .setSerializationInclusion(JsonInclude.Include.NON_EMPTY)
 
+  val courseInfoCache = new java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)]()
   def getCourseInfo(courseId: String)(
     metrics: Metrics,
     config: ProgramActivityAggregateUpdaterConfig,
@@ -26,6 +27,14 @@ trait ContentHelper {
     httpUtil: HttpUtil
   ): java.util.Map[String, AnyRef] = {
 
+    val currentTime = System.currentTimeMillis()
+    val cacheEntry = courseInfoCache.get(courseId)
+    if (cacheEntry != null && cacheEntry._2 > currentTime) {
+      logger.info(
+        s"Fetching course details from in memory cache for Id: ${courseId}"
+      )
+      return cacheEntry._1
+    }
     logger.info(
       s"Fetching course details from Redis for Id: ${courseId}, Configured Index: " + contentCache.getDBConfigIndex() + ", Current Index: " + contentCache.getDBIndex()
     )
@@ -148,6 +157,7 @@ trait ContentHelper {
       courseInfoMap.put("milestonesv1", milestonesV1.asInstanceOf[AnyRef])
       courseInfoMap
     }
+    courseInfoCache.put(courseId, (finalCourseInfoMap, currentTime + config.courseCacheExpiry))
     finalCourseInfoMap
   }
 
