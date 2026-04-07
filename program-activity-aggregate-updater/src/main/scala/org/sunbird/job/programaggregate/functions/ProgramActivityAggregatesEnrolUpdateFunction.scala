@@ -158,14 +158,10 @@ class ProgramActivityAggregatesEnrolUpdateFunction(config: ProgramActivityAggreg
   }
 
   def readFromCache(courseId: String, key: String, metrics: Metrics): List[String] = {
-    metrics.incCounter(config.cacheHitCount)
-    val list = cache.getKeyMembers(key)
-    if (CollectionUtils.isEmpty(list)) {
-      metrics.incCounter(config.cacheMissCount)
-      logger.info("Redis cache (smembers) not available for key: " + key)
       val contentObj: java.util.Map[String, AnyRef] =
         getCourseInfo(courseId)(metrics, config, contentCache, httpUtil)
       if (!contentObj.isEmpty) {
+        logger.info("readFromCache: read course info. for : " + courseId)
         val raw = contentObj.get(config.leafNodesKey)
         val leafNodes =
           raw match {
@@ -178,14 +174,12 @@ class ProgramActivityAggregatesEnrolUpdateFunction(config: ProgramActivityAggreg
             case _ =>
               List.empty[String]
           }
-        if (leafNodes.nonEmpty) {
-          cache.addKeyMembers(key, leafNodes, config.relationCacheExpiry)
-          logger.info("Redis cache added the (smembers): " + key)
-          return leafNodes
-        }
+          if (leafNodes.nonEmpty) {
+            return leafNodes
+          }
       }
-    }
-    list.asScala.toList
+      logger.info("readFromCache: failed to read course info. for : " + courseId)
+      List.empty[String]
   }
 
 

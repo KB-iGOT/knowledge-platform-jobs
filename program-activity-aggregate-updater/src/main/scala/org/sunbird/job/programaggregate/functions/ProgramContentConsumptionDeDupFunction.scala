@@ -35,7 +35,7 @@ class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpd
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
     cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
-    contentCache = new DataCache(config, new RedisConnect(config), config.contentStoreIndex, List())
+    contentCache = new DataCache(config, new RedisConnect(config, Option(config.deDupRedisHost), Option(config.deDupRedisPort)), config.contentStoreIndex, List())
     contentCache.init()
     collectionStatusCache = TTLCache[String, String](Duration.apply(config.statusCacheExpirySec, TimeUnit.SECONDS))
     deDupEngine = new DeDupEngine(config, new RedisConnect(config, Option(config.deDupRedisHost), Option(config.deDupRedisPort)), config.deDupStore, config.deDupExpirySec)
