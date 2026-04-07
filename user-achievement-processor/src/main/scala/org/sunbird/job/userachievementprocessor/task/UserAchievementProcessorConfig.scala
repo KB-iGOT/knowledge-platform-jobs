@@ -83,4 +83,7 @@ class UserBadgeAwardingConfig(override val config: Config) extends BaseJobConfig
   val id: String = "id"
   val badgeId: String = "badgeid"
   val badgeTitle: String = "badgeTitle"
+  val criteria: String = "criteria"
+  val issuedOn: String = "issuedon"
+  val templateUrl: String = "templateurl"
 }
