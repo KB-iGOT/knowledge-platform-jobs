@@ -398,7 +398,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
    * Only fetches identifiers from the first level children, not nested children
    */
   private def extractLeafNodesFromHierarchy(content: Map[String, AnyRef]): java.util.List[String] = {
-    import scala.collection.JavaConverters._
     val leafNodes = new java.util.ArrayList[String]()
 
     // Get the children array from the content
@@ -502,7 +501,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
                                                   metrics: Metrics
                                                 ): Unit = {
     try {
-      import scala.collection.JavaConverters._
+
 
       // Extract courseName from courseMetadata
       val courseName = Option(courseMetadata.get("name")).map(_.toString).getOrElse(courseId)
@@ -563,8 +562,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
                                                metrics: Metrics
                                              ): Unit = {
     try {
-      import scala.collection.JavaConverters._
-
       // Check if badgeDetails_v1 exists in course metadata
       val badgeDetailsV1Raw = courseMetadata.get(config.badgeDetailsV1Key)
       if (badgeDetailsV1Raw == null) {
@@ -649,7 +646,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
           )
 
           if (certsRaw != null && !certsRaw.isEmpty) {
-            import scala.collection.JavaConverters._
             val issuedCertificates = certsRaw.asScala.toList
 
             // Get the latest lastIssuedOn value - parse ISO date strings to timestamps
@@ -749,8 +745,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
    */
   private def processProgramBadgeAwarding(userId: String, programId: String, batchId: String, metrics: Metrics): Unit = {
     try {
-      import scala.collection.JavaConverters._
-
       val programMetadata: java.util.Map[String, AnyRef] = getProgramHierarchy(programId)(metrics, config, httpUtil)
       val badgeDetailsV1Raw = programMetadata.get(config.badgeDetailsV1Key)
       if (badgeDetailsV1Raw == null) {
@@ -905,7 +899,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
         var completedCount = 0
         if (enrolmentRows != null && !enrolmentRows.isEmpty) {
-          import scala.collection.JavaConverters._
           enrolmentRows.asScala.foreach { row =>
             val courseId = row.getString(config.courseId)
             val status = row.getInt("status")
@@ -1155,7 +1148,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
             .asInstanceOf[java.util.List[java.util.Map[String, String]]]
 
           if (certsRaw != null && !certsRaw.isEmpty) {
-            import scala.collection.JavaConverters._
             val issuedCertificates = certsRaw.asScala.toList
 
             // Get the latest lastIssuedOn value - parse ISO date strings to timestamps
@@ -1360,7 +1352,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
   }
 
   def getUpdateIssuedCertQueryForIgot(updatedCerts: util.List[util.Map[String, String]], userId: String, courseId: String, batchId: String, config: UserBadgeAwardingConfig):
-  Update.Where = QueryBuilder.update(config.coursesdb, config.externalEnrolmentTable).where()
+  Update.Where = QueryBuilder.update(config.coursesdb, config.enrolmentTable).where()
     .`with`(QueryBuilder.set(config.issuedBadgesKey, updatedCerts))
     .where(QueryBuilder.eq(config.userId.toLowerCase, userId))
     .and(QueryBuilder.eq(config.courseId.toLowerCase, courseId))
