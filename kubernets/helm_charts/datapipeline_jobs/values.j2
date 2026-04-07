@@ -840,6 +840,7 @@ collection-certificate-generator:
     enable.rc.certificate = false
     allowed.course.category.certificate.processor = []
     specialEventCertificateName = "NLW_2026"
+    enable.user.email.notification = false
 
   flink-conf: |+
     jobmanager.memory.flink.size: {{ flink_job_names['collection-certificate-generator'].jobmanager_memory }}
