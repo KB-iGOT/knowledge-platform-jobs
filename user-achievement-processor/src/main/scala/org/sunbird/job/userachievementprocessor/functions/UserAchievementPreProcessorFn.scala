@@ -1,7 +1,7 @@
 package org.sunbird.job.userbadgeawarding.functions
 
 
-import com.datastax.driver.core.querybuilder.QueryBuilder
+import com.datastax.driver.core.querybuilder.{Insert, QueryBuilder, Update}
 import com.google.common.reflect.TypeToken
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.configuration.Configuration
@@ -13,8 +13,10 @@ import org.sunbird.job.userbadgeawarding.domain.Event
 import org.sunbird.job.userbadgeawarding.task.UserBadgeAwardingConfig
 import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil, ScalaJsonUtil}
 import org.sunbird.job.{BaseProcessKeyedFunction, Metrics}
+
 import java.text.SimpleDateFormat
-import java.util.TimeZone
+import java.util.{Date, TimeZone}
+import java.util
 import scala.collection.JavaConverters._
 import scala.collection.convert.ImplicitConversions.`map AsScala`
 
@@ -697,42 +699,33 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         badgeList.add(badgeMap)
 
         // Update user_enrolments_v2 with issued_badges
-        val updateQuery =
-          s"""
-             UPDATE ${config.coursesdb}.${config.enrolmentTable}
-             SET issued_badges = ?
-             WHERE userid='$userId'
-             AND courseid='$courseId'
-             AND batchid='$batchId';
-           """
-
-        val preparedStmt = cassandraUtil.session.prepare(updateQuery)
-        val boundStmt = preparedStmt.bind(badgeList)
-        cassandraUtil.session.execute(boundStmt)
+        val updateEnrolmentQuery = getUpdateIssuedCertQueryForIgot(badgeList, userId, courseId, batchId, config)
+        val result = cassandraUtil.update(updateEnrolmentQuery)
+        if (result) {
+          logger.info(s"Updated issued_badges in user_enrolments_v2 for userId=$userId, programId=$courseId, batchId=$batchId")
+        } else {
+          throw new Exception(s"Update of issued_badges in user_enrolments_v2 failed for userId=$userId, programId=$courseId, batchId=$batchId")
+        }
 
         // Insert into badge lookup table
-        val lookupInsertQuery =
-          s"""
-             INSERT INTO ${config.coursesdb}.${config.badgeLookUpTable}
-             (userid, courseid, badgeid, criteria, templateurl, issuedon)
-             VALUES (?, ?, ?, ?, ?, ?);
-           """
-
-        val lookupStmt = cassandraUtil.session.prepare(lookupInsertQuery)
-        val lookupBoundStmt = lookupStmt.bind(
+        val insertResult= insertBadgeLookup(
           userId,
           courseId,
           badgeId,
           criteria,
-          badgeTemplate,
-          new java.util.Date(currentTime)
+          new java.util.Date(currentTime),
+          badgeTemplate
         )
-        cassandraUtil.session.execute(lookupBoundStmt)
+        if(insertResult){
+          logger.info(s"Inserted badge into lookup table for userId=$userId, courseId=$courseId, badgeId=$badgeId")
+        } else {
+          throw new Exception(s"Insertion of badge into lookup table failed for userId=$userId, courseId=$courseId, badgeId=$badgeId")
+        }
 
         logger.info(s"Successfully awarded course-level badge for userId=$userId, courseId=$courseId, batchId=$batchId")
         logger.info(s"Inserted badge into lookup table: userId=$userId, courseId=$courseId, badgeId=$badgeId")
 
-        // Delete badge count cache from Redis
+        // Update badge count cache from Redis
         updateBadgeCountCache(userId)
 
         // Push recent badge activity to Redis
@@ -959,39 +952,28 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       badgeList.add(badgeMap)
 
       // Insert/Update user_enrolments_v2 with issued_badges for program
-      val updateEnrolmentQuery =
-        s"""
-           UPDATE ${config.coursesdb}.${config.enrolmentTable}
-           SET issued_badges = ?
-           WHERE userid='$userId'
-           AND courseid='$programId'
-           AND batchid='$batchId';
-         """
-
-      val preparedStmt = cassandraUtil.session.prepare(updateEnrolmentQuery)
-      val boundStmt = preparedStmt.bind(badgeList)
-      cassandraUtil.session.execute(boundStmt)
-
-      logger.info(s"Updated issued_badges in user_enrolments_v2 for userId=$userId, programId=$programId, batchId=$batchId")
+      val updateEnrolmentQuery = getUpdateIssuedCertQueryForIgot(badgeList, userId, programId, batchId, config)
+      val result = cassandraUtil.update(updateEnrolmentQuery)
+      if (result) {
+        logger.info(s"Updated issued_badges in user_enrolments_v2 for userId=$userId, programId=$programId, batchId=$batchId")
+      } else {
+        throw new Exception(s"Update of issued_badges in user_enrolments_v2 failed for userId=$userId, programId=$programId, batchId=$batchId")
+      }
 
       // Insert into badge lookup table
-      val lookupInsertQuery =
-        s"""
-           INSERT INTO ${config.coursesdb}.${config.badgeLookUpTable}
-           (userid, courseid, badgeid, criteria, templateurl, issuedon)
-           VALUES (?, ?, ?, ?, ?, ?);
-         """
-
-      val lookupStmt = cassandraUtil.session.prepare(lookupInsertQuery)
-      val lookupBoundStmt = lookupStmt.bind(
+      val insertResult= insertBadgeLookup(
         userId,
         programId,
         badgeId,
         criteria,
-        badgeTemplate,
-        new java.util.Date(currentTime)
+        new java.util.Date(currentTime),
+        badgeTemplate
       )
-      cassandraUtil.session.execute(lookupBoundStmt)
+      if(insertResult){
+        logger.info(s"Inserted badge into lookup table for userId=$userId, courseId=$programId, badgeId=$badgeId")
+      } else {
+        throw new Exception(s"Insertion of badge into lookup table failed for userId=$userId, courseId=$programId, badgeId=$badgeId")
+      }
 
       logger.info(s"Successfully awarded badge for userId=$userId, programId=$programId, badgeId=$badgeId")
 
@@ -1064,7 +1046,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       val badgeCountRows = cassandraUtil.find(badgeCountQuery.toString)
 
       if (badgeCountRows != null && !badgeCountRows.isEmpty) {
-        val badgeCount = badgeCountRows.get(0)
+        val badgeCount = badgeCountRows.get(0).getLong("count")
         cache.setWithRetryAndTTL(redisKey, badgeCount.toString)
         logger.info(s"Updated badge count cache in Redis (index 2) for userId=$userId, key=$redisKey, count=$badgeCount")
       } else {
@@ -1231,29 +1213,27 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
              AND courseid='$courseId';
            """
 
-        val preparedStmt = cassandraUtil.session.prepare(updateQuery)
-        val boundStmt = preparedStmt.bind(badgeList)
-        cassandraUtil.session.execute(boundStmt)
-
+        val updateEnrolmentQuery = getUpdateIssuedCertQueryForExternal(badgeList, userId, courseId, config)
+        val result = cassandraUtil.update(updateEnrolmentQuery)
+        if (result) {
+          logger.info(s"Updated issued_badges in user_external_enrolments for userId=$userId, programId=$courseId")
+        } else {
+          throw new Exception(s"Update of issued_badges in user_external_enrolments failed for userId=$userId, programId=$courseId )")
+        }
         // Insert into badge lookup table
-        val lookupInsertQuery =
-          s"""
-             INSERT INTO ${config.coursesdb}.${config.badgeLookUpTable}
-             (userid, courseid, badgeid, criteria, templateurl, issuedon)
-             VALUES (?, ?, ?, ?, ?, ?);
-           """
-
-        val lookupStmt = cassandraUtil.session.prepare(lookupInsertQuery)
-        val lookupBoundStmt = lookupStmt.bind(
+        val insertResult= insertBadgeLookup(
           userId,
           courseId,
           badgeId,
           criteria,
-          badgeTemplate,
-          new java.util.Date(currentTime)
+          new java.util.Date(currentTime),
+          badgeTemplate
         )
-        cassandraUtil.session.execute(lookupBoundStmt)
-
+        if(insertResult){
+          logger.info(s"Inserted badge into lookup table for userId=$userId, courseId=$courseId, badgeId=$badgeId")
+        } else {
+          throw new Exception(s"Insertion of badge into lookup table failed for userId=$userId, courseId=$courseId, badgeId=$badgeId")
+        }
         logger.info(s"Successfully awarded badge for userId=$userId, extCourseId=$courseId")
         logger.info(s"Inserted badge into lookup table: userId=$userId, courseId=$courseId, badgeId=$badgeId")
 
@@ -1377,5 +1357,37 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         logger.error(s"Error processing program enrolment event for userId=${event.userId}, programId=${event.contentId}", ex)
         metrics.incCounter(config.failedEventCount)
     }
+  }
+
+  def getUpdateIssuedCertQueryForIgot(updatedCerts: util.List[util.Map[String, String]], userId: String, courseId: String, batchId: String, config: UserBadgeAwardingConfig):
+  Update.Where = QueryBuilder.update(config.coursesdb, config.externalEnrolmentTable).where()
+    .`with`(QueryBuilder.set(config.issuedBadgesKey, updatedCerts))
+    .where(QueryBuilder.eq(config.userId.toLowerCase, userId))
+    .and(QueryBuilder.eq(config.courseId.toLowerCase, courseId))
+    .and(QueryBuilder.eq(config.batchId.toLowerCase, batchId))
+
+  def getUpdateIssuedCertQueryForExternal(updatedCerts: util.List[util.Map[String, String]], userId: String, courseId: String, config: UserBadgeAwardingConfig):
+  Update.Where = QueryBuilder.update(config.coursesdb, config.externalEnrolmentTable).where()
+    .`with`(QueryBuilder.set(config.issuedBadgesKey, updatedCerts))
+    .where(QueryBuilder.eq(config.userId.toLowerCase, userId))
+    .and(QueryBuilder.eq(config.courseId.toLowerCase, courseId))
+
+  private def insertBadgeLookup(
+                                       userId: String,
+                                       courseId: String,
+                                       badgeId: String,
+                                       criteria: String,
+                                       issuedOn: Date,
+                                       templateUrl: String
+                                     ): Boolean = {
+    val badgeLookupQuery: Insert = QueryBuilder
+      .insertInto(config.coursesdb, config.badgeLookUpTable)
+      .value(config.userId, userId )
+      .value(config.courseId, courseId)
+      .value(config.badgeId, badgeId)
+      .value(config.criteria, criteria)
+      .value(config.issuedOn, issuedOn)
+      .value(config.templateUrl, templateUrl)
+    cassandraUtil.upsert(badgeLookupQuery.toString)
   }
 }
