@@ -76,4 +76,11 @@ class UserBadgeAwardingConfig(override val config: Config) extends BaseJobConfig
   val notificationBadgeSubCategory: String = config.getString("notification.badge.subCategory")
   val notificationBadgeSubType: String = config.getString("notification.badge.subType")
   val notificationEnabled: Boolean = config.getBoolean("notification.badge.enabled")
+  val userId: String = "userid"
+  val batchId: String = "batchid"
+  val courseId: String = "courseid"
+  val firstName: String = "firstname"
+  val id: String = "id"
+  val badgeId: String = "badgeid"
+  val badgeTitle: String = "badgeTitle"
 }
