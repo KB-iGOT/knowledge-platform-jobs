@@ -1,6 +1,7 @@
 package org.sunbird.job.userbadgeawarding.functions
 
 
+import com.datastax.driver.core.querybuilder.QueryBuilder
 import com.google.common.reflect.TypeToken
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.configuration.Configuration
@@ -14,7 +15,6 @@ import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil, ScalaJsonUtil}
 import org.sunbird.job.{BaseProcessKeyedFunction, Metrics}
 
 import scala.collection.JavaConverters._
-
 import scala.collection.convert.ImplicitConversions.`map AsScala`
 
 class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: HttpUtil)
@@ -130,8 +130,9 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
    */
   private def getUserName(userId: String): String = {
     try {
-      val userQuery = s"SELECT firstname FROM ${config.dbName}.${config.dbTable} WHERE id='$userId';"
-      val userRows = cassandraUtil.find(userQuery)
+      val userQuery = QueryBuilder.select("firstname").from(config.dbName, config.dbTable)
+        .where(QueryBuilder.eq("id", userId))
+      val userRows = cassandraUtil.find(userQuery.toString)
 
       if (userRows != null && !userRows.isEmpty) {
         val row = userRows.get(0)
@@ -435,15 +436,10 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     val userId = event.userId
     val courseId = event.contentId
 
-    val badgeCheckQuery =
-      s"""
-           SELECT badgeid
-           FROM ${config.coursesdb}.${config.badgeLookUpTable}
-           WHERE userid='$userId'
-           AND courseid='$courseId';
-         """
+    val badgeCheckQuery = QueryBuilder.select("badgeid").from(config.coursesdb, config.badgeLookUpTable)
+      .where(QueryBuilder.eq("userid", userId)).and(QueryBuilder.eq("courseid", courseId))
 
-    val existingBadgeRows = cassandraUtil.find(badgeCheckQuery)
+    val existingBadgeRows = cassandraUtil.find(badgeCheckQuery.toString)
     if (existingBadgeRows != null && !existingBadgeRows.isEmpty) {
       logger.debug(s"Badge already awarded for userId=$userId, programId=$courseId (found in lookup table). Skipping badge processing.")
       metrics.incCounter(config.skippedEventCount)
@@ -609,15 +605,10 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         return
       }
 
-      val badgeCheckQuery =
-        s"""
-           SELECT badgeid
-           FROM ${config.coursesdb}.${config.badgeLookUpTable}
-           WHERE userid='$userId'
-           AND courseid='$courseId';
-         """
+      val badgeCheckQuery = QueryBuilder.select("badgeid").from(config.coursesdb, config.badgeLookUpTable)
+        .where(QueryBuilder.eq("userid", userId)).and(QueryBuilder.eq("courseid", courseId))
 
-      val existingBadgeRows = cassandraUtil.findOne(badgeCheckQuery)
+      val existingBadgeRows = cassandraUtil.findOne(badgeCheckQuery.toString)
       if (existingBadgeRows != null) {
         logger.debug(s"Badge already awarded for userId=$userId, programId=$courseId (found in lookup table). Skipping badge processing.")
         metrics.incCounter(config.skippedEventCount)
@@ -647,21 +638,15 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
           return
         }
 
-        // Read user_enrolments_v2 to get issued_certificates and lastIssuedOn
-        val enrolmentQuery =
-          s"""
-             SELECT issued_certificates
-             FROM ${config.coursesdb}.${config.enrolmentTable}
-             WHERE userid='$userId'
-             AND courseid='$courseId'
-             AND batchid='$batchId';
-           """
-
-        val enrolmentRows = cassandraUtil.find(enrolmentQuery)
+        val query = QueryBuilder.select(config.issuedCertificatesKey).from(config.coursesdb, config.enrolmentTable)
+          .where(QueryBuilder.eq(config.userId, userId)).and(QueryBuilder.eq(config.courseId, courseId)).and(QueryBuilder.eq(config.batchId, batchId))
+        val enrolmentRows = cassandraUtil.find(query.toString)
         if (enrolmentRows != null && !enrolmentRows.isEmpty) {
           val row = enrolmentRows.get(0)
-          val certsRaw = row.getObject(config.extContentUserExternalEnrolmentsIssuedCertificatesKey)
-            .asInstanceOf[java.util.List[java.util.Map[String, String]]]
+          val certsRaw = row.getList(
+            config.issuedCertificatesKey,
+            new TypeToken[java.util.Map[String, String]]() {}
+          )
 
           if (certsRaw != null && !certsRaw.isEmpty) {
             import scala.collection.JavaConverters._
@@ -864,15 +849,10 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       val programName = Option(programMetadata.get("name")).map(_.toString).getOrElse(programId)
 
       // Check if user is enrolled in the program and get batchId
-      val programEnrollmentQuery =
-        s"""
-           SELECT batchid
-           FROM ${config.coursesdb}.${config.enrolmentTable}
-           WHERE userid='$userId'
-           AND courseid='$programId';
-         """
+      val programEnrollmentQuery = QueryBuilder.select("userid").from(config.coursesdb, config.enrolmentTable)
+        .where(QueryBuilder.eq("userid", userId)).and(QueryBuilder.eq("courseid", programId))
 
-      val programEnrollmentRows = cassandraUtil.findOne(programEnrollmentQuery)
+      val programEnrollmentRows = cassandraUtil.findOne(programEnrollmentQuery.toString)
       if (programEnrollmentRows == null) {
         logger.info(s"User not enrolled in program. userId=$userId, programId=$programId. Skipping badge award.")
         return
@@ -935,17 +915,11 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
           return
         }
 
-        val courseIdsStr = childNodes.map(id => s"'$id'").mkString(",")
-        val batchEnrolmentQuery =
-          s"""
-             SELECT courseid, status
-             FROM ${config.coursesdb}.${config.enrolmentTable}
-             WHERE userid='$userId'
-             AND courseid IN ($courseIdsStr);
-           """
+        val batchEnrolmentQuery = QueryBuilder.select("courseid", "status").from(config.coursesdb, config.enrolmentTable)
+          .where(QueryBuilder.eq("userid", userId)).and(QueryBuilder.in("courseid", childNodes.asJava))
 
         logger.info(s"Fetching completion status for ${childNodes.size} courses in single query for userId=$userId")
-        val enrolmentRows = cassandraUtil.find(batchEnrolmentQuery)
+        val enrolmentRows = cassandraUtil.find(batchEnrolmentQuery.toString)
 
         var completedCount = 0
         if (enrolmentRows != null && !enrolmentRows.isEmpty) {
@@ -1098,14 +1072,10 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       val redisKey = s"user:badgeCount_$userId"
 
       // Query badge count from user_badge_lookup table
-      val badgeCountQuery =
-        s"""
-           SELECT COUNT(userid) as badge_count
-           FROM ${config.coursesdb}.${config.badgeLookUpTable}
-           WHERE userid='$userId';
-         """
+      val badgeCountQuery = QueryBuilder.select().countAll().from(config.coursesdb, config.badgeLookUpTable)
+        .where(QueryBuilder.eq("userid", userId))
 
-      val badgeCountRows = cassandraUtil.find(badgeCountQuery)
+      val badgeCountRows = cassandraUtil.find(badgeCountQuery.toString)
 
       if (badgeCountRows != null && !badgeCountRows.isEmpty) {
         val badgeCount = badgeCountRows.get(0).getLong("badge_count")
