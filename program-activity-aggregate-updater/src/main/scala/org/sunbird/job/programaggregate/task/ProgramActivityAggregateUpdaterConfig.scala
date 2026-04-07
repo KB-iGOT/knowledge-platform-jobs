@@ -58,6 +58,8 @@ class ProgramActivityAggregateUpdaterConfig(override val config: Config) extends
   val deDupRedisPort: Int = config.getInt("dedup-redis.port")
   val deDupStore: Int = config.getInt("dedup-redis.database.index")
   val deDupExpirySec: Int = config.getInt("dedup-redis.database.expiry")
+  val courseCacheExpiry: Int = if (config.hasPath("activity.course.cache.expiry")) config.getInt("activity.course.cache.expiry") else 3600000
+  val relationCacheExpiry: Int = if (config.hasPath("activity.course.relation.cache.expiry")) config.getInt("activity.course.relation.cache.expiry") else 3600000
 
   // Tags
   val uniqueConsumptionOutputTagName = "program-unique-consumption-events"
@@ -146,6 +148,10 @@ class ProgramActivityAggregateUpdaterConfig(override val config: Config) extends
   val userAccBlockedErrCode = "UOS_USRRED0006"
   val name: String = "name"
   val validProgramPrimaryCategory = List[String]("Program","Curated Program","Blended Program")
-
-
+  val coursecategory = "coursecategory"
+  val preliminaryAssessment = "preliminaryAssessment"
+  val preliminary_Assessment_Key = "preliminaryassessment"
+  val leafNodesKey = "leafNodes"
+  val contentReadFields: String = if (config.hasPath("content.read.fields")) config.getString("content.read.fields") else
+    "identifier,name,versionKey,parentCollections,primaryCategory,courseCategory,languageMapV1,leafNodes,language,milestones_v1,preliminaryAssessment"
 }
