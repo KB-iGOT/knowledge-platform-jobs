@@ -25,6 +25,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
   private[this] val logger = LoggerFactory.getLogger(classOf[UserAchievementPreProcessorFn])
   private var cache: DataCache = _
   private var dataCache: DataCache = _
+  private var contentCache: DataCache = _
 
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
@@ -34,6 +35,8 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     cache.init()
     dataCache = new DataCache(config, redisConnect, config.badgeCacheStore, List())
     dataCache.init()
+    contentCache = new DataCache(config, redisConnect, config.collectionCacheStore, List())
+    cache.init()
   }
 
   override def close(): Unit = {
@@ -223,7 +226,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     val courseId = event.contentId
     val batchId = event.batchId
 
-    val courseMetadata: java.util.Map[String, AnyRef] = getCourseInfo(courseId)(metrics, config, cache, httpUtil)
+    val courseMetadata: java.util.Map[String, AnyRef] = getCourseInfo(courseId)(metrics, config, contentCache, httpUtil)
 
     // Process badge awarding for iGOTCourses
     processBadgeAwardingForIGOTCourses(userId, courseId, batchId, courseMetadata, metrics)
@@ -449,7 +452,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
     val extContentReadUrl = config.extContentUrl
     val contentUrl = s"$extContentReadUrl$courseId"
-    val cachedMetadata = cache.getWithRetry(courseId)
+    val cachedMetadata = contentCache.getWithRetry(courseId)
 
     // Build courseMetadata map to pass to badge awarding function
     val courseMetadataMap = new java.util.HashMap[String, AnyRef]()
@@ -565,20 +568,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
                                              ): Unit = {
     try {
       import scala.collection.JavaConverters._
-      val badgeCheckQuery =
-        s"""
-           SELECT badgeid
-           FROM ${config.coursesdb}.${config.badgeLookUpTable}
-           WHERE userid='$userId'
-           AND courseid='$courseId';
-         """
 
-      val existingBadgeRows = cassandraUtil.find(badgeCheckQuery)
-      if (existingBadgeRows != null && !existingBadgeRows.isEmpty) {
-        logger.debug(s"Badge already awarded for userId=$userId, programId=$courseId (found in lookup table). Skipping badge processing.")
-        metrics.incCounter(config.skippedEventCount)
-        return
-      }
       // Check if badgeDetails_v1 exists in course metadata
       val badgeDetailsV1Raw = courseMetadata.get(config.badgeDetailsV1Key)
       if (badgeDetailsV1Raw == null) {
@@ -619,6 +609,21 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         return
       }
 
+      val badgeCheckQuery =
+        s"""
+           SELECT badgeid
+           FROM ${config.coursesdb}.${config.badgeLookUpTable}
+           WHERE userid='$userId'
+           AND courseid='$courseId';
+         """
+
+      val existingBadgeRows = cassandraUtil.findOne(badgeCheckQuery)
+      if (existingBadgeRows != null) {
+        logger.debug(s"Badge already awarded for userId=$userId, programId=$courseId (found in lookup table). Skipping badge processing.")
+        metrics.incCounter(config.skippedEventCount)
+        return
+      }
+
       // Check badgeEarningDateEnabled
       val badgeEarningDateEnabled = Option(badgeDetailsObj.get(config.badgeEarningDateEnabledKey))
         .map(_.toString.toBoolean)
@@ -655,10 +660,8 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         val enrolmentRows = cassandraUtil.find(enrolmentQuery)
         if (enrolmentRows != null && !enrolmentRows.isEmpty) {
           val row = enrolmentRows.get(0)
-          val certsRaw = row.getList(
-            config.issuedCertificatesKey,
-            new TypeToken[java.util.Map[String, String]]() {}
-          )
+          val certsRaw = row.getObject(config.extContentUserExternalEnrolmentsIssuedCertificatesKey)
+            .asInstanceOf[java.util.List[java.util.Map[String, String]]]
 
           if (certsRaw != null && !certsRaw.isEmpty) {
             import scala.collection.JavaConverters._
@@ -775,25 +778,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     try {
       import scala.collection.JavaConverters._
 
-      val badgeCheckQuery =
-        s"""
-           SELECT badgeid
-           FROM ${config.coursesdb}.${config.badgeLookUpTable}
-           WHERE userid='$userId'
-           AND courseid='$programId';
-         """
-
-      val existingBadgeRows = cassandraUtil.find(badgeCheckQuery)
-      if (existingBadgeRows != null && !existingBadgeRows.isEmpty) {
-        logger.debug(s"Badge already awarded for userId=$userId, programId=$programId (found in lookup table). Skipping badge processing.")
-        metrics.incCounter(config.skippedEventCount)
-        return
-      }
-
       val programMetadata: java.util.Map[String, AnyRef] = getProgramHierarchy(programId)(metrics, config, httpUtil)
-
-      val programName = Option(programMetadata.get("name")).map(_.toString).getOrElse(programId)
-
       val badgeDetailsV1Raw = programMetadata.get(config.badgeDetailsV1Key)
       if (badgeDetailsV1Raw == null) {
         logger.info(s"No badgeDetails_v1 found for programId=$programId")
@@ -861,6 +846,23 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         return
       }
 
+      val badgeCheckQuery =
+        s"""
+           SELECT badgeid
+           FROM ${config.coursesdb}.${config.badgeLookUpTable}
+           WHERE userid='$userId'
+           AND courseid='$programId';
+         """
+
+      val existingBadgeRows = cassandraUtil.findOne(badgeCheckQuery)
+      if (existingBadgeRows != null) {
+        logger.debug(s"Badge already awarded for userId=$userId, programId=$programId (found in lookup table). Skipping badge processing.")
+        metrics.incCounter(config.skippedEventCount)
+        return
+      }
+
+      val programName = Option(programMetadata.get("name")).map(_.toString).getOrElse(programId)
+
       // Check if user is enrolled in the program and get batchId
       val programEnrollmentQuery =
         s"""
@@ -870,14 +872,14 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
            AND courseid='$programId';
          """
 
-      val programEnrollmentRows = cassandraUtil.find(programEnrollmentQuery)
-      if (programEnrollmentRows == null || programEnrollmentRows.isEmpty) {
+      val programEnrollmentRows = cassandraUtil.findOne(programEnrollmentQuery)
+      if (programEnrollmentRows == null) {
         logger.info(s"User not enrolled in program. userId=$userId, programId=$programId. Skipping badge award.")
         return
       }
 
       // Get the actual batchId from enrollment record
-      val programBatchId = programEnrollmentRows.get(0).getString("batchid")
+      val programBatchId = programEnrollmentRows.getString("batchid")
       logger.info(s"User enrolled in program verified. userId=$userId, programId=$programId, batchId=$programBatchId")
 
       // Check badgeEarningDateEnabled
@@ -1098,7 +1100,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       // Query badge count from user_badge_lookup table
       val badgeCountQuery =
         s"""
-           SELECT COUNT(*) as badge_count
+           SELECT COUNT(userid) as badge_count
            FROM ${config.coursesdb}.${config.badgeLookUpTable}
            WHERE userid='$userId';
          """
@@ -1172,6 +1174,21 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
       if (criteria.isEmpty || badgeTemplate.isEmpty || badgeId.isEmpty) {
         logger.warn(s"Incomplete badge details for extCourseId=$courseId, skipping badge awarding")
+        return
+      }
+
+      val badgeCheckQuery =
+        s"""
+           SELECT badgeid
+           FROM ${config.coursesdb}.${config.badgeLookUpTable}
+           WHERE userid='$userId'
+           AND courseid='$courseId';
+         """
+
+      val existingBadgeRows = cassandraUtil.findOne(badgeCheckQuery)
+      if (existingBadgeRows != null) {
+        logger.debug(s"Badge already awarded for userId=$userId, programId=$courseId (found in lookup table). Skipping badge processing.")
+        metrics.incCounter(config.skippedEventCount)
         return
       }
 
@@ -1347,7 +1364,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       }
       logger.info(s"No existing badge found for userId=$userId, programId=$programId. Proceeding with badge processing.")
       // Fetch program metadata using hierarchy API
-      val programMetadata: java.util.Map[String, AnyRef] = getCourseInfo(programId)(metrics, config, cache, httpUtil)
+      val programMetadata: java.util.Map[String, AnyRef] = getCourseInfo(programId)(metrics, config, contentCache, httpUtil)
       // Extract program name from metadata
       val programName = Option(programMetadata.get("name")).map(_.toString).getOrElse(programId)
       // Check if badgeDetails_v1 exists
