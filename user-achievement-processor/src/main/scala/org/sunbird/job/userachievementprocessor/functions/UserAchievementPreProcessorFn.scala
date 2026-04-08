@@ -233,10 +233,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       return
     }
     val courseMetadata: java.util.Map[String, AnyRef] = getCourseInfo(courseId)(metrics, config, contentCache, httpUtil)
-    if (courseMetadata.get(config.badgeDetailsV1Key) == null) {
-      logger.info(s"No badgeDetails_v1 found for courseId=$courseId, skipping course-level badge awarding")
-      return
-    }
     // Process badge awarding for iGOTCourses
     processBadgeAwardingForIGOTCourses(userId, courseId, batchId, courseMetadata, metrics)
   }
