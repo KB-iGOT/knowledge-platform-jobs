@@ -29,7 +29,7 @@ class ProgramCertPreProcessorTask(config: ProgramCertPreProcessorConfig, kafkaCo
               .keyBy(new ProgramCertPreProcessorKeySelector())
               .process(new ProgramCertPreProcessorFn(config, httpUtil))
               .name("program-cert-pre-processor").uid("program-cert-pre-processor")
-        35      .setParallelism(config.parallelism)
+              .setParallelism(config.parallelism)
 
         progressStream.getSideOutput(config.generateCertificateOutputTag).addSink(kafkaConnector.kafkaStringSink(config.kafkaOutputTopic))
           .name(config.generateCertificateProducer).uid(config.generateCertificateProducer).setParallelism(config.generateCertificateParallelism)
