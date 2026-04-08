@@ -29,6 +29,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
   private var cache: DataCache = _
   private var dataCache: DataCache = _
   private var contentCache: DataCache = _
+  val programHierarchyCache = new java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)]()
 
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
@@ -227,8 +228,11 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     val courseId = event.contentId
     val batchId = event.batchId
 
+    if (!config.badgeEnabledCourses.contains(courseId)) {
+      logger.info("CourseId: " + courseId + " is not enabled for badge awarding, skipping.")
+      return
+    }
     val courseMetadata: java.util.Map[String, AnyRef] = getCourseInfo(courseId)(metrics, config, contentCache, httpUtil)
-
     // Process badge awarding for iGOTCourses
     processBadgeAwardingForIGOTCourses(userId, courseId, batchId, courseMetadata, metrics)
   }
@@ -318,23 +322,11 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
   ): java.util.Map[String, AnyRef] = {
     try {
       // Step 1: Fetch badgeDetails_v1 from content read API
-      val readUrl = config.contentReadURL + "/" + programId + "?fields=identifier,name,badgeDetails_v1,primaryCategory"
-      logger.info(s"Fetching program badgeDetails from content read API: $readUrl")
+      val courseMetadata: java.util.Map[String, AnyRef] = getCourseInfo(programId)(metrics, config, contentCache, httpUtil)
 
-      val readResponse = httpUtil.get(readUrl, config.defaultHeaders)
-
-      if (readResponse.status != 200) {
-        logger.error(s"Error fetching program content for programId=$programId: ${readResponse.status} - ${readResponse.body}")
-        throw new Exception(s"Error fetching program content for programId=$programId: ${readResponse.status} - ${readResponse.body}")
-      }
-
-      val readResultMap = JSONUtil.deserialize[Map[String, AnyRef]](readResponse.body)
-      val readResult = readResultMap.getOrElse("result", Map[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
-      val readContent = readResult.getOrElse("content", Map[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
-
-      val programName = readContent.getOrElse("name", "").asInstanceOf[String]
-      val badgeDetails_v1 = readContent.getOrElse("badgeDetails_v1", new java.util.ArrayList())
-      val primaryCategory = readContent.getOrElse("primaryCategory", "").asInstanceOf[String]
+      val programName = courseMetadata.getOrElse("name", "").asInstanceOf[String]
+      val badgeDetails_v1 = courseMetadata.getOrElse("badgeDetails_v1", new java.util.ArrayList())
+      val primaryCategory = courseMetadata.getOrElse("primaryCategory", "").asInstanceOf[String]
 
       // Check if badgeDetails_v1 is empty - if so, don't call hierarchy API
       val isBadgeDetailsEmpty = badgeDetails_v1 match {
@@ -357,19 +349,30 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       }
       logger.info(s"Fetched badgeDetails_v1 from content read API for programId=$programId")
       // Step 2: Fetch children from hierarchy API
-      val hierarchyUrl = s"${config.contentHierarchyURL}${programId}?edit=mode"
-      logger.info(s"Fetching program hierarchy from: $hierarchyUrl")
+      var hierarchyContent: Map[String, AnyRef] = null
+      val currentTime = System.currentTimeMillis()
+      val cacheEntry = programHierarchyCache.get("hierarchy_" + programId)
+      if (cacheEntry != null && cacheEntry._2 > currentTime) {
+        logger.info(
+          s"Fetching hierarchy details from in memory cache for Id: ${"hierarchy_" + programId}"
+        )
+        hierarchyContent =  cacheEntry._1.asScala.toMap
+      } else {
+        val hierarchyUrl = s"${config.contentHierarchyURL}${programId}?edit=mode"
+        logger.info(s"Fetching program hierarchy from: $hierarchyUrl")
 
-      val hierarchyResponse = httpUtil.get(hierarchyUrl, config.defaultHeaders)
+        val hierarchyResponse = httpUtil.get(hierarchyUrl, config.defaultHeaders)
 
-      if (hierarchyResponse.status != 200) {
-        logger.error(s"Error fetching program hierarchy for programId=$programId: ${hierarchyResponse.status} - ${hierarchyResponse.body}")
-        throw new Exception(s"Error fetching program hierarchy for programId=$programId: ${hierarchyResponse.status} - ${hierarchyResponse.body}")
+        if (hierarchyResponse.status != 200) {
+          logger.error(s"Error fetching program hierarchy for programId=$programId: ${hierarchyResponse.status} - ${hierarchyResponse.body}")
+          throw new Exception(s"Error fetching program hierarchy for programId=$programId: ${hierarchyResponse.status} - ${hierarchyResponse.body}")
+        }
+
+        val hierarchyResultMap = JSONUtil.deserialize[Map[String, AnyRef]](hierarchyResponse.body)
+        val hierarchyResult = hierarchyResultMap.getOrElse("result", Map[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
+        hierarchyContent = hierarchyResult.getOrElse("content", Map[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
+        programHierarchyCache.put("hierarchy_" + programId, (hierarchyContent.asJava, currentTime + config.programHierarchyCacheTtl))
       }
-
-      val hierarchyResultMap = JSONUtil.deserialize[Map[String, AnyRef]](hierarchyResponse.body)
-      val hierarchyResult = hierarchyResultMap.getOrElse("result", Map[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
-      val hierarchyContent = hierarchyResult.getOrElse("content", Map[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
 
       // Extract all child identifiers from the hierarchy
       val childNodes = extractLeafNodesFromHierarchy(hierarchyContent)
@@ -501,8 +504,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
                                                   metrics: Metrics
                                                 ): Unit = {
     try {
-
-
       // Extract courseName from courseMetadata
       val courseName = Option(courseMetadata.get("name")).map(_.toString).getOrElse(courseId)
 
@@ -530,8 +531,12 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
           if (parentCollections.nonEmpty) {
             // Loop through each parent collection (program)
             parentCollections.foreach { programId =>
-              logger.info(s"Processing program: $programId for courseId=$courseId")
-              processProgramBadgeAwarding(userId, programId, batchId, metrics)
+              if (config.badgeEnabledPrograms.contains(programId)) {
+                logger.info("ProgramId: " + programId + " is enabled for badge awarding.")
+                processProgramBadgeAwarding(userId, programId, batchId, metrics)
+              } else {
+                logger.info(s"ProgramId: $programId is not enabled for badge awarding, skipping.")
+              }
             }
           } else {
             logger.info(s"parentCollections is empty for courseId=$courseId")
@@ -562,6 +567,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
                                                metrics: Metrics
                                              ): Unit = {
     try {
+
       // Check if badgeDetails_v1 exists in course metadata
       val badgeDetailsV1Raw = courseMetadata.get(config.badgeDetailsV1Key)
       if (badgeDetailsV1Raw == null) {
@@ -745,6 +751,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
    */
   private def processProgramBadgeAwarding(userId: String, programId: String, batchId: String, metrics: Metrics): Unit = {
     try {
+
       val programMetadata: java.util.Map[String, AnyRef] = getProgramHierarchy(programId)(metrics, config, httpUtil)
       val badgeDetailsV1Raw = programMetadata.get(config.badgeDetailsV1Key)
       if (badgeDetailsV1Raw == null) {
@@ -899,6 +906,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
         var completedCount = 0
         if (enrolmentRows != null && !enrolmentRows.isEmpty) {
+          import scala.collection.JavaConverters._
           enrolmentRows.asScala.foreach { row =>
             val courseId = row.getString(config.courseId)
             val status = row.getInt("status")
@@ -1148,6 +1156,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
             .asInstanceOf[java.util.List[java.util.Map[String, String]]]
 
           if (certsRaw != null && !certsRaw.isEmpty) {
+            import scala.collection.JavaConverters._
             val issuedCertificates = certsRaw.asScala.toList
 
             // Get the latest lastIssuedOn value - parse ISO date strings to timestamps
@@ -1256,6 +1265,11 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       val userId = event.userId
       val programId = event.contentId
       val batchId = event.batchId
+
+      if (!config.badgeEnabledPrograms.contains(programId)) {
+        logger.info(s"ProgramId: $programId is not enabled for badge awarding, skipping.")
+        return
+      }
 
       logger.info(s"Processing program enrolment event for userId=$userId, programId=$programId, batchId=$batchId")
 

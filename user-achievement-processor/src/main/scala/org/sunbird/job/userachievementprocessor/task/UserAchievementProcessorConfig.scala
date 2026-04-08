@@ -6,6 +6,8 @@ import org.apache.flink.api.java.typeutils.TypeExtractor
 import org.apache.flink.streaming.api.scala.OutputTag
 import org.sunbird.job.BaseJobConfig
 
+import java.util
+
 class UserBadgeAwardingConfig(override val config: Config) extends BaseJobConfig(config, "user-badge-awarding-processor") {
 
   implicit val stringTypeInfo: TypeInformation[String] = TypeExtractor.getForClass(classOf[String])
@@ -86,4 +88,9 @@ class UserBadgeAwardingConfig(override val config: Config) extends BaseJobConfig
   val criteria: String = "criteria"
   val issuedOn: String = "issuedon"
   val templateUrl: String = "templateurl"
+
+  val badgeEnabledCourses: util.List[String] = if (config.hasPath("badge.enabled.courses")) config.getStringList("badge.enabled.courses") else util.Arrays.asList("")
+  val badgeEnabledPrograms: util.List[String] = if (config.hasPath("badge.enabled.programs")) config.getStringList("badge.enabled.programs") else util.Arrays.asList("")
+
+  val programHierarchyCacheTtl: Int = if (config.hasPath("program.hierarchy.cache.ttl")) config.getInt("program.hierarchy.cache.ttl") else 3600000
 }
