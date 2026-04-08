@@ -1289,7 +1289,8 @@ user-achievement-processor:
       badgeTemplateKey = "badgeTemplate"
       curatedProgram = "curatedProgram"
     }
-
+    badge.enabled.programs = [{{badge_enabled_programs}}]
+    badge.enabled.courses = [{{badge_enabled_courses}}]
     notification {
       service {
         url = "{{cb_notification_wrapper_service_base_url}}/notifications/create"
