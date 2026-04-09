@@ -66,10 +66,7 @@ class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpd
         .map(_.asScala.toMap)
         .toList
 
-      val furtherFilteredContents = filteredContents.map(c => {
-        (eData + ("contents" -> List(Map("contentId" -> c.get("contentId"), "status" -> c.get("status"))))).toMap
-      }).filter(e => discardDuplicates(e))
-      if (furtherFilteredContents.nonEmpty) {
+      if (filteredContents.nonEmpty) {
         var updatedEventInfo: mutable.ListBuffer[Map[String, AnyRef]] = mutable.ListBuffer.empty[Map[String, AnyRef]]
         var eventInfoMap: mutable.Iterable[Map[String, AnyRef]] = getProgramEvent(eData.toMap)(metrics, config, httpUtil, contentCache)
         logger.info("EventInfoMap: " + eventInfoMap)
