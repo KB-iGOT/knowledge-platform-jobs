@@ -1,5 +1,6 @@
 package org.sunbird.job.programaggregate.functions
 
+import com.datastax.driver.core.Row
 import com.datastax.driver.core.querybuilder.{QueryBuilder, Select}
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -60,16 +61,25 @@ class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpd
     if (isBatchEnrollmentEvent) {
       val contents = eData.getOrElse(config.contents, new util.ArrayList[java.util.Map[String, AnyRef]]()).asInstanceOf[util.List[java.util.Map[String, AnyRef]]].asScala
       logger.info("Input Event: " + contents)
-      var updatedEventInfo: mutable.ListBuffer[Map[String, AnyRef]] = mutable.ListBuffer.empty[Map[String, AnyRef]]
-      var eventInfoMap: mutable.Iterable[Map[String, AnyRef]] = getProgramEvent(eData.toMap)(metrics, config, httpUtil, contentCache)
-      logger.info("EventInfoMap: " + eventInfoMap)
-      if (eventInfoMap.nonEmpty) {
-        updatedEventInfo ++= eventInfoMap
+      val filteredContents = contents
+        .filter(x => Option(x.get("status")).exists(_.toString == "2"))
+        .map(_.asScala.toMap)
+        .toList
+
+      val furtherFilteredContents = filteredContents.map(c => {
+        (eData + ("contents" -> List(Map("contentId" -> c.get("contentId"), "status" -> c.get("status"))))).toMap
+      }).filter(e => discardDuplicates(e))
+      if (furtherFilteredContents.nonEmpty) {
+        var updatedEventInfo: mutable.ListBuffer[Map[String, AnyRef]] = mutable.ListBuffer.empty[Map[String, AnyRef]]
+        var eventInfoMap: mutable.Iterable[Map[String, AnyRef]] = getProgramEvent(eData.toMap)(metrics, config, httpUtil, contentCache)
+        logger.info("EventInfoMap: " + eventInfoMap)
+        if (eventInfoMap.nonEmpty) {
+          updatedEventInfo ++= eventInfoMap
+          updatedEventInfo.foreach(d => context.output(config.uniqueConsumptionOutput, d))
+        }
+        logger.info("UpdatedEventInfoMap: " + updatedEventInfo)
       }
 
-      logger.info("UpdatedEventInfoMap: " + updatedEventInfo)
-
-     updatedEventInfo.filter(e => discardDuplicates(e)).foreach(d => context.output(config.uniqueConsumptionOutput, d))
     } else metrics.incCounter(config.skipEventsCount)
   }
 
@@ -123,20 +133,20 @@ class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpd
       logger.info("Inside Valid Primary " + mergedMap)
     } else if (("Course".equalsIgnoreCase(primaryCategory) || ("Standalone Assessment".equalsIgnoreCase(primaryCategory)))
       && !parentCollections.isEmpty) {
+      val userEnrolments = getAllEnrolments(userId)(metrics)
       for (parentId <- parentCollections) {
-        val row = getEnrolment(userId, parentId)(metrics)
+        val row = userEnrolments.getOrElse(parentId, Map.empty[String, AnyRef])
         logger.info("Enrollment: " + row)
         if (row != null) {
-          val contentConsumption = eventData.getOrElse(config.contents, new util.ArrayList[java.util.Map[String, AnyRef]]()).asInstanceOf[util.List[java.util.Map[String, AnyRef]]].asScala
-          logger.info("contentConsumption: " + contentConsumption)
-          val filteredContents = contentConsumption.filter(x => x.get("status") == 2).map(_.asScala.toMap).toList
-          logger.info("filteredContents: " + filteredContents)
+          val filteredContents = eventData.getOrElse(config.contents, new util.ArrayList[java.util.Map[String, AnyRef]]()).asInstanceOf[util.List[java.util.Map[String, AnyRef]]].asScala
+          logger.info("contentConsumption: " + filteredContents)
           if(filteredContents.nonEmpty) {
+            val batchId = row.getOrElse("batchId", "").asInstanceOf[String]
             val eventInfoProgram = Map[String, AnyRef]("contents" -> filteredContents,
               "userId" -> userId,
               "action" -> "batch-enrolment-update",
               "iteration" -> 1.asInstanceOf[Integer],
-              "batchId" -> row.getString("batchid"),
+              "batchId" -> batchId,
               "courseId" -> parentId)
             eventInfoMap += eventInfoProgram
             logger.info("EventMapInfoProgram:" + eventInfoProgram)
@@ -157,6 +167,31 @@ class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpd
       .and(QueryBuilder.eq("courseid", courseId))
     metrics.incCounter(config.dbReadCount)
     cassandraUtil.findOne(selectWhere.toString)
+  }
+
+  def getAllEnrolments(userId: String)(implicit metrics: Metrics): Map[String, Map[String, AnyRef]] = {
+    val selectWhere: Select.Where = QueryBuilder
+      .select(config.userId, config.courseid, config.batchid, config.active)
+      .from(config.dbKeyspace, config.dbUserEnrolmentsTable)
+      .where()
+
+    selectWhere.and(QueryBuilder.eq(config.userid, userId))
+    metrics.incCounter(config.dbReadCount)
+    val rows: util.List[Row] = cassandraUtil.find(selectWhere.toString)
+
+    if (rows == null || rows.isEmpty) {
+      Map.empty
+    } else {
+      rows.asScala
+        .filter(r => r != null && r.getString(config.userid) != null)
+        .map { r =>
+          val courseId = r.getString("courseid")
+          courseId -> Map[String, AnyRef](
+            "batchId" -> r.getString("batchid"),
+            "active" -> Boolean.box(Option(r.getBool("active")).getOrElse(false))
+          )
+        }.toMap
+    }
   }
 
 /*  def getCourseInfo(courseId: String)(
