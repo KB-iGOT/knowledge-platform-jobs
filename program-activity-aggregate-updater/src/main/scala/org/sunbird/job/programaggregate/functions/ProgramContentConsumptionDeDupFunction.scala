@@ -62,9 +62,12 @@ class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpd
       val contents = eData.getOrElse(config.contents, new util.ArrayList[java.util.Map[String, AnyRef]]()).asInstanceOf[util.List[java.util.Map[String, AnyRef]]].asScala
       logger.info("Input Event: " + contents)
       val filteredContents = contents
-        .filter(x => Option(x.get("status")).exists(_.toString == "2"))
-        .map(_.asScala.toMap)
-        .toList
+        .filter { x =>
+          Option(x.get("status")).exists {
+            case n: Number => n.intValue() == 2
+            case _ => false
+          }
+        }.map(_.asScala.toMap).toList
 
       if (filteredContents.nonEmpty) {
         var updatedEventInfo: mutable.ListBuffer[Map[String, AnyRef]] = mutable.ListBuffer.empty[Map[String, AnyRef]]
