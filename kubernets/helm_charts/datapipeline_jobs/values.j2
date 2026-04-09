@@ -208,7 +208,7 @@ program-activity-aggregate-updater:
         relationCache.id = 6
         contentCache.id = 7
       }
-      host = {{ dp_redis_host }}
+      host = {{ prgm_act_redis_host }}
       port = 6379
     }
     dedup-redis {
@@ -222,7 +222,7 @@ program-activity-aggregate-updater:
     threshold.batch.write.size = {{ activity_agg_batch_write_size }}
     activity {
       module.aggs.enabled = false
-      input.dedup.enabled = true
+      input.dedup.enabled = false
       filter.processed.enrolments = true
       collection.status.cache.expiry = {{ activity_agg_collection_status_cache_expiry_time }}
       course.cache.expiry = 28800000
