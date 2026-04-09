@@ -139,15 +139,19 @@ class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpd
           val filteredContents = contentConsumption.filter(x => x.get("status") == 2).map(_.asScala.toMap).toList
           logger.info("filteredContents: " + filteredContents)
           if(filteredContents.nonEmpty) {
-            val batchId = row.getOrElse("batchId", "").asInstanceOf[String]
-            val eventInfoProgram = Map[String, AnyRef]("contents" -> filteredContents,
-              "userId" -> userId,
-              "action" -> "batch-enrolment-update",
-              "iteration" -> 1.asInstanceOf[Integer],
-              "batchId" -> batchId,
-              "courseId" -> parentId)
-            eventInfoMap += eventInfoProgram
-            logger.info("EventMapInfoProgram:" + eventInfoProgram)
+            val batchId = row.get("batchId").asInstanceOf[String]
+            if (batchId != null) {
+              val eventInfoProgram = Map[String, AnyRef]("contents" -> filteredContents,
+                "userId" -> userId,
+                "action" -> "batch-enrolment-update",
+                "iteration" -> 1.asInstanceOf[Integer],
+                "batchId" -> batchId,
+                "courseId" -> parentId)
+              eventInfoMap += eventInfoProgram
+              logger.info("EventMapInfoProgram:" + eventInfoProgram)
+            } else {
+              logger.error("BatchId is null for userId: " + userId + " courseId: " + parentId)
+            }
           }
         }
       }
@@ -169,7 +173,7 @@ class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpd
 
   def getAllEnrolments(userId: String)(implicit metrics: Metrics): Map[String, Map[String, AnyRef]] = {
     val selectWhere: Select.Where = QueryBuilder
-      .select(config.userId, config.courseid, config.batchid, config.active)
+      .select(config.userid, config.courseid, config.batchid, config.active)
       .from(config.dbKeyspace, config.dbUserEnrolmentsTable)
       .where()
 
