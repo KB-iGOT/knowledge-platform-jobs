@@ -78,8 +78,7 @@ class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpd
           updatedEventInfo.foreach(d => context.output(config.uniqueConsumptionOutput, d))
         }
         logger.info("UpdatedEventInfoMap: " + updatedEventInfo)
-      }
-
+      } else metrics.incCounter(config.skipEventsCount)
     } else metrics.incCounter(config.skipEventsCount)
   }
 
