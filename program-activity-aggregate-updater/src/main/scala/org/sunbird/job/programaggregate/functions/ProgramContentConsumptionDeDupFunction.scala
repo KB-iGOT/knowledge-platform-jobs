@@ -142,7 +142,10 @@ class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpd
           val filteredContents = contentConsumption.filter(x => x.get("status") == 2).map(_.asScala.toMap).toList
           logger.info("filteredContents: " + filteredContents)
           if(filteredContents.nonEmpty) {
-            val batchId = row.get("batchId").asInstanceOf[String]
+            val batchId: String = row.get("batchId") match {
+              case Some(value: String) => value
+              case _ => null
+            }
             if (batchId != null) {
               val eventInfoProgram = Map[String, AnyRef]("contents" -> filteredContents,
                 "userId" -> userId,
