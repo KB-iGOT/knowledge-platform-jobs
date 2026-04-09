@@ -1205,19 +1205,20 @@ user-competency-updater:
   user-competency-updater: |+
     include file("/data/flink/conf/base-config.conf")
     kafka {
-      input.topic = "{{ env_name }}.user.competency.mapping.event"
-      groupId = "{{ env_name }}-user-competency-mapping-event-group"
-      failed.topic = "{{ env_name }}.user.competency.mapping.event.failed"
-      failed.groupId = "{{ env_name }}-competency-mapping-event-failed-group"
+      input.topic = "{{ env }}.user.competency.mapping.event"
+      groupId = "user-competency-mapping-event-group"
+      failed.topic = "{{ env }}.user.competency.mapping.event.failed"
+      failed.groupId = "user-competency-mapping-event-failed-group"
     }
     task {
       restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
       restart-strategy.delay = {{ user_competency_updater_restart_strategy_delay }} # in milli-seconds # on max restarts (3) within 4 min the job will fail.
       consumer.parallelism = {{ user_competency_updater_consumer_parallelism }}
       parallelism = {{ user_competency_updater_parallelism }}
-      competency.parallelism = 1
+
       checkpointing.interval = {{ user_competency_updater_checkpointing_interval }}
       checkpointing.pause.between.seconds = {{ user_competency_updater_checkpointing_pause_interval }}
+      competency.parallelism = {{ user_competency_updater_competency_parallelism }}
     }
     lms-cassandra {
       keyspace = "sunbird"
@@ -1233,9 +1234,9 @@ user-competency-updater:
         }
       }
       sunbird{
-        db = "sunbird"
-        }
+      db = "sunbird"
       }
+    }
     redis {
       host = {{data_redis_host}}
       port = {{data_redis_port}}
