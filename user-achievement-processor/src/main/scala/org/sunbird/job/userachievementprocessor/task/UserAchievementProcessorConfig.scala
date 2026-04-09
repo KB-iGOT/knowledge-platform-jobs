@@ -12,6 +12,7 @@ class UserBadgeAwardingConfig(override val config: Config) extends BaseJobConfig
 
   //Redis config
   val collectionCacheStore: Int = 0
+  val badgeCountCacheStore: Int = 2
   val badgeCacheStore: Int = 12
   val recentBadgeActivityKey: String = config.getString("redis.recentBadgeActivityKey")
   val recentBadgeActivityMaxSize: Int = config.getInt("redis.recentBadgeActivityMaxSize")
@@ -49,9 +50,11 @@ class UserBadgeAwardingConfig(override val config: Config) extends BaseJobConfig
 
   // Content and External Content config
   val contentReadURL: String = config.getString("content.read.url")
+  val contentHierarchyURL: String = config.getString("content.hierarchy.url")
   val extContentUrl: String = config.getString("extcontent.read.url")
   val extCoursesContextType: String = config.getString("extcontent.extCourses")
   val iGOTCoursesContextType: String = config.getString("extcontent.iGOTCourses")
+  val curatedProgramContextType: String = config.getString("extcontent.curatedProgram")
   val extContentResponseKey: String = config.getString("extcontent.responseKey")
   val extContentUserExternalEnrolmentsIssuedCertificatesKey: String = config.getString("extcontent.issuedCertificatesKey")
   val lastIssuedOnKey: String = config.getString("extcontent.lastIssuedOnKey")

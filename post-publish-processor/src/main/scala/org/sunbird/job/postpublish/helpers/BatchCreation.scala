@@ -166,6 +166,8 @@ trait BatchCreation {
           certTemplateId = resourceTypeDetailsMap.get(config.certTemplate).asInstanceOf[String]
         }
       }
+      // TODO: Remove post testing
+      logger.info(s"[CertTemplate] Final resolved certTemplateId: $certTemplateId")
     }
 
     selectQuery.where.and(QueryBuilder.eq("id", certTemplateId))

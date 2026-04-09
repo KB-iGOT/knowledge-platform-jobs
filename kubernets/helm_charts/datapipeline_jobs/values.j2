@@ -195,7 +195,7 @@ program-activity-aggregate-updater:
       consumer.parallelism = {{ program_activity_agg_consumer_parallelism }}
       dedup.parallelism = {{ program_activity_agg_dedup_parallelism }}
       activity.agg.parallelism = {{ program_activity_agg_parallelism }}
-      enrolment.complete.parallelism = {{ enrolment_complete_parallelism }}
+      enrolment.complete.parallelism = {{ program_activity_enrolment_complete_parallelism }}
     }
     lms-cassandra {
       keyspace = "{{ middleware_course_keyspace }}"
@@ -205,11 +205,14 @@ program-activity-aggregate-updater:
     }
     redis {
       database {
-        relationCache.id = 10
+        relationCache.id = 6
+        contentCache.id = 7
       }
+      host = {{ dp_redis_host }}
+      port = 6379
     }
     dedup-redis {
-      host = {{ dedup_redis_host }}
+      host = {{ prgm_act_redis_host }}
       port = 6379
       database.index = {{ activity_agg_dedup_index }}
       database.expiry = {{ activity_agg_dedup_expiry }}
@@ -218,10 +221,12 @@ program-activity-aggregate-updater:
     threshold.batch.read.size = {{ activity_agg_batch_read_size }}
     threshold.batch.write.size = {{ activity_agg_batch_write_size }}
     activity {
-      module.aggs.enabled = true
+      module.aggs.enabled = false
       input.dedup.enabled = true
       filter.processed.enrolments = true
       collection.status.cache.expiry = {{ activity_agg_collection_status_cache_expiry_time }}
+      course.cache.expiry = 28800000
+      course.relation.cache.expiry = 28800
     }
     service {
       content.basePath = "{{ kp_content_service_base_url }}"
@@ -266,8 +271,11 @@ activity-aggregate-updater-v2:
     }
     redis {
       database {
-        relationCache.id = 10
+        relationCache.id = 11
+        contentCache.id = 8
       }
+      host = {{ dedup_redis_host }}
+      port = 6379
     }
     dedup-redis {
       host = {{ dedup_redis_host }}
@@ -283,6 +291,7 @@ activity-aggregate-updater-v2:
       input.dedup.enabled = true
       filter.processed.enrolments = true
       collection.status.cache.expiry = {{ activity_agg_v2_collection_status_cache_expiry_time }}
+      course.cache.expiry = 28800
     }
     service {
       content.basePath = "{{ kp_content_service_base_url }}"
@@ -359,6 +368,9 @@ post-publish-processor:
       resourceTypeCertTemplateMap {
         "Sadhana Saptah" = "sadhana_saptah_cert_template"
         "Samuhik Charcha - NLW 2026" = "samuhik_charcha_nlw_2026_cert_template"
+        "Webinar" = "slwCetrificateTemplateAndaman"
+        "Karmayogi Talks" = "karmayogiTalksCertTemplate"
+        "Karmayogi Saptah" = "karmayogiTalksCertTemplate"
       }
     }
     dialcode-cassandra {
@@ -517,7 +529,7 @@ enrolment-reconciliation:
       restart-strategy.delay = 240000 # in milli-seconds # on max restarts (3) within 4 min the job will fail.
       consumer.parallelism = {{ enrolment_reconciliation_consumer_parallelism }}
       enrolment.reconciliation.parallelism = {{ enrolment_reconciliation_parallelism }}
-      enrolment.complete.parallelism = {{ enrolment_complete_parallelism }}
+      enrolment.complete.parallelism = {{ reconciliation_enrolment_complete_parallelism }}
     }
     lms-cassandra {
       keyspace = "{{ middleware_course_keyspace }}"
@@ -709,7 +721,7 @@ collection-cert-pre-processor:
     }
     assessment.metrics.supported.contenttype = ["SelfAssess"]
     allowed.course.category.certificate.processor = ["Course","Moderated Course","Invite-Only Program","Moderated Program","Blended Program","Standalone Assessment","Moderated Assessment","Invite-Only Assessment","External Redirect","Comprehensive Assessment Program","Multilingual Course","Pre Enrolment Assessment"]
-
+  
   flink-conf: |+
     jobmanager.memory.flink.size: {{ flink_job_names['collection-cert-pre-processor'].jobmanager_memory }}
     taskmanager.memory.flink.size: {{ flink_job_names['collection-cert-pre-processor'].taskmanager_memory }}
@@ -726,13 +738,14 @@ program-cert-pre-processor:
       output.topic = {{ env_name }}.issue.certificate.request
       output.failed.topic = {{ env_name }}.issue.certificate.failed
       groupId = {{ env_name }}-program-cert-pre-processor-group
+      badge.output.topic = {{ env_name }}.user.badge.award.request
     }
     task {
       restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
       restart-strategy.delay = 240000 # in milli-seconds # on max restarts (3) within 4 min the job will fail.
-      parallelism = {{program_cert_pre_processor_consumer_parallelism}}
+      parallelism = {{program_cert_pre_processor_parallelism}}
       consumer.parallelism = {{ program_cert_pre_processor_consumer_parallelism }}
-      generate_certificate.parallelism = {{generate_certificate_parallelism}}
+      generate_certificate.parallelism = {{program_cert_generate_certificate_parallelism}}
     }
     lms-cassandra {
       keyspace = "{{ middleware_course_keyspace }}"
@@ -825,6 +838,8 @@ collection-certificate-generator:
     enable.suppress.exception = {{ collection_certificate_generator_enable_suppress_exception | lower }}
     enable.rc.certificate = false
     allowed.course.category.certificate.processor = []
+    specialEventCertificateName = "NLW_2026"
+    enable.user.email.notification = false
 
   flink-conf: |+
     jobmanager.memory.flink.size: {{ flink_job_names['collection-certificate-generator'].jobmanager_memory }}
@@ -899,7 +914,7 @@ event-cert-generator:
     
     enable.suppress.exception = {{ event_cert_generator_enable_suppress_exception | lower }}
     enable.rc.certificate = false
-    specialEventCertificateExceptionEvents = ["Karmayogi Talks", "Karmayogi Saptah", "Rajya Karmayogi Saptah"]
+    specialEventCertificateExceptionEvents = ["Karmayogi Talks", "Karmayogi Saptah", "Rajya Karmayogi Saptah", "Sadhana Saptah", "Samuhik Charcha - NLW 2026"]
 
 
   flink-conf: |+
@@ -922,8 +937,8 @@ user-activity-analysis-updater:
       restart-strategy.delay = 240000 # in milli-seconds # on max restarts (3) within 4 min the job will fail.
       parallelism = {{user_activity_analysis_updater_consumer_parallelism}}
       consumer.parallelism = {{ user_activity_analysis_updater_consumer_parallelism }}
-      generate_certificate.parallelism = {{generate_certificate_parallelism}}
-      generate_event_certificate.parallelism = {{generate_event_certificate_parallelism}}
+      generate_certificate.parallelism = {{user_activity_generate_certificate_parallelism}}
+      generate_event_certificate.parallelism = {{user_activity_enerate_event_certificate_parallelism}}
     }
     lms-cassandra {
       keyspace = "sunbird"
@@ -997,6 +1012,7 @@ karma-points-persist-processor:
       firstEnrolmentQuotaKarmaPoints = 5
       nonAcbpCourseQuota = 4
       eventQuotaKarmaPoints = 10
+      enableCapping = false
     }
     cassandra {
       sunbird.keyspace = "sunbird"
@@ -1320,13 +1336,6 @@ user-competency-updater:
       competencySubThemeId = "competencySubThemeId"
     }
 
-  flink-conf: |+
-    jobmanager.memory.flink.size: {{ flink_job_names['user-competency-updater'].jobmanager_memory }}
-    taskmanager.memory.flink.size: {{ flink_job_names['user-competency-updater'].taskmanager_memory }}
-    taskmanager.numberOfTaskSlots: {{ flink_job_names['user-competency-updater'].taskslots }}
-    parallelism.default: 1
-    jobmanager.execution.failover-strategy: region
-    taskmanager.memory.network.fraction: 0.1
 
 user-achievement-processor:
   user-achievement-processor: |+
@@ -1344,7 +1353,7 @@ user-achievement-processor:
       parallelism = {{ user_achievement_updater_parallelism }}
       checkpointing.interval = {{ user_achievement_updater_checkpointing_interval }}
       checkpointing.pause.between.seconds = {{ user_achievement_updater_checkpointing_pause_interval }}
-      badge.parallelism = 1
+      badge.parallelism = {{ user_achievement_badge_parallelism }}
     }
     lms-cassandra {
       sunbird {
@@ -1357,8 +1366,8 @@ user-achievement-processor:
       badgeLookupTable = "user_badge_lookup"
     }
     redis {
-      host = {{data_redis_host}}
-      port = {{data_redis_port}}
+      host = {{ dp_redis_host }}
+      port = 6379
       recentBadgeActivityKey = "dashboard_recent_badge_activity"
       recentBadgeActivityMaxSize = 10
       connection {
@@ -1371,7 +1380,10 @@ user-achievement-processor:
     }
     content {
       read {
-        url = "https://{{domain_name}}/api/content/v1/read/"
+        url = "{{ core_content_service_base_url }}content/v4/read"
+      }
+      hierarchy {
+        url = "{{ core_content_service_base_url }}content/v3/hierarchy/"
       }
     }
     extcontent {
@@ -1393,8 +1405,10 @@ user-achievement-processor:
       issuedOnKey = "issuedOn"
       templateUrlKey = "templateUrl"
       badgeTemplateKey = "badgeTemplate"
+      curatedProgram = "curatedProgram"
     }
-
+    badge.enabled.programs = {{ badge_enabled_programs | to_json }}
+    badge.enabled.courses = {{ badge_enabled_courses | to_json }}
     notification {
       service {
         url = "{{cb_notification_wrapper_service_base_url}}/notifications/create"
@@ -1405,7 +1419,10 @@ user-achievement-processor:
         enabled = true
       }
     }
-    
+
+    badge.enabled.courses = ["do_1145017404968058881383", "do_1145024453025873921492", "do_1145024452515594241488", "do_1145024501170995201528", "do_1145031630659747841640", "do_1145031637481717761649", "do_1145031676893511681666", "do_1145031681500774401677", "do_114505610290970624116", "do_114505995234164736198", "do_1145059961633669121109", "do_1145109590876160001466", "do_114511676761350144180", "do_11452303057827430412621"]
+    badge.enabled.programs = ["do_114538264263991296126"]
+
   flink-conf: |+
     jobmanager.memory.flink.size: {{ flink_job_names['user-achievement-processor'].jobmanager_memory }}
     taskmanager.memory.flink.size: {{ flink_job_names['user-achievement-processor'].taskmanager_memory }}
