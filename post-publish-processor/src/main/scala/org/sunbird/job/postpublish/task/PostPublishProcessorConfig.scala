@@ -59,14 +59,13 @@ class PostPublishProcessorConfig(override val config: Config) extends BaseJobCon
   val defaultCertTemplateId = config.getString("lms-cassandra.certTemplateId")
 
   val resourceTypeCertTemplateMap: util.Map[String, String] = {
-    if (config.hasPath("lms-cassandra.resourceTypeCertTemplateMap"))
-      config.getObject("lms-cassandra.resourceTypeCertTemplateMap")
-        .unwrapped()
-        .asScala
-        .map { case (k, v) => k -> String.valueOf(v) }
-        .asJava
-        .asInstanceOf[util.Map[String, String]]
-    else new util.HashMap[String, String]()
+    if (config.hasPath("lms-cassandra.resourceTypeCertTemplateMap")) {
+      val subConfig = config.getConfig("lms-cassandra.resourceTypeCertTemplateMap")
+      subConfig.entrySet().asScala.foldLeft(new util.HashMap[String, String]()) { (map, entry) =>
+        map.put(entry.getKey, String.valueOf(entry.getValue.unwrapped()))
+        map
+      }
+    } else new util.HashMap[String, String]()
   }
   val sbSystemSettingsTableName = config.getString("lms-cassandra.systemSettingsTable")
   val batchTableName = config.getString("lms-cassandra.batchTable")

@@ -154,16 +154,13 @@ trait BatchCreation {
       certTemplateAddPath = config.batchAddCertTemplateAPIPathForEvent
       reqIdKey = "eventId"
       // Check config-based resourceType → certTemplate mapping (overrides default)
-      val resourceType = Option(eData.get(config.resourseType)).collect { case s: String => s }.getOrElse("").trim
-      config.resourceTypeCertTemplateMap.asScala.get(resourceType).filter(_.nonEmpty).foreach { mappedTemplateId =>
+      val resourceType = Option(eData.get(config.resourseType)).collect { case s: String => s }.getOrElse("")
+      Option(config.resourceTypeCertTemplateMap.get(resourceType)).filter(_.nonEmpty).foreach { mappedTemplateId =>
         certTemplateId = mappedTemplateId
         logger.info(s"Using resourceType-specific cert template: $certTemplateId for resourceType: $resourceType")
       }
-      // Per-event override via resourceTypeDetails takes highest priority, but only if resourceType is NOT mapped in config
-      val isResourceTypeMapped = config.resourceTypeCertTemplateMap.asScala.get(resourceType).exists(_.nonEmpty)
-      // TODO: Remove post testing
-      logger.info(s"[CertTemplate] resourceType='$resourceType', isResourceTypeMapped=$isResourceTypeMapped, certTemplateId so far: $certTemplateId")
-      if (!isResourceTypeMapped && eData.get(config.resourseType) != null && eData.get(config.resourceTypeDetails) != null) {
+      // Per-event override via resourceTypeDetails takes highest priority
+      if (eData.get(config.resourseType) != null && eData.get(config.resourceTypeDetails) != null) {
         val resourceTypeDetailsMap = eData.get(config.resourceTypeDetails).asInstanceOf[util.Map[_, _]]
         if (resourceTypeDetailsMap.containsKey(config.certTemplate)) {
           certTemplateId = resourceTypeDetailsMap.get(config.certTemplate).asInstanceOf[String]
