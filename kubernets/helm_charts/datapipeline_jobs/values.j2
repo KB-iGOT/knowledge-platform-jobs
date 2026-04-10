@@ -366,11 +366,6 @@ post-publish-processor:
       eventBatchTable = "event_batch"
       eventCertTemplateId = karmayogiTalksCertTemplate
       resourceTypeCertTemplateMap {
-        "Sadhana Saptah" = "sadhana_saptah_cert_template"
-        "Samuhik Charcha - NLW 2026" = "samuhik_charcha_nlw_2026_cert_template"
-        "Webinar" = "slwCetrificateTemplateAndaman"
-        "Karmayogi Talks" = "karmayogiTalksCertTemplate"
-        "Karmayogi Saptah" = "karmayogiTalksCertTemplate"
       }
     }
     dialcode-cassandra {
@@ -914,7 +909,7 @@ event-cert-generator:
     
     enable.suppress.exception = {{ event_cert_generator_enable_suppress_exception | lower }}
     enable.rc.certificate = false
-    specialEventCertificateExceptionEvents = ["Karmayogi Talks", "Karmayogi Saptah", "Rajya Karmayogi Saptah", "Sadhana Saptah", "Samuhik Charcha - NLW 2026"]
+    specialEventCertificateExceptionEvents = ["Karmayogi Talks", "Karmayogi Saptah", "Rajya Karmayogi Saptah"]
 
 
   flink-conf: |+
