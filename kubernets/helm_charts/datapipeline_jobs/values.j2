@@ -736,7 +736,7 @@ program-cert-pre-processor:
     kafka {
       input.topic = {{ env_name }}.issue.program.certificate.request
       output.topic = {{ env_name }}.issue.certificate.request
-      output.failed.topic = {{ env_name }}.issue.certificate.failed
+      output.failed.topic = {{ env }}.cert.preprocessor.issue.certificate.failed
       groupId = {{ env_name }}-program-cert-pre-processor-group
       badge.output.topic = {{ env_name }}.user.badge.award.request
     }
