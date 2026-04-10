@@ -66,6 +66,7 @@ program_activity_agg_checkpointing_pause_interval: 90000
 program_activity_agg_consumer_parallelism: 1
 program_activity_agg_dedup_parallelism: 1
 program_activity_agg_parallelism: 1
+program_activity_enrolment_complete_parallelism: 1
 
 ### Activity Aggregate V2 job related vars
 activity_agg_v2_consumer_parallelism: 1
@@ -200,6 +201,7 @@ cert_registry_table: "cert_registry"
 ######user-competency-updater######
 user_competency_updater_consumer_parallelism: 1
 user_competency_updater_parallelism: 1
+event_user_competency_updater_parallelism: 1
 user_competency_updater_restart_strategy_delay: 240000
 user_competency_updater_checkpointing_interval: 300000
 user_competency_updater_checkpointing_pause_interval: 90000
@@ -208,6 +210,7 @@ user_competency_updater_checkpointing_pause_interval: 90000
 ######user-achievement-updater######
 user_achievement_updater_consumer_parallelism: 1
 user_achievement_updater_parallelism: 1
+user_achievement_badge_parallelism: 1
 user_achievement_updater_restart_strategy_delay: 240000
 user_achievement_updater_checkpointing_interval: 300000
 user_achievement_updater_checkpointing_pause_interval: 90000
