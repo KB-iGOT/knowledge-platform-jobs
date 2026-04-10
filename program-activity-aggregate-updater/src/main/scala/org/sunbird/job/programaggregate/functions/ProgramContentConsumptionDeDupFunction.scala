@@ -1,5 +1,6 @@
 package org.sunbird.job.programaggregate.functions
 
+import com.datastax.driver.core.Row
 import com.datastax.driver.core.querybuilder.{QueryBuilder, Select}
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -12,7 +13,7 @@ import org.apache.flink.streaming.api.functions.ProcessFunction
 import org.slf4j.LoggerFactory
 import org.sunbird.job.cache.{DataCache, RedisConnect}
 import org.sunbird.job.dedup.DeDupEngine
-import org.sunbird.job.programaggregate.common.DeDupHelper
+import org.sunbird.job.programaggregate.common.{ContentHelper, DeDupHelper}
 import org.sunbird.job.programaggregate.task.ProgramActivityAggregateUpdaterConfig
 import org.sunbird.job.util.{CassandraUtil, HttpUtil, ScalaJsonUtil}
 import org.sunbird.job.{BaseProcessFunction, Metrics}
@@ -23,7 +24,7 @@ import java.util.concurrent.TimeUnit
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 
-class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpdaterConfig, httpUtil: HttpUtil, @transient var cassandraUtil: CassandraUtil = null)(implicit val stringTypeInfo: TypeInformation[String]) extends BaseProcessFunction[util.Map[String, AnyRef], String](config) {
+class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpdaterConfig, httpUtil: HttpUtil, @transient var cassandraUtil: CassandraUtil = null)(implicit val stringTypeInfo: TypeInformation[String]) extends BaseProcessFunction[util.Map[String, AnyRef], String](config) with ContentHelper{
 
   val mapType: Type = new TypeToken[Map[String, AnyRef]]() {}.getType
   private[this] val logger = LoggerFactory.getLogger(classOf[ProgramContentConsumptionDeDupFunction])
@@ -35,7 +36,7 @@ class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpd
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
     cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
-    contentCache = new DataCache(config, new RedisConnect(config), config.contentStoreIndex, List())
+    contentCache = new DataCache(config, new RedisConnect(config, Option(config.deDupRedisHost), Option(config.deDupRedisPort)), config.contentStoreIndex, List())
     contentCache.init()
     collectionStatusCache = TTLCache[String, String](Duration.apply(config.statusCacheExpirySec, TimeUnit.SECONDS))
     deDupEngine = new DeDupEngine(config, new RedisConnect(config, Option(config.deDupRedisHost), Option(config.deDupRedisPort)), config.deDupStore, config.deDupExpirySec)
@@ -60,16 +61,24 @@ class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpd
     if (isBatchEnrollmentEvent) {
       val contents = eData.getOrElse(config.contents, new util.ArrayList[java.util.Map[String, AnyRef]]()).asInstanceOf[util.List[java.util.Map[String, AnyRef]]].asScala
       logger.info("Input Event: " + contents)
-      var updatedEventInfo: mutable.ListBuffer[Map[String, AnyRef]] = mutable.ListBuffer.empty[Map[String, AnyRef]]
-      var eventInfoMap: mutable.Iterable[Map[String, AnyRef]] = getProgramEvent(eData.toMap)(metrics, config, httpUtil, contentCache)
-      logger.info("EventInfoMap: " + eventInfoMap)
-      if (eventInfoMap.nonEmpty) {
-        updatedEventInfo ++= eventInfoMap
-      }
+      val filteredContents = contents
+        .filter { x =>
+          Option(x.get("status")).exists {
+            case n: Number => n.intValue() == 2
+            case _ => false
+          }
+        }.map(_.asScala.toMap).toList
 
-      logger.info("UpdatedEventInfoMap: " + updatedEventInfo)
-
-     updatedEventInfo.filter(e => discardDuplicates(e)).foreach(d => context.output(config.uniqueConsumptionOutput, d))
+      if (filteredContents.nonEmpty) {
+        var updatedEventInfo: mutable.ListBuffer[Map[String, AnyRef]] = mutable.ListBuffer.empty[Map[String, AnyRef]]
+        var eventInfoMap: mutable.Iterable[Map[String, AnyRef]] = getProgramEvent(eData.toMap)(metrics, config, httpUtil, contentCache)
+        logger.info("EventInfoMap: " + eventInfoMap)
+        if (eventInfoMap.nonEmpty) {
+          updatedEventInfo ++= eventInfoMap
+          updatedEventInfo.foreach(d => context.output(config.uniqueConsumptionOutput, d))
+        }
+        logger.info("UpdatedEventInfoMap: " + updatedEventInfo)
+      } else metrics.incCounter(config.skipEventsCount)
     } else metrics.incCounter(config.skipEventsCount)
   }
 
@@ -123,8 +132,9 @@ class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpd
       logger.info("Inside Valid Primary " + mergedMap)
     } else if (("Course".equalsIgnoreCase(primaryCategory) || ("Standalone Assessment".equalsIgnoreCase(primaryCategory)))
       && !parentCollections.isEmpty) {
+      val userEnrolments = getAllEnrolments(userId)(metrics)
       for (parentId <- parentCollections) {
-        val row = getEnrolment(userId, parentId)(metrics)
+        val row = userEnrolments.getOrElse(parentId, null)
         logger.info("Enrollment: " + row)
         if (row != null) {
           val contentConsumption = eventData.getOrElse(config.contents, new util.ArrayList[java.util.Map[String, AnyRef]]()).asInstanceOf[util.List[java.util.Map[String, AnyRef]]].asScala
@@ -132,14 +142,22 @@ class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpd
           val filteredContents = contentConsumption.filter(x => x.get("status") == 2).map(_.asScala.toMap).toList
           logger.info("filteredContents: " + filteredContents)
           if(filteredContents.nonEmpty) {
-            val eventInfoProgram = Map[String, AnyRef]("contents" -> filteredContents,
-              "userId" -> userId,
-              "action" -> "batch-enrolment-update",
-              "iteration" -> 1.asInstanceOf[Integer],
-              "batchId" -> row.getString("batchid"),
-              "courseId" -> parentId)
-            eventInfoMap += eventInfoProgram
-            logger.info("EventMapInfoProgram:" + eventInfoProgram)
+            val batchId: String = row.get("batchId") match {
+              case Some(value: String) => value
+              case _ => null
+            }
+            if (batchId != null) {
+              val eventInfoProgram = Map[String, AnyRef]("contents" -> filteredContents,
+                "userId" -> userId,
+                "action" -> "batch-enrolment-update",
+                "iteration" -> 1.asInstanceOf[Integer],
+                "batchId" -> batchId,
+                "courseId" -> parentId)
+              eventInfoMap += eventInfoProgram
+              logger.info("EventMapInfoProgram:" + eventInfoProgram)
+            } else {
+              logger.error("BatchId is null for userId: " + userId + " courseId: " + parentId)
+            }
           }
         }
       }
@@ -159,7 +177,32 @@ class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpd
     cassandraUtil.findOne(selectWhere.toString)
   }
 
-  def getCourseInfo(courseId: String)(
+  def getAllEnrolments(userId: String)(implicit metrics: Metrics): Map[String, Map[String, AnyRef]] = {
+    val selectWhere: Select.Where = QueryBuilder
+      .select(config.userid, config.courseid, config.batchid, config.active)
+      .from(config.dbKeyspace, config.dbUserEnrolmentsTable)
+      .where()
+
+    selectWhere.and(QueryBuilder.eq(config.userid, userId))
+    metrics.incCounter(config.dbReadCount)
+    val rows: util.List[Row] = cassandraUtil.find(selectWhere.toString)
+
+    if (rows == null || rows.isEmpty) {
+      Map.empty
+    } else {
+      rows.asScala
+        .filter(r => r != null && r.getString(config.userid) != null)
+        .map { r =>
+          val courseId = r.getString("courseid")
+          courseId -> Map[String, AnyRef](
+            "batchId" -> r.getString("batchid"),
+            "active" -> Boolean.box(Option(r.getBool("active")).getOrElse(false))
+          )
+        }.toMap
+    }
+  }
+
+/*  def getCourseInfo(courseId: String)(
     metrics: Metrics,
     config: ProgramActivityAggregateUpdaterConfig,
     contentCache: DataCache,
@@ -250,6 +293,6 @@ class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpd
         s"Error from get API : ${url}, with response: ${response}"
       )
     }
-  }
+  }*/
 
 }
