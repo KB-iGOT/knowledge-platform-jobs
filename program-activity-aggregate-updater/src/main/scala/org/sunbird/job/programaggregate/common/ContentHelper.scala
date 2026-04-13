@@ -1,36 +1,40 @@
-package org.sunbird.job.aggregate.v2.common
+package org.sunbird.job.programaggregate.common
 
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import org.slf4j.LoggerFactory
 import org.sunbird.job.Metrics
-import org.sunbird.job.aggregate.v2.task.ActivityAggregateUpdaterConfigV2
 import org.sunbird.job.cache.DataCache
+import org.sunbird.job.programaggregate.task.ProgramActivityAggregateUpdaterConfig
 import org.sunbird.job.util.{HttpUtil, ScalaJsonUtil}
 
 import scala.collection.JavaConverters._
 
-trait ContentHelperV2 {
+trait ContentHelper {
 
-  private[this] val logger = LoggerFactory.getLogger(classOf[ContentHelperV2])
+  private[this] val logger = LoggerFactory.getLogger(classOf[ContentHelper])
   @transient lazy val objectMapper: ObjectMapper =
     new ObjectMapper()
       .registerModule(DefaultScalaModule)
       .setSerializationInclusion(JsonInclude.Include.NON_EMPTY)
-  //val courseInfoCache = new java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)]()
 
+  val courseInfoCache = new java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)]()
   def getCourseInfo(courseId: String)(
     metrics: Metrics,
-    config: ActivityAggregateUpdaterConfigV2,
+    config: ProgramActivityAggregateUpdaterConfig,
     contentCache: DataCache,
     httpUtil: HttpUtil
   ): java.util.Map[String, AnyRef] = {
+
     val currentTime = System.currentTimeMillis()
-    /*val cacheEntry = courseInfoCache.get(courseId)
+    val cacheEntry = courseInfoCache.get(courseId)
     if (cacheEntry != null && cacheEntry._2 > currentTime) {
+      logger.info(
+        s"Fetching course details from in memory cache for Id: ${courseId}"
+      )
       return cacheEntry._1
-    }*/
+    }
 
     logger.info(
       s"Fetching course details from Redis for Id: ${courseId}, Configured Index: " + contentCache.getDBConfigIndex() + ", Current Index: " + contentCache.getDBIndex()
@@ -63,7 +67,7 @@ trait ContentHelperV2 {
         .getOrElse("parentCollections", List.empty[String])
         .asInstanceOf[List[String]]
       val courseCateogry = StringContext
-        .processEscapes(response.getOrElse(config.courseCategory, "").asInstanceOf[String]).filter(_ >= ' ')
+        .processEscapes(response.getOrElse("courseCategory", "").asInstanceOf[String]).filter(_ >= ' ')
       val leafNodes = response
         .getOrElse("leafNodes", List.empty[String])
         .asInstanceOf[List[String]]
@@ -77,7 +81,7 @@ trait ContentHelperV2 {
       courseInfoMap.put("parentCollections", parentCollections)
       courseInfoMap.put("primaryCategory", primaryCategory)
       courseInfoMap.put("versionKey", versionKey)
-      courseInfoMap.put(config.courseCategory, courseCateogry)
+      courseInfoMap.put("courseCategory", courseCateogry)
       val languageMapV1 = response.getOrElse("languageMapV1", Map.empty[String, AnyRef])
       courseInfoMap.put("languageMapV1", languageMapV1.asInstanceOf[AnyRef])
       courseInfoMap.put("leafNodes", leafNodes)
@@ -90,9 +94,9 @@ trait ContentHelperV2 {
       courseInfoMap.put(config.preliminaryAssessment, preliminaryAssessment)
       val milestonesV1 =
         response
-          .getOrElse(JsonKeys.MILESTONES_V1, List.empty[Map[String, AnyRef]])
+          .getOrElse("milestonesv1", List.empty[Map[String, AnyRef]])
           .asInstanceOf[List[Map[String, AnyRef]]]
-      courseInfoMap.put(JsonKeys.MILESTONES_V1, milestonesV1.asInstanceOf[AnyRef])
+      courseInfoMap.put("milestonesv1", milestonesV1.asInstanceOf[AnyRef])
       val courseInfoMapString = objectMapper.writeValueAsString(courseInfoMap)
       contentCache.set(courseId, courseInfoMapString, config.courseCacheExpiry)
       courseInfoMap
@@ -134,7 +138,7 @@ trait ContentHelperV2 {
       courseInfoMap.put("parentCollections", parentCollections)
       courseInfoMap.put("primaryCategory", primaryCategory)
       courseInfoMap.put("versionKey", versionKey)
-      courseInfoMap.put(config.courseCategory, courseCateogry)
+      courseInfoMap.put("courseCategory", courseCateogry)
       courseInfoMap.put(config.preliminaryAssessment, preliminaryAssessment)
       val languageMapV1: Map[String, Map[String, AnyRef]] =
         toScalaNestedMap(courseMetadata.getOrElse("languagemapv1", new java.util.HashMap[String, Object]()))
@@ -146,21 +150,20 @@ trait ContentHelperV2 {
       courseInfoMap.put("language", language)
       val milestonesV1 =
         courseMetadata
-          .getOrElse(JsonKeys.MILESTONES_V1_KEY, new java.util.ArrayList[java.util.Map[String, AnyRef]]())
+          .getOrElse("milestonesv1", new java.util.ArrayList[java.util.Map[String, AnyRef]]())
           .asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
           .asScala
           .map(_.asScala.toMap)
           .toList
-      courseInfoMap.put(JsonKeys.MILESTONES_V1, milestonesV1.asInstanceOf[AnyRef])
+      courseInfoMap.put("milestonesv1", milestonesV1.asInstanceOf[AnyRef])
       courseInfoMap
     }
-
-    //courseInfoCache.put(courseId, (finalCourseInfoMap, currentTime + config.courseCacheExpiry))
+    courseInfoCache.put(courseId, (finalCourseInfoMap, currentTime + config.courseCacheExpiry))
     finalCourseInfoMap
   }
 
   def getAPICall(url: String, responseParam: String)(
-    config: ActivityAggregateUpdaterConfigV2,
+    config: ProgramActivityAggregateUpdaterConfig,
     httpUtil: HttpUtil,
     metrics: Metrics
   ): Map[String, AnyRef] = {
