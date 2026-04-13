@@ -245,23 +245,16 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
 
     import scala.collection.JavaConverters._
 
-    // ─── Build a type-safe CQL using QueryBuilder so there are no raw string typos ───
     val cql = QueryBuilder
       .select(config.courseid, config.status, config.issuedCertificatesKey)
       .from(config.coursesdb, config.enrolmentTable)
-      .where(QueryBuilder.eq("userid", QueryBuilder.bindMarker()))
+      .where(QueryBuilder.eq("userid", userId))
       .toString
 
     logger.info(s"fetchUserEnrollments - querying for userId=$userId" +
       s" table=${config.coursesdb}.${config.enrolmentTable}")
-    logger.debug(s"fetchUserEnrollments - CQL template: $cql")
 
-    // ✅ FIX 3 — removed the broken while/paging loop.
-
-    val rows = cassandraUtil
-      .getSession
-      .execute(cassandraUtil.prepare(cql).bind(userId))
-      .all()
+    val rows = cassandraUtil.find(cql)
 
     if (rows == null || rows.isEmpty) {
       logger.debug(s"fetchUserEnrollments - no enrollments found for userId=$userId")
