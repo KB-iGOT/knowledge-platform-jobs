@@ -337,7 +337,6 @@ class CertificateGeneratorFunction(config: CertificateGeneratorConfig, httpUtil:
             context.output(config.notifierOutputTag, NotificationMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId,
                certMetaData.templateId, event.partition, event.offset, event.providerName, event.coursePosterImage))
           }
-          context.output(config.userBadgeAwardOutputTag, buildBadgeAwardEvent(certMetaData.userId, certMetaData.courseId, ""))
           //context.output(config.userFeedOutputTag, UserFeedMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId, event.partition, event.offset))
         } else {
           metrics.incCounter(config.failedEventCount)
