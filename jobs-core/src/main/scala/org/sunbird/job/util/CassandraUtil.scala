@@ -3,6 +3,8 @@ package org.sunbird.job.util
 import com.datastax.driver.core._
 import com.datastax.driver.core.exceptions.DriverException
 import org.slf4j.LoggerFactory
+import com.datastax.driver.core.ResultSetFuture
+import scala.collection.concurrent.TrieMap
 
 import java.util
 
@@ -115,5 +117,13 @@ class CassandraUtil(host: String,
       )
       .build()
     this.session = newCluster.connect()
+  }
+
+  def getSession: Session = session
+
+  private val preparedCache = TrieMap[String, PreparedStatement]()
+
+  def prepare(query: String): PreparedStatement = {
+    preparedCache.getOrElseUpdate(query, session.prepare(query))
   }
 }
