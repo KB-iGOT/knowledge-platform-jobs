@@ -170,7 +170,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       logger.debug(s"Upserting externalTraining competency courseId=$courseId areaId=$areaId themeId=$themeId subthemeId=$subthemeId")
       val detailsJavaMap: java.util.Map[String, java.util.List[java.util.Map[String, String]]] =
         details.map { case (k, v) => k -> v.map(_.asJava).asJava }.asJava
-      // ✅ FIX: two-arg insertInto(keyspace, table)
+      // two-arg insertInto(keyspace, table)
       val insertQuery = QueryBuilder.insertInto(config.dbName, config.userCompetencyTable)
         .value("user_id", userId)
         .value("competency_area_id", areaId)
@@ -271,7 +271,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       .foreach { row =>
         val courseId = row.getString(config.courseid)
 
-        // FIX 1 (cont.) — row.getList with TypeToken is null-safe: returns null
+        // (cont.) — row.getList with TypeToken is null-safe: returns null
         val certsRaw = row.getList(config.issuedCertificatesKey, certsTypeToken)
         val issuedCerts: java.util.List[java.util.Map[String, String]] =
           if (certsRaw != null) certsRaw
@@ -361,7 +361,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     var certificateId = ""
     var acquiredAt = ""
 
-    // FIX 2 — enrolment.get(key) returns Some(null) when the key is present but
+    // — enrolment.get(key) returns Some(null) when the key is present but
     //    the Cassandra column was unset (rowToMap maps null AnyRef values).
     //    The old code called null.asInstanceOf[...].asScala.toList → NullPointerException.
     //    Option(value) wraps null → None so the match is exhaustive and safe.
@@ -786,7 +786,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
                                       metrics: Metrics
                                     ): Unit = {
       logger.debug(s"upsertUserCompetency - selecting competency_details for userId=$userId areaId=$areaId themeId=$themeId subthemeId=$subthemeId")
-      // ✅ FIX: two-arg from(keyspace, table)
+      //  two-arg from(keyspace, table)
       val selectQuery = QueryBuilder
         .select(config.competencyDetails)
         .from(config.dbName, config.userCompetencyTable)
@@ -835,7 +835,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
                                                ): Unit = {
       val logKey = s"userId=$userId areaId=$areaId themeId=$themeId subthemeId=$subthemeId"
       logger.debug(s"removeAchievementFromCompetency - selecting competency_details for $logKey")
-      // FIX: two-arg from(keyspace, table)
+      //  two-arg from(keyspace, table)
       val selectQuery = QueryBuilder
         .select(config.competencyDetails)
         .from(config.dbName, config.userCompetencyTable)
@@ -860,7 +860,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
           .filterNot(_(config.acquiredContextIdKey) == contentId)
       if (updatedList.isEmpty) {
         // ─── selfAchievement is now empty → DELETE the entire row
-        // FIX: two-arg delete().from(keyspace, table)
+        // two-arg delete().from(keyspace, table)
         val deleteQuery = QueryBuilder.delete()
           .from(config.dbName, config.userCompetencyTable)
           .where(QueryBuilder.eq("user_id", userId))
@@ -874,7 +874,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
         val updatedDetails = competencyDetails + (config.selfAchievement -> updatedList)
         val detailsJavaMap: java.util.Map[String, java.util.List[java.util.Map[String, String]]] =
           updatedDetails.map { case (k, v) => k -> v.map(_.asJava).asJava }.asJava
-        // FIX: two-arg insertInto(keyspace, table)
+        
         val insertQuery = QueryBuilder.insertInto(config.dbName, config.userCompetencyTable)
           .value("user_id", userId)
           .value("competency_area_id", areaId)
@@ -991,7 +991,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
 
     // ─── Step 3: Fetch course competencies ──────────────────────────────────
     val courseMetadata = getCourseInfo(courseId)(metrics, config, cache, httpUtil)
-    // FIX: config.competenciesV6Key instead of raw "competencies_v6"
+    // config.competenciesV6Key instead of raw "competencies_v6"
     val competencies =
       courseMetadata
         .getOrDefault(config.competenciesV6Key, new java.util.ArrayList[java.util.Map[String, AnyRef]]())
@@ -1033,8 +1033,8 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
         cacheKey, fetchCompetencyFromDB(userId, areaId, themeId, subthemeId)
       )
 
-      // FIX: config.iGOTCourses instead of raw "iGOTCourses"
-      // FIX: config.acquiredContextIdKey instead of raw "acquiredContextId"
+      // config.iGOTCourses instead of raw "iGOTCourses"
+      // config.acquiredContextIdKey instead of raw "acquiredContextId"
       val updatedList =
         existingDetails
           .getOrElse(config.iGOTCourses, List())
@@ -1048,7 +1048,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       logger.debug(s"Upserting competency courseId=$courseId areaId=$areaId themeId=$themeId subthemeId=$subthemeId")
       val detailsJavaMap: java.util.Map[String, java.util.List[java.util.Map[String, String]]] =
         details.map { case (k, v) => k -> v.map(_.asJava).asJava }.asJava
-      // FIX: two-arg insertInto(keyspace, table)
+      // two-arg insertInto(keyspace, table)
       val insertQuery = QueryBuilder.insertInto(config.dbName, config.userCompetencyTable)
         .value("user_id", userId)
         .value("competency_area_id", areaId)
@@ -1230,7 +1230,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       logger.debug(s"Upserting extCourse competency courseId=$courseId areaId=$areaId themeId=$themeId subthemeId=$subthemeId")
       val detailsJavaMap: java.util.Map[String, java.util.List[java.util.Map[String, String]]] =
         details.map { case (k, v) => k -> v.map(_.asJava).asJava }.asJava
-      // ✅ FIX: two-arg insertInto(keyspace, table)
+      //  two-arg insertInto(keyspace, table)
       val insertQuery = QueryBuilder.insertInto(config.dbName, config.userCompetencyTable)
         .value("user_id", userId)
         .value("competency_area_id", areaId)
@@ -1256,7 +1256,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
                                      themeId: String,
                                      subthemeId: String
                                    ): Map[String, List[Map[String, String]]] = {
-    import scala.collection.JavaConverters._   // ✅ OPT: moved to method top — was buried inside nested if block
+    import scala.collection.JavaConverters._  
 
     val selectQuery = QueryBuilder
       .select(config.competencyDetails)
