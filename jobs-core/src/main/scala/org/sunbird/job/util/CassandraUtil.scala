@@ -3,7 +3,6 @@ package org.sunbird.job.util
 import com.datastax.driver.core._
 import com.datastax.driver.core.exceptions.DriverException
 import org.slf4j.LoggerFactory
-import com.datastax.driver.core.ResultSetFuture
 
 import java.util
 
