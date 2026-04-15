@@ -874,7 +874,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
           return
         }
 
-        val batchEnrolmentQuery = QueryBuilder.select("courseid", "status").from(config.coursesdb, config.enrolmentTable)
+        val batchEnrolmentQuery = QueryBuilder.select("courseid", "status", "completedon").from(config.coursesdb, config.enrolmentTable)
           .where(QueryBuilder.eq("userid", userId)).and(QueryBuilder.in("courseid", childNodes.asJava))
 
         logger.info(s"Fetching completion status for ${childNodes.size} courses in single query for userId=$userId")
@@ -882,39 +882,31 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
         var completedCount = 0
         var completedCountAfterBadgeEarningDate = 0
+        badgeEarningDateTime = Option(badgeDetailsObj.get(config.badgeEarningDateTimeKey))
+        .map(value => parseBadgeEarningDateTime(value))
+        .getOrElse(0L)
         if (enrolmentRows != null && !enrolmentRows.isEmpty) {
-          import scala.collection.JavaConverters._
           enrolmentRows.asScala.foreach { row =>
             val courseId = row.getString(config.courseId)
             val status = row.getInt("status")
-            val completedOnStr = row.getString("completedOn")
-            val completedOn: Long = try {
-              if (completedOnStr != null && completedOnStr.nonEmpty) {
-                parseBadgeEarningDateTime(completedOnStr)
-              } else {
-                0L
-              }
-            } catch {
-              case ex: Exception =>
-                logger.error(s"Failed to parse completedOn: $completedOnStr for courseId=$courseId", ex)
-                0L
-            }
             if (status == 2) {
               if (!badgeEarningDateEnabled) {
                 completedCount += 1
               } else {
-                badgeEarningDateTime = Option(badgeDetailsObj.get(config.badgeEarningDateTimeKey))
-                  .map(value => parseBadgeEarningDateTime(value))
-                  .getOrElse(0L)
-
                 if (badgeEarningDateTime == 0L) {
                   logger.warn(s"badgeEarningDateTime not found or invalid for programId=$programId")
                   return
                 }
-                if (badgeEarningDateTime > completedOn) {
-                  completedCount += 1
+                val completedOnTimestamp = row.getTimestamp("completedon")
+                if (completedOnTimestamp != null) {
+                  val completedOn: Long = completedOnTimestamp.getTime
+                  if (badgeEarningDateTime > completedOn) {
+                    completedCount += 1
+                  } else {
+                    completedCountAfterBadgeEarningDate += 1
+                  }
                 } else {
-                  completedCountAfterBadgeEarningDate += 1
+                  logger.warn(s"completedOn is null for courseId=$courseId, userId=$userId. Skipping this course.")
                 }
               }
               logger.debug(s"Course $courseId completed for userId=$userId")
