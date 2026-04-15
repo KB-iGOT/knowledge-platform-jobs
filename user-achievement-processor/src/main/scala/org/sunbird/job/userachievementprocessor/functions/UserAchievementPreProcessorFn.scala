@@ -852,32 +852,8 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
       val currentTime = System.currentTimeMillis()
       var isEligible = false
+      var badgeEarningDateTime: Long = 0L
 
-      if (!badgeEarningDateEnabled) {
-        // If badgeEarningDateEnabled is false, user is eligible
-        isEligible = true
-        logger.info(s"badgeEarningDateEnabled=false for programId=$programId, user is eligible")
-      } else {
-        val badgeEarningDateTime: Long = Option(badgeDetailsObj.get(config.badgeEarningDateTimeKey))
-          .map(value => parseBadgeEarningDateTime(value))
-          .getOrElse(0L)
-
-        if (badgeEarningDateTime == 0L) {
-          logger.warn(s"badgeEarningDateTime not found or invalid for programId=$programId")
-          return
-        }
-
-        if (badgeEarningDateTime > currentTime) {
-          isEligible = true
-          logger.info(s"badgeEarningDateTime ($badgeEarningDateTime) > currentTime ($currentTime) for programId=$programId, user is eligible")
-        } else {
-          logger.info(s"badgeEarningDateTime ($badgeEarningDateTime) <= currentTime ($currentTime) for programId=$programId, user is not eligible")
-          return
-        }
-      }
-
-      // If user is eligible, check course completion
-      if (isEligible) {
         // Get leaf nodes for the program
         val childNodesRaw = programMetadata.get("childNodes")
         if (childNodesRaw == null) {
@@ -905,13 +881,42 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         val enrolmentRows = cassandraUtil.find(batchEnrolmentQuery.toString)
 
         var completedCount = 0
+        var completedCountAfterBadgeEarningDate = 0
         if (enrolmentRows != null && !enrolmentRows.isEmpty) {
           import scala.collection.JavaConverters._
           enrolmentRows.asScala.foreach { row =>
             val courseId = row.getString(config.courseId)
             val status = row.getInt("status")
+            val completedOnStr = row.getString("completedOn")
+            val completedOn: Long = try {
+              if (completedOnStr != null && completedOnStr.nonEmpty) {
+                parseBadgeEarningDateTime(completedOnStr)
+              } else {
+                0L
+              }
+            } catch {
+              case ex: Exception =>
+                logger.error(s"Failed to parse completedOn: $completedOnStr for courseId=$courseId", ex)
+                0L
+            }
             if (status == 2) {
-              completedCount += 1
+              if (!badgeEarningDateEnabled) {
+                completedCount += 1
+              } else {
+                badgeEarningDateTime = Option(badgeDetailsObj.get(config.badgeEarningDateTimeKey))
+                  .map(value => parseBadgeEarningDateTime(value))
+                  .getOrElse(0L)
+
+                if (badgeEarningDateTime == 0L) {
+                  logger.warn(s"badgeEarningDateTime not found or invalid for programId=$programId")
+                  return
+                }
+                if (badgeEarningDateTime > completedOn) {
+                  completedCount += 1
+                } else {
+                  completedCountAfterBadgeEarningDate += 1
+                }
+              }
               logger.debug(s"Course $courseId completed for userId=$userId")
             }
           }
@@ -923,9 +928,8 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         if (completedCount >= requiredCompletionCount) {
           awardProgramBadge(userId, programId, programBatchId, badgeId, criteria, badgeTemplate, badgeTitle, currentTime,programName, metrics)
         } else {
-          logger.info(s"User has not completed required courses for programId=$programId")
+          logger.info(s"User has completed $completedCount courses within configured date time for badge and completed $completedCountAfterBadgeEarningDate courses after configured date time for programId=$programId")
         }
-      }
     } catch {
       case ex: Exception =>
         logger.error(s"Error processing program badge awarding for userId=$userId, programId=$programId", ex)
