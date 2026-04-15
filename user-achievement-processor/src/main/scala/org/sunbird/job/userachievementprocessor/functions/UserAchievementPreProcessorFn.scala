@@ -1162,6 +1162,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
 
           }
+        }
       }
 
       // Update issued_badges if shouldAwardBadge is true
