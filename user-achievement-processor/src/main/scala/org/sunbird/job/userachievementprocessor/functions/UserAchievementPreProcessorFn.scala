@@ -1142,46 +1142,25 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         }
 
         // Read user_external_enrolments to get issued_certificates and lastIssuedOn
-        val externalEnrolQuery = QueryBuilder.select(config.issuedCertificatesKey).from(config.coursesdb, config.externalEnrolmentTable)
+        val externalEnrolQuery = QueryBuilder.select("completedOn").from(config.coursesdb, config.externalEnrolmentTable)
           .where(QueryBuilder.eq(config.userId, userId)).and(QueryBuilder.eq(config.courseId, courseId))
 
-        val enrolmentRows = cassandraUtil.find(externalEnrolQuery.toString)
-        if (enrolmentRows != null && !enrolmentRows.isEmpty) {
-          val row = enrolmentRows.get(0)
-          val certsRaw = row.getObject(config.extContentUserExternalEnrolmentsIssuedCertificatesKey)
-            .asInstanceOf[java.util.List[java.util.Map[String, String]]]
+        val enrolmentRow = cassandraUtil.findOne(externalEnrolQuery.toString)
+        if (enrolmentRow != null) {
+          val completedOnTimestamp = enrolmentRow.getTimestamp("completedon")
+          if (completedOnTimestamp != null) {
+            val completedOn: Long = completedOnTimestamp.getTime
 
-          if (certsRaw != null && !certsRaw.isEmpty) {
-            import scala.collection.JavaConverters._
-            val issuedCertificates = certsRaw.asScala.toList
 
-            // Get the latest lastIssuedOn value - parse ISO date strings to timestamps
-            val lastIssuedOnValues = issuedCertificates
-              .flatMap(cert => Option(cert.get(config.lastIssuedOnKey)))
-              .map { dateStr =>
-                try {
-                  // Try to parse as long first (in case it's already a timestamp)
-                  dateStr.toLong
-                } catch {
-                  case _: NumberFormatException =>
-                    // If it fails, parse as ISO 8601 date string
-                    parseIsoDateToMillis(dateStr)
-                }
-              }
-              .filter(_ > 0) // Filter out invalid dates
-              .sorted
-
-            if (lastIssuedOnValues.nonEmpty) {
-              val latestLastIssuedOn = lastIssuedOnValues.last
-
-              // Check if badgeEarningDateTime > lastIssuedOn
-              if (badgeEarningDateTime > latestLastIssuedOn) {
-                shouldAwardBadge = true
-                logger.info(s"badgeEarningDateTime ($badgeEarningDateTime) > lastIssuedOn ($latestLastIssuedOn) for extCourseId=$courseId, awarding badge")
-              } else {
-                logger.info(s"badgeEarningDateTime ($badgeEarningDateTime) <= lastIssuedOn ($latestLastIssuedOn) for extCourseId=$courseId, skipping badge awarding")
-              }
+            // Check if badgeEarningDateTime > lastIssuedOn
+            if (badgeEarningDateTime > completedOn) {
+              shouldAwardBadge = true
+              logger.info(s"badgeEarningDateTime ($badgeEarningDateTime) > lastIssuedOn ($completedOn) for extCourseId=$courseId, awarding badge")
+            } else {
+              logger.info(s"badgeEarningDateTime ($badgeEarningDateTime) <= lastIssuedOn ($completedOn) for extCourseId=$courseId, skipping badge awarding")
             }
+
+
           }
         }
       }
