@@ -1236,108 +1236,10 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
    * This method is called when contextType is "programEnrolment"
    */
   private def processProgramEnrolment(event: Event, metrics: Metrics): Unit = {
-    try {
       val userId = event.userId
       val programId = event.contentId
       val batchId = event.batchId
-
-      if (!config.badgeEnabledPrograms.contains(programId)) {
-        logger.info(s"ProgramId: $programId is not enabled for badge awarding, skipping.")
-        return
-      }
-
-      logger.info(s"Processing program enrolment event for userId=$userId, programId=$programId, batchId=$batchId")
-
-      val badgeCheckQuery = QueryBuilder.select(config.userId).from(config.coursesdb, config.badgeLookUpTable)
-        .where(QueryBuilder.eq(config.userId, userId)).and(QueryBuilder.eq(config.courseId, programId))
-      val existingBadgeRows = cassandraUtil.find(badgeCheckQuery.toString)
-      if (existingBadgeRows != null && !existingBadgeRows.isEmpty) {
-        logger.debug(s"Badge already awarded for userId=$userId, programId=$programId. Skipping badge processing (duplicate guard).")
-        metrics.incCounter(config.skippedEventCount)
-        return
-      }
-      logger.info(s"No existing badge found for userId=$userId, programId=$programId. Proceeding with badge processing.")
-      // Fetch program metadata using hierarchy API
-      val programMetadata: java.util.Map[String, AnyRef] = getCourseInfo(programId)(metrics, config, contentCache, httpUtil)
-      // Extract program name from metadata
-      val programName = Option(programMetadata.get("name")).map(_.toString).getOrElse(programId)
-      // Check if badgeDetails_v1 exists
-      val badgeDetailsV1Raw = programMetadata.get(config.badgeDetailsV1Key)
-      if (badgeDetailsV1Raw == null) {
-        logger.info(s"No badgeDetails_v1 found for programId=$programId. Skipping badge award.")
-        metrics.incCounter(config.skippedEventCount)
-        return
-      }
-      // badgeDetails_v1 is an array/list of badge objects
-      val badgeDetailsList = badgeDetailsV1Raw match {
-        case jl: java.util.List[_] => jl.asScala.toList
-        case sl: Seq[_] => sl.toList
-        case _ =>
-          logger.warn(s"badgeDetails_v1 is not a list for programId=$programId")
-          metrics.incCounter(config.skippedEventCount)
-          return
-      }
-
-      if (badgeDetailsList.isEmpty) {
-        logger.info(s"badgeDetails_v1 is empty for programId=$programId")
-        metrics.incCounter(config.skippedEventCount)
-        return
-      }
-
-      // Convert to Java Map
-      val badgeDetailsObj = badgeDetailsList.head match {
-        case jm: java.util.Map[_, _] => jm.asInstanceOf[java.util.Map[String, AnyRef]]
-        case sm: Map[_, _] => new java.util.HashMap[String, AnyRef](sm.asInstanceOf[Map[String, AnyRef]].asJava)
-        case _ =>
-          logger.warn(s"Unexpected badge details type for programId=$programId")
-          metrics.incCounter(config.skippedEventCount)
-          return
-      }
-
-      // Validate criteria
-      val criteria = Option(badgeDetailsObj.get(config.criteriaKey)).map(_.toString).getOrElse("")
-      if (!criteria.equalsIgnoreCase("partialRandomCompletion")) {
-        logger.info(s"Criteria is not 'partialRandomCompletion' for programId=$programId. Found: $criteria. Skipping.")
-        metrics.incCounter(config.skippedEventCount)
-        return
-      }
-
-      val badgeTemplate = Option(badgeDetailsObj.get(config.badgeTemplateKey)).map(_.toString).getOrElse("")
-      val badgeId = Option(badgeDetailsObj.get(config.badgeIdKey)).map(_.toString).getOrElse("")
-      val badgeTitle = Option(badgeDetailsObj.get(config.badgeTitle)).map(_.toString).getOrElse("")
-
-      if (badgeTemplate.isEmpty || badgeId.isEmpty) {
-        logger.warn(s"Incomplete badge details for programId=$programId. Skipping badge award.")
-        metrics.incCounter(config.skippedEventCount)
-        return
-      }
-
-      // Check if user is enrolled in the program
-      val programEnrollmentQuery = QueryBuilder.select(config.batchId).from(config.coursesdb, config.enrolmentTable)
-        .where(QueryBuilder.eq(config.userId, userId)).and(QueryBuilder.eq(config.courseId, programId))
-      val programEnrollmentRows = cassandraUtil.findOne(programEnrollmentQuery.toString)
-      if (programEnrollmentRows == null) {
-        logger.info(s"User not enrolled in program. userId=$userId, programId=$programId. Skipping badge award.")
-        metrics.incCounter(config.skippedEventCount)
-        return
-      }
-
-      // Get the actual batchId from enrollment record
-      val programBatchId = programEnrollmentRows.getString(config.batchId)
-      logger.info(s"User enrolled in program verified. userId=$userId, programId=$programId, batchId=$programBatchId")
-
-      // Award the badge using the existing awardProgramBadge method
-      val currentTime = System.currentTimeMillis()
-      awardProgramBadge(userId, programId, programBatchId, badgeId, criteria, badgeTemplate, badgeTitle, currentTime, programName, metrics)
-
-      logger.info(s"Successfully processed program enrolment badge award for userId=$userId, programId=$programId")
-      metrics.incCounter(config.successEventCount)
-
-    } catch {
-      case ex: Exception =>
-        logger.error(s"Error processing program enrolment event for userId=${event.userId}, programId=${event.contentId}", ex)
-        metrics.incCounter(config.failedEventCount)
-    }
+      processProgramBadgeAwarding(userId, programId, batchId, metrics)
   }
 
   def getUpdateIssuedCertQueryForIgot(updatedCerts: util.List[util.Map[String, String]], userId: String, courseId: String, batchId: String, config: UserBadgeAwardingConfig):
