@@ -287,7 +287,7 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       assignments = assignments.and(QueryBuilder.set("status", if (isCompleted) 2 else 1))
     }
 
-    if (isCompleted)
+    if (isCompleted && !isStatusTwo)
       assignments.and(QueryBuilder.set("completedon", new java.util.Date()))
 
     val update = assignments
