@@ -1251,6 +1251,9 @@ user-competency-updater:
       sunbird{
         db = "sunbird"
         }
+      read.timeout.ms = 8000
+      connect.timeout.ms = 3000
+      max.retries = 3
       }
     redis {
       host = {{data_redis_host}}
