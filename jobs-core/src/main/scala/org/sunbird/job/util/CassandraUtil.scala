@@ -116,4 +116,14 @@ class CassandraUtil(host: String,
       .build()
     this.session = newCluster.connect()
   }
+
+  /**
+   * Execute a pre-built Statement (allows caller to set a custom ConsistencyLevel,
+   * e.g. LOCAL_QUORUM, before passing it in) and return ALL matching rows.
+   * Use this for multi-row SELECTs where strong consistency is required.
+   */
+  def findAllWithStatement(stmt: Statement): util.List[Row] = {
+    executeWithRetry(stmt).all()
+  }
+
 }
