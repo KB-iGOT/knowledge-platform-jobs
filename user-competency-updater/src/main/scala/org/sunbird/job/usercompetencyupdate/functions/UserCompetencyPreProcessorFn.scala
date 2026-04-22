@@ -412,7 +412,11 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       if (addedCompetencies.nonEmpty) {
         upsertCompetencyWithFetch(userId, addedCompetencies, detailsMap, config.selfAchievement, metrics)
       }
-
+      val changeUrlCompetencies = competencyIds
+        .filter(_.getOrElse(config.action, "").toString.trim.toLowerCase == "changeUrl")
+      if (changeUrlCompetencies.nonEmpty) {
+        upsertCompetencyWithFetch(userId, changeUrlCompetencies, detailsMap, config.selfAchievement, metrics)
+      }
     } else if (isDeleteAction) {
       // DELETE FLOW
       event.competencyIds
