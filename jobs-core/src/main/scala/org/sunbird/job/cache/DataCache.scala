@@ -186,6 +186,24 @@ class DataCache(val config: BaseJobConfig, val redisConnect: RedisConnect, val d
     }
   }
 
+  def addKeyMembers(key: String, values: List[String], ttl: Int): Unit = {
+    if (values == null || values.isEmpty) return
+
+    try {
+      redisConnection.sadd(key, values: _*)
+      if (ttl > 0) redisConnection.expire(key, ttl)
+    } catch {
+      case ex: JedisException =>
+        logger.error("Exception when adding data to redis set", ex)
+        close()
+        this.redisConnection = redisConnect.getConnection(dbIndex)
+
+        // retry once after reconnect
+        redisConnection.sadd(key, values: _*)
+        if (ttl > 0) redisConnection.expire(key, ttl)
+    }
+  }
+
   def del(key: String): Unit = {
     try {
       this.redisConnection.del(key)

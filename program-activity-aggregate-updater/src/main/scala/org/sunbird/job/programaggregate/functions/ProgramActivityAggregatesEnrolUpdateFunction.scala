@@ -14,6 +14,7 @@ import org.apache.flink.streaming.api.scala.function.ProcessWindowFunction
 import org.apache.flink.streaming.api.windowing.windows.GlobalWindow
 import org.slf4j.LoggerFactory
 import org.sunbird.job.cache.{DataCache, RedisConnect}
+import org.sunbird.job.programaggregate.common.ContentHelper
 import org.sunbird.job.programaggregate.domain._
 import org.sunbird.job.programaggregate.task.ProgramActivityAggregateUpdaterConfig
 import org.sunbird.job.util.{CassandraUtil, HttpUtil}
@@ -28,10 +29,11 @@ import scala.collection.mutable.ListBuffer
 
 class ProgramActivityAggregatesEnrolUpdateFunction(config: ProgramActivityAggregateUpdaterConfig, httpUtil: HttpUtil, @transient var cassandraUtil: CassandraUtil = null)
                                                   (implicit val stringTypeInfo: TypeInformation[String])
-  extends WindowBaseProcessFunction[Map[String, AnyRef], String, Int](config) {
+  extends WindowBaseProcessFunction[Map[String, AnyRef], String, Int](config) with ContentHelper{
 
   private[this] val logger = LoggerFactory.getLogger(classOf[ProgramActivityAggregatesEnrolUpdateFunction])
   private var cache: DataCache = _
+  private var contentCache: DataCache = _
   private var collectionStatusCache: TTLCache[String, String] = _
   lazy private val gson = new Gson()
 
@@ -42,8 +44,10 @@ class ProgramActivityAggregatesEnrolUpdateFunction(config: ProgramActivityAggreg
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
     cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
-    cache = new DataCache(config, new RedisConnect(config), config.nodeStore, List())
+    cache = new DataCache(config, new RedisConnect(config, Option(config.deDupRedisHost), Option(config.deDupRedisPort)), config.nodeStore, List())
     cache.init()
+    contentCache = new DataCache(config, new RedisConnect(config, Option(config.deDupRedisHost), Option(config.deDupRedisPort)), config.contentStoreIndex, List())
+    contentCache.init()
     collectionStatusCache = TTLCache[String, String](Duration.apply(config.statusCacheExpirySec, TimeUnit.SECONDS))
   }
 
@@ -53,6 +57,9 @@ class ProgramActivityAggregatesEnrolUpdateFunction(config: ProgramActivityAggreg
     }
     if (cache != null) {
       cache.close()
+    }
+    if (contentCache != null) {
+      contentCache.close()
     }
     super.close()
   }
@@ -150,15 +157,31 @@ class ProgramActivityAggregatesEnrolUpdateFunction(config: ProgramActivityAggreg
     }
   }
 
-  def readFromCache(key: String, metrics: Metrics): List[String] = {
-    metrics.incCounter(config.cacheHitCount)
-    val list = cache.getKeyMembers(key)
-    if (CollectionUtils.isEmpty(list)) {
-      metrics.incCounter(config.cacheMissCount)
-      logger.info("Redis cache (smembers) not available for key: " + key)
-    }
-    list.asScala.toList
+  def readFromCache(courseId: String, key: String, metrics: Metrics): List[String] = {
+      val contentObj: java.util.Map[String, AnyRef] =
+        getCourseInfo(courseId)(metrics, config, contentCache, httpUtil)
+      if (!contentObj.isEmpty) {
+        logger.info("readFromCache: read course info. for : " + courseId)
+        val raw = contentObj.get(config.leafNodesKey)
+        val leafNodes =
+          raw match {
+            case l: java.util.List[_] =>
+              l.asScala.toList.map(_.toString)
+
+            case l: scala.collection.Seq[_] =>
+              l.toList.map(_.toString)
+
+            case _ =>
+              List.empty[String]
+          }
+          if (leafNodes.nonEmpty) {
+            return leafNodes
+          }
+      }
+      logger.info("readFromCache: failed to read course info. for : " + courseId)
+      List.empty[String]
   }
+
 
   def updateEnrolContentConsumption(userConsumption: UserContentConsumption)(implicit metrics: Metrics): UserContentConsumption = {
     val programEnrollmentStatus = getEnrolment(userConsumption.userId, userConsumption.courseId)(metrics)
@@ -199,7 +222,7 @@ class ProgramActivityAggregatesEnrolUpdateFunction(config: ProgramActivityAggreg
     val userId = userConsumption.userId
     val contextId = "cb:" + userConsumption.batchId
     val key = s"$courseId:$courseId:${config.leafNodes}"
-    val leafNodes = readFromCache(key, metrics).distinct
+    val leafNodes = readFromCache(courseId, key, metrics).distinct
     if (leafNodes.isEmpty) {
       logger.error(s"leaf nodes are not available for: $key")
       //context.output(config.failedEventOutputTag, gson.toJson(userConsumption))

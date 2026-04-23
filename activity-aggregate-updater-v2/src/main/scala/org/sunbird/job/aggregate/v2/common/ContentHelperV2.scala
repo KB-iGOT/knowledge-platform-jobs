@@ -8,6 +8,7 @@ import org.sunbird.job.Metrics
 import org.sunbird.job.aggregate.v2.task.ActivityAggregateUpdaterConfigV2
 import org.sunbird.job.cache.DataCache
 import org.sunbird.job.util.{HttpUtil, ScalaJsonUtil}
+
 import scala.collection.JavaConverters._
 
 trait ContentHelperV2 {
@@ -17,6 +18,7 @@ trait ContentHelperV2 {
     new ObjectMapper()
       .registerModule(DefaultScalaModule)
       .setSerializationInclusion(JsonInclude.Include.NON_EMPTY)
+  //val courseInfoCache = new java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)]()
 
   def getCourseInfo(courseId: String)(
     metrics: Metrics,
@@ -24,17 +26,23 @@ trait ContentHelperV2 {
     contentCache: DataCache,
     httpUtil: HttpUtil
   ): java.util.Map[String, AnyRef] = {
+    val currentTime = System.currentTimeMillis()
+    /*val cacheEntry = courseInfoCache.get(courseId)
+    if (cacheEntry != null && cacheEntry._2 > currentTime) {
+      return cacheEntry._1
+    }*/
+
     logger.info(
       s"Fetching course details from Redis for Id: ${courseId}, Configured Index: " + contentCache.getDBConfigIndex() + ", Current Index: " + contentCache.getDBIndex()
     )
     val courseMetadata = Option(contentCache).flatMap(c => Option(c.getWithRetry(courseId))).getOrElse(null)
-    if (null == courseMetadata || courseMetadata.isEmpty) {
+    val finalCourseInfoMap = if (null == courseMetadata || courseMetadata.isEmpty) {
       logger.info(
         s"Fetching course details from Content Service for Id: ${courseId}"
       )
       //TODO: FETCH LANGUAGE ALSO.
       val url =
-        config.contentReadURL + "/" + courseId + "?fields=identifier,name,versionKey,parentCollections,primaryCategory,courseCategory,languageMapV1,leafNodes,language,milestones_v1,preliminaryAssessment"
+        config.contentReadURL + "/" + courseId + "?fields=" + config.contentReadFields
       val response = getAPICall(url, "content")(config, httpUtil, metrics)
       val courseName = StringContext
         .processEscapes(
@@ -147,6 +155,8 @@ trait ContentHelperV2 {
       courseInfoMap
     }
 
+    //courseInfoCache.put(courseId, (finalCourseInfoMap, currentTime + config.courseCacheExpiry))
+    finalCourseInfoMap
   }
 
   def getAPICall(url: String, responseParam: String)(

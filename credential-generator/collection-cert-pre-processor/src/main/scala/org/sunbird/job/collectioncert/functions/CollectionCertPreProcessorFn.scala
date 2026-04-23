@@ -15,6 +15,7 @@ import org.sunbird.job.exception.InvalidEventException
 import org.sunbird.job.util.{CassandraUtil, HttpUtil}
 import org.sunbird.job.{BaseProcessKeyedFunction, Metrics}
 
+import java.util.UUID
 import scala.collection.JavaConverters._
 
 class CollectionCertPreProcessorFn(config: CollectionCertPreProcessorConfig, httpUtil: HttpUtil)
@@ -92,8 +93,11 @@ class CollectionCertPreProcessorFn(config: CollectionCertPreProcessorConfig, htt
             }
         } catch {
             case ex: Exception => {
+                val failedEvent = generateFailedEvent(event)
+                logger.info(s"Collection cert Pre Processor failed for event: $failedEvent")
+                context.output(config.generateCertificateFailedOutputTag, failedEvent)
                 metrics.incCounter(config.failedEventCount)
-                throw new InvalidEventException(ex.getMessage, Map("partition" -> event.partition, "offset" -> event.offset), ex)
+                logger.error(s"Error processing event for userId: ${event.userId}, courseId: ${event.courseId}, batchId: ${event.batchId}, partition: ${event.partition}, offset: ${event.offset}", ex)
             }
         }
         
@@ -125,5 +129,11 @@ class CollectionCertPreProcessorFn(config: CollectionCertPreProcessorConfig, htt
             Map[String, Map[String, String]]()
         }
     }
-    
+
+    def generateFailedEvent(event: Event): String = {
+        val ets = System.currentTimeMillis
+        val mid = s"LP.${ets}.${UUID.randomUUID}"
+        val eventString = s"""{"eid": "BE_JOB_REQUEST", "ets": $ets, "mid": "$mid", "actor": {"id": "Course Certificate Generator", "type": "System"}, "context": {"pdata": {"ver": "1.0", "id": "org.sunbird.platform"}}, "object": {"id": "${event.batchId}_${event.courseId}", "type": "ProgramCertificatePreProcessorGeneration"}, "edata": {"userId": "[${event.userId}]", "action": "issue-certificate", "iteration": 1, "trigger": "auto-issue", "batchId": "${event.batchId}", "completedLanguage": ["${event.completedLanguage}"], "courseId": "${event.courseId}"}}"""
+        eventString
+    }
 }

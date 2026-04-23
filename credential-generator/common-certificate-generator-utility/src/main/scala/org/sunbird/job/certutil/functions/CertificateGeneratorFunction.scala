@@ -325,6 +325,10 @@ class CertificateGeneratorFunction(config: CertificateGeneratorConfig, httpUtil:
           val audit = ScalaJsonUtil.serialize(certificateAuditEvent)
           context.output(config.auditEventOutputTag, audit)
           logger.info("pushAuditEvent: certificate audit event success {}", audit)
+          val badgeAwardEvent = buildBadgeAwardEvent(certMetaData.userId, certMetaData.courseId, "")
+          context.output(config.userBadgeAwardOutputTag, badgeAwardEvent)
+          logger.info("pushed Badge Award Event successfully {}", badgeAwardEvent)
+
           if (config.enableUserNotification) {
             context.output(config.notifierOutputTag, NotificationMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId,
                certMetaData.templateId, event.partition, event.offset, event.providerName, event.coursePosterImage))
@@ -387,6 +391,22 @@ class CertificateGeneratorFunction(config: CertificateGeneratorConfig, httpUtil:
       "parentCollections" -> event.parentCollections
     )
     ScalaJsonUtil.serialize(BEJobRequestEvent(edata = eData, `object` = EventObjectCourseCertificate(id = event.userId)))
+  }
+
+  private def buildBadgeAwardEvent(userId: String, contentId: String, batchId: String): String = {
+    val baseEdata = Map[String, AnyRef](
+      config.userId     -> userId,
+      config.contentId -> contentId,
+      config.contextType -> config.externalCourses
+    )
+
+    val edata = if (batchId != null && batchId.nonEmpty) {
+      baseEdata + (config.batchId -> batchId)
+    } else {
+      baseEdata
+    }
+
+    ScalaJsonUtil.serialize(Map[String, AnyRef]("edata" -> edata))
   }
 
   /*
@@ -492,6 +512,10 @@ class CertificateGeneratorFunction(config: CertificateGeneratorConfig, httpUtil:
           val audit = ScalaJsonUtil.serialize(certificateAuditEvent)
           context.output(config.auditEventOutputTag, audit)
           logger.info("pushAuditEvent: certificate audit event success {}", audit)
+          val badgeAwardEvent = buildBadgeAwardEvent(certMetaData.userId, certMetaData.courseId, "")
+          context.output(config.userBadgeAwardOutputTag, badgeAwardEvent)
+          logger.info("pushed Badge Award Event successfully {}", badgeAwardEvent)
+
           if (config.enableUserNotification) {
             context.output(config.notifierOutputTag, NotificationMetaData(certMetaData.userId, certMetaData.courseName, issuedOn, certMetaData.courseId,
               certMetaData.templateId, event.partition, event.offset, event.providerName, event.coursePosterImage))
@@ -504,5 +528,19 @@ class CertificateGeneratorFunction(config: CertificateGeneratorConfig, httpUtil:
 
       })
     }
+  }
+
+  /**
+   * Builds a serialized JSON string for the COMPETENCY_ACQUIRED Kafka event.
+   */
+  private def buildCompetencyAcquiredEvent(userId: String, contentId: String): String = {
+    val edata = Map[String, AnyRef](
+      config.eventType   -> config.competencyAcquired,
+      config.userId     -> userId,
+      config.contentId -> contentId,
+      config.batchId     -> "",
+      config.contextType -> config.extCourses
+    )
+    ScalaJsonUtil.serialize(Map[String, AnyRef]("edata" -> edata))
   }
 }

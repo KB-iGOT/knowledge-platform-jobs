@@ -127,6 +127,7 @@ class ActivityAggregateUpdaterConfigV2(override val config: Config) extends Base
   val moduleAggEnabled: Boolean = config.getBoolean("activity.module.aggs.enabled")
   val dedupEnabled: Boolean = config.getBoolean("activity.input.dedup.enabled")
   val statusCacheExpirySec: Int = config.getInt("activity.collection.status.cache.expiry")
+  val courseCacheExpiry: Int = if (config.hasPath("activity.course.cache.expiry")) config.getInt("activity.course.cache.expiry") else 3600000
   val filterCompletedEnrolments: Boolean =  if (config.hasPath("activity.filter.processed.enrolments")) config.getBoolean("activity.filter.processed.enrolments") else true
 
   // Other services configuration
@@ -153,5 +154,6 @@ class ActivityAggregateUpdaterConfigV2(override val config: Config) extends Base
     else
       Set("Program", "Curated Program", "Blended Program")
 
-  val courseCacheExpiry: Int = if (config.hasPath("activity.course.cache.expiry")) config.getInt("activity.course.cache.expiry") else 3600000
+  val contentReadFields: String = if (config.hasPath("content.read.fields")) config.getString("content.read.fields") else
+    "identifier,name,versionKey,parentCollections,primaryCategory,courseCategory,languageMapV1,leafNodes,language,milestones_v1,preliminaryAssessment"
 }

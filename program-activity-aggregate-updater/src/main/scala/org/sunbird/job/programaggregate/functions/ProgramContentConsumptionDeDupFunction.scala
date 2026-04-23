@@ -12,7 +12,7 @@ import org.apache.flink.streaming.api.functions.ProcessFunction
 import org.slf4j.LoggerFactory
 import org.sunbird.job.cache.{DataCache, RedisConnect}
 import org.sunbird.job.dedup.DeDupEngine
-import org.sunbird.job.programaggregate.common.DeDupHelper
+import org.sunbird.job.programaggregate.common.{ContentHelper, DeDupHelper}
 import org.sunbird.job.programaggregate.task.ProgramActivityAggregateUpdaterConfig
 import org.sunbird.job.util.{CassandraUtil, HttpUtil, ScalaJsonUtil}
 import org.sunbird.job.{BaseProcessFunction, Metrics}
@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 
-class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpdaterConfig, httpUtil: HttpUtil, @transient var cassandraUtil: CassandraUtil = null)(implicit val stringTypeInfo: TypeInformation[String]) extends BaseProcessFunction[util.Map[String, AnyRef], String](config) {
+class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpdaterConfig, httpUtil: HttpUtil, @transient var cassandraUtil: CassandraUtil = null)(implicit val stringTypeInfo: TypeInformation[String]) extends BaseProcessFunction[util.Map[String, AnyRef], String](config) with ContentHelper{
 
   val mapType: Type = new TypeToken[Map[String, AnyRef]]() {}.getType
   private[this] val logger = LoggerFactory.getLogger(classOf[ProgramContentConsumptionDeDupFunction])
@@ -35,7 +35,7 @@ class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpd
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
     cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
-    contentCache = new DataCache(config, new RedisConnect(config), config.contentStoreIndex, List())
+    contentCache = new DataCache(config, new RedisConnect(config, Option(config.deDupRedisHost), Option(config.deDupRedisPort)), config.contentStoreIndex, List())
     contentCache.init()
     collectionStatusCache = TTLCache[String, String](Duration.apply(config.statusCacheExpirySec, TimeUnit.SECONDS))
     deDupEngine = new DeDupEngine(config, new RedisConnect(config, Option(config.deDupRedisHost), Option(config.deDupRedisPort)), config.deDupStore, config.deDupExpirySec)
@@ -159,7 +159,7 @@ class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpd
     cassandraUtil.findOne(selectWhere.toString)
   }
 
-  def getCourseInfo(courseId: String)(
+/*  def getCourseInfo(courseId: String)(
     metrics: Metrics,
     config: ProgramActivityAggregateUpdaterConfig,
     contentCache: DataCache,
@@ -250,6 +250,6 @@ class ProgramContentConsumptionDeDupFunction(config: ProgramActivityAggregateUpd
         s"Error from get API : ${url}, with response: ${response}"
       )
     }
-  }
+  }*/
 
 }
