@@ -137,7 +137,7 @@ class ProgramActivityAggregatesEnrolUpdateFunction(config: ProgramActivityAggreg
   }
 
   def getEnrolment(userId: String, programId: String)(implicit metrics: Metrics): Row = {
-    val selectWhere: Select.Where = QueryBuilder.select().all()
+    val selectWhere: Select.Where = QueryBuilder.select(config.userId, config.batchid, config.courseid, config.contentstatus, config.status)
       .from(config.dbKeyspace, config.dbUserEnrolmentsTable).
       where()
     selectWhere.and(QueryBuilder.eq(config.userId, userId))
