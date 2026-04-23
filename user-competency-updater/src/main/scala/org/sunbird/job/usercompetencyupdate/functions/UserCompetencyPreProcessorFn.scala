@@ -413,7 +413,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
         upsertCompetencyWithFetch(userId, addedCompetencies, detailsMap, config.selfAchievement, metrics)
       }
       val changeUrlCompetencies = competencyIds
-        .filter(_.getOrElse(config.action, "").toString.trim.toLowerCase == "changeUrl")
+        .filter(_.getOrElse(config.action, "").toString.trim.toLowerCase == config.changeUrl)
       if (changeUrlCompetencies.nonEmpty) {
         upsertCompetencyWithFetch(userId, changeUrlCompetencies, detailsMap, config.selfAchievement, metrics)
       }
@@ -672,7 +672,14 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
                                          metrics: Metrics
                                        ): Unit = {
 
-    if (competencies.isEmpty) return
+    logger.info(s"upsertCompetencyWithFetch - ENTRY userId=$userId contextType=$contextType" +
+      s" competencyCount=${competencies.size}" +
+      s" acquiredContextId=${newDetail.getOrElse(config.acquiredContextIdKey, "")}")
+
+    if (competencies.isEmpty) {
+      logger.warn(s"upsertCompetencyWithFetch - competencies list is empty for userId=$userId contextType=$contextType, skipping")
+      return
+    }
 
     val selectQuery = QueryBuilder
       .select("competency_area_id", "competency_theme_id", "competency_subtheme_id",
