@@ -29,7 +29,7 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
 
   @transient private var metrics: Metrics = _
   private[this] val logger = LoggerFactory.getLogger(classOf[ActivityAggregatesFunctionV2])
-  private var cache: DataCache = _
+//  private var cache: DataCache = _
   private var contentCache: DataCache = _
   var deDupEngine: DeDupEngine = _
 
@@ -42,10 +42,10 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
         config.cassandraConnectTimeoutMs,
         config.cassandraMaxRetries
       )
-    cache = new DataCache(config, new RedisConnect(config), config.nodeStore, List())
-    cache.init()
+    /*cache = new DataCache(config, new RedisConnect(config), config.nodeStore, List())
+    cache.init()*/
 
-    contentCache = new DataCache(config, new RedisConnect(config), config.contentStoreIndex, List())
+    contentCache = new DataCache(config, new RedisConnect(config, Option(config.deDupRedisHost), Option(config.deDupRedisPort)), config.contentStoreIndex, List())
     contentCache.init()
 
     metrics = Metrics(new ConcurrentHashMap[String, AtomicLong]())
@@ -56,30 +56,31 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
   override def processElement(event: Event,
                               ctx: KeyedProcessFunction[String, Event, Event]#Context,
                               out: Collector[Event]): Unit = {
-    // Exceptions are intentionally NOT caught here.
-    // Any failure (Cassandra timeout, malformed data, etc.) propagates to Flink,
-    // which triggers a task restart via the configured fixedDelayRestart strategy.
-    // This ensures no events are silently dropped and issues are detected quickly.
     val userId = event.userId
     val courseId = event.courseId
     val batchId = event.batchId
     val language = event.language
-    val contents = event.contents
+    try {
+      val contents = event.contents
 
-    val (isValid, category) = verifyPrimaryCategory(courseId)(metrics, config, httpUtil, contentCache)
-    if (!isValid) return
+      val (isValid, category) = verifyPrimaryCategory(courseId)(metrics, config, httpUtil, contentCache)
+      if (!isValid) return
 
-    val enrolmentRow = getEnrolment(userId, courseId, batchId)
-    var langContentStatus: Map[String, Map[String, Int]] =
-      if (enrolmentRow != null && enrolmentRow.getObject("lang_contentstatus") != null) {
-        enrolmentRow.getObject("lang_contentstatus")
-          .asInstanceOf[JMap[String, JMap[String, Integer]]]
-          .asScala
-          .map { case (lang, contentMap) =>
-            lang -> contentMap.asScala.toMap.mapValues(_.intValue())
-          }.toMap
-      } else {
-        Map.empty
+      val enrolmentRow = getEnrolment(userId, courseId, batchId)
+      var langContentStatus: Map[String, Map[String, Int]] =
+        if (enrolmentRow != null && enrolmentRow.getObject("lang_contentstatus") != null) {
+          enrolmentRow.getObject("lang_contentstatus")
+            .asInstanceOf[JMap[String, JMap[String, Integer]]]
+            .asScala
+            .map { case (lang, contentMap) =>
+              lang -> contentMap.asScala.toMap.mapValues(_.intValue())
+            }.toMap
+        } else {
+          Map.empty
+        }
+
+      if (!langContentStatus.contains(language)) {
+        langContentStatus = langContentStatus + (language -> Map.empty[String, Int])
       }
 
     if (!langContentStatus.contains(language)) {
@@ -295,7 +296,7 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       assignments = assignments.and(QueryBuilder.set("status", if (isCompleted) 2 else 1))
     }
 
-    if (isCompleted)
+    if (isCompleted && !isStatusTwo)
       assignments.and(QueryBuilder.set("completedon", new java.util.Date()))
 
     val update = assignments
@@ -445,7 +446,7 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
 
   override def close(): Unit = {
     if (cassandraUtil != null) cassandraUtil.close()
-    cache.close()
+    //cache.close()
     contentCache.close()
     super.close()
   }

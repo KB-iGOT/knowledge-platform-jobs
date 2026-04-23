@@ -315,49 +315,6 @@ class DataCache(val config: BaseJobConfig, val redisConnect: RedisConnect, val d
     }
   }
 
-  /**
-   * Push value to the head of a list stored at key
-   * Used for recent badge activity tracking
-   */
-  def lpush(key: String, value: String): Long = {
-    try {
-      redisConnection.lpush(key, value)
-    } catch {
-      case ex: JedisException =>
-        logger.error("Error in lpush, retrying after reconnection: ", ex)
-        close()
-        this.redisConnection = redisConnect.getConnection(dbIndex)
-        try {
-          redisConnection.lpush(key, value)
-        } catch {
-          case retryEx: Exception =>
-            logger.error("Error in lpush retry: ", retryEx)
-            0L
-        }
-    }
-  }
-
-  /**
-   * Trim list to only contain elements from start to end
-   * Used to limit the size of recent badge activity list
-   */
-  def ltrim(key: String, start: Long, end: Long): Unit = {
-    try {
-      redisConnection.ltrim(key, start, end)
-    } catch {
-      case ex: JedisException =>
-        logger.error("Error in ltrim, retrying after reconnection: ", ex)
-        close()
-        this.redisConnection = redisConnect.getConnection(dbIndex)
-        try {
-          redisConnection.ltrim(key, start, end)
-        } catch {
-          case retryEx: Exception =>
-            logger.error("Error in ltrim retry: ", retryEx)
-        }
-    }
-  }
-
   /* Set a string value with TTL (in seconds) */
   def set(key: String, value: String, ttlSeconds: Int): Unit = {
     try {
