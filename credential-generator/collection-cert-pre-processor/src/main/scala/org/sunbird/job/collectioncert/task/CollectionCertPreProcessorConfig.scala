@@ -101,4 +101,10 @@ class CollectionCertPreProcessorConfig(override val config: Config) extends Base
     val sourceName: String = "sourceName"
     val resourceType: String = "resourceType"
     val courseCategory: String = "courseCategory"
+
+    val generateCertificateFailedOutputTagName = "generate-certificate-failed-request"
+    val generateCertificateFailedOutputTag: OutputTag[String] = OutputTag[String](generateCertificateFailedOutputTagName)
+    val generateCertificateFailedEventProducer = "generate-certificate-failed-event-sink"
+    val kafkaOutputFailedTopic: String = config.getString("kafka.output.failed.topic")
+
 }
