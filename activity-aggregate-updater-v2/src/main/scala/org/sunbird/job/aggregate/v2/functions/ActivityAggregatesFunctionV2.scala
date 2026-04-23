@@ -56,6 +56,10 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
   override def processElement(event: Event,
                               ctx: KeyedProcessFunction[String, Event, Event]#Context,
                               out: Collector[Event]): Unit = {
+    // Exceptions are intentionally NOT caught here.
+    // Any failure (Cassandra timeout, malformed data, etc.) propagates to Flink,
+    // which triggers a task restart via the configured fixedDelayRestart strategy.
+    // This ensures no events are silently dropped and issues are detected quickly.
     val userId = event.userId
     val courseId = event.courseId
     val batchId = event.batchId
