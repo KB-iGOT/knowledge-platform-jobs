@@ -93,6 +93,7 @@ class UserCompetencyUpdaterConfig(override val config: Config) extends BaseJobCo
   val delete: String = config.getString("extcontent.delete")
   val removed: String = config.getString("extcontent.removed")
   val added: String = config.getString("extcontent.added")
+  val changeUrl: String = config.getString("extcontent.changeUrl")
   val firstTimeUserFetchLimit: Int = config.getInt("extcontent.firstTimeUserFetchLimit")
   val courseid: String = config.getString("extcontent.courseid")
   val issuedCertificatesKey: String = config.getString("extcontent.issuedCertificatesKey")
