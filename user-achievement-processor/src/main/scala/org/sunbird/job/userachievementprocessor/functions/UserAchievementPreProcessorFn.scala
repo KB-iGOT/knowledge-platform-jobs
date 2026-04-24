@@ -303,8 +303,8 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         .asInstanceOf[java.util.ArrayList[String]]
       courseInfoMap.put("childNodes", childNodes)
       val badgeDetails_v1 = courseMetadata
-          .getOrElse("badgedetailsv1", new java.util.ArrayList())
-          .asInstanceOf[java.util.ArrayList[String]]
+        .getOrElse("badgedetailsv1", new java.util.ArrayList())
+        .asInstanceOf[java.util.ArrayList[String]]
       courseInfoMap.put("badgeDetails_v1", badgeDetails_v1)
       courseInfoMap.put("name", courseName)
       courseInfoMap
@@ -322,15 +322,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
   ): java.util.Map[String, AnyRef] = {
     try {
       // Step 1: Fetch badgeDetails_v1 from content read API
-      val readUrl = config.contentReadURL + "/" + programId + "?fields=identifier,name,badgeDetails_v1,primaryCategory"
-      logger.info(s"Fetching program badgeDetails from content read API: $readUrl")
-
-      val readResponse = httpUtil.get(readUrl, config.defaultHeaders)
-
-      if (readResponse.status != 200) {
-        logger.error(s"Error fetching program content for programId=$programId: ${readResponse.status} - ${readResponse.body}")
-        throw new Exception(s"Error fetching program content for programId=$programId: ${readResponse.status} - ${readResponse.body}")
-      }
+      val courseMetadata: java.util.Map[String, AnyRef] = getCourseInfo(programId)(metrics, config, contentCache, httpUtil)
 
       val programName = courseMetadata.getOrElse("name", "").asInstanceOf[String]
       val badgeDetails_v1 = courseMetadata.getOrElse("badgeDetails_v1", new java.util.ArrayList())
@@ -371,10 +363,10 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
         val hierarchyResponse = httpUtil.get(hierarchyUrl, config.defaultHeaders)
 
-      if (hierarchyResponse.status != 200) {
-        logger.error(s"Error fetching program hierarchy for programId=$programId: ${hierarchyResponse.status} - ${hierarchyResponse.body}")
-        throw new Exception(s"Error fetching program hierarchy for programId=$programId: ${hierarchyResponse.status} - ${hierarchyResponse.body}")
-      }
+        if (hierarchyResponse.status != 200) {
+          logger.error(s"Error fetching program hierarchy for programId=$programId: ${hierarchyResponse.status} - ${hierarchyResponse.body}")
+          throw new Exception(s"Error fetching program hierarchy for programId=$programId: ${hierarchyResponse.status} - ${hierarchyResponse.body}")
+        }
 
         val hierarchyResultMap = JSONUtil.deserialize[Map[String, AnyRef]](hierarchyResponse.body)
         val hierarchyResult = hierarchyResultMap.getOrElse("result", Map[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
@@ -446,15 +438,10 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     val userId = event.userId
     val courseId = event.contentId
 
-    val badgeCheckQuery =
-      s"""
-           SELECT badgeid
-           FROM ${config.coursesdb}.${config.badgeLookUpTable}
-           WHERE userid='$userId'
-           AND courseid='$courseId';
-         """
+    val badgeCheckQuery = QueryBuilder.select("badgeid").from(config.coursesdb, config.badgeLookUpTable)
+      .where(QueryBuilder.eq("userid", userId)).and(QueryBuilder.eq("courseid", courseId))
 
-    val existingBadgeRows = cassandraUtil.find(badgeCheckQuery)
+    val existingBadgeRows = cassandraUtil.find(badgeCheckQuery.toString)
     if (existingBadgeRows != null && !existingBadgeRows.isEmpty) {
       logger.debug(s"Badge already awarded for userId=$userId, programId=$courseId (found in lookup table). Skipping badge processing.")
       metrics.incCounter(config.skippedEventCount)

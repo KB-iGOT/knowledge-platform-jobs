@@ -64,27 +64,22 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
     val courseId = event.courseId
     val batchId = event.batchId
     val language = event.language
-    try {
-      val contents = event.contents
+    val contents = event.contents
 
-      val (isValid, category) = verifyPrimaryCategory(courseId)(metrics, config, httpUtil, contentCache)
-      if (!isValid) return
+    val (isValid, category) = verifyPrimaryCategory(courseId)(metrics, config, httpUtil, contentCache)
+    if (!isValid) return
 
-      val enrolmentRow = getEnrolment(userId, courseId, batchId)
-      var langContentStatus: Map[String, Map[String, Int]] =
-        if (enrolmentRow != null && enrolmentRow.getObject("lang_contentstatus") != null) {
-          enrolmentRow.getObject("lang_contentstatus")
-            .asInstanceOf[JMap[String, JMap[String, Integer]]]
-            .asScala
-            .map { case (lang, contentMap) =>
-              lang -> contentMap.asScala.toMap.mapValues(_.intValue())
-            }.toMap
-        } else {
-          Map.empty
-        }
-
-      if (!langContentStatus.contains(language)) {
-        langContentStatus = langContentStatus + (language -> Map.empty[String, Int])
+    val enrolmentRow = getEnrolment(userId, courseId, batchId)
+    var langContentStatus: Map[String, Map[String, Int]] =
+      if (enrolmentRow != null && enrolmentRow.getObject("lang_contentstatus") != null) {
+        enrolmentRow.getObject("lang_contentstatus")
+          .asInstanceOf[JMap[String, JMap[String, Integer]]]
+          .asScala
+          .map { case (lang, contentMap) =>
+            lang -> contentMap.asScala.toMap.mapValues(_.intValue())
+          }.toMap
+      } else {
+        Map.empty
       }
 
     if (!langContentStatus.contains(language)) {

@@ -354,17 +354,25 @@ class DataCache(val config: BaseJobConfig, val redisConnect: RedisConnect, val d
         }
     }
   }
-
-  /* Set a string value with TTL (in seconds) */
-  def set(key: String, value: String, ttlSeconds: Int): Unit = {
+  /**
+   * Push value to the head of a list stored at key
+   * Used for recent badge activity tracking
+   */
+  def lpush(key: String, value: String): Long = {
     try {
-      redisConnection.setex(key, ttlSeconds, value)
+      redisConnection.lpush(key, value)
     } catch {
-      case ex@(_: JedisConnectionException | _: JedisException) =>
-        logger.error("Exception when update data to redis cache", ex)
+      case ex: JedisException =>
+        logger.error("Error in lpush, retrying after reconnection: ", ex)
         close()
-        this.redisConnection = redisConnect.getConnection(dbIndex);
-        redisConnection.setex(key, ttlSeconds, value)
+        this.redisConnection = redisConnect.getConnection(dbIndex)
+        try {
+          redisConnection.lpush(key, value)
+        } catch {
+          case retryEx: Exception =>
+            logger.error("Error in lpush retry: ", retryEx)
+            0L
+        }
     }
   }
 }
