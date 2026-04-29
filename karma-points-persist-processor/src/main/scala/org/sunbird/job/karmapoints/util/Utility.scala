@@ -198,13 +198,13 @@ object Utility {
     }
   }
 
-  def updateKarmaSummary(userId:String,points:Int)(implicit config:KarmaPointsProcessorConfig,cassandraUtil: CassandraUtil): Unit = {
+  def updateKarmaSummary(userId:String,points:Int)(implicit config:KarmaPointsProcessorConfig,cassandraUtil: CassandraUtil, dataCache: DataCache): Unit = {
     var total_points:Int = 0
     val userKarmaSummary = fetchUserKpSummary(userId)(config, cassandraUtil)
     if(userKarmaSummary.size() > 0) {
       total_points = userKarmaSummary.get(0).getInt(config.TOTAL_POINTS)
     }
-    updateUserKarmaPointsSummary(userId: String, total_points + points,null)(config: KarmaPointsProcessorConfig, cassandraUtil: CassandraUtil)
+    updateUserKarmaPointsSummary(userId: String, total_points + points,null)(config: KarmaPointsProcessorConfig, cassandraUtil: CassandraUtil, dataCache: DataCache)
   }
   def hasReachedNonACBPMonthlyCutOff(userId: String )(implicit metrics: Metrics,config: KarmaPointsProcessorConfig,cassandraUtil: CassandraUtil): Boolean = {
     var infoMap = new util.HashMap[String, Any]()
@@ -230,7 +230,7 @@ object Utility {
     karmaQuery.where(QueryBuilder.eq(config.DB_COLUMN_USERID, userId))
     cassandraUtil.find(karmaQuery.toString)
   }
-  private def updateUserKarmaPointsSummary(userId: String, points: Int, addInfo: String)(implicit  config: KarmaPointsProcessorConfig, cassandraUtil: CassandraUtil): Unit = {
+  private def updateUserKarmaPointsSummary(userId: String, points: Int, addInfo: String)(implicit  config: KarmaPointsProcessorConfig, cassandraUtil: CassandraUtil, dataCache: DataCache): Unit = {
     val query: Insert = QueryBuilder
       .insertInto(config.sunbird_keyspace, config.user_karma_summary_table)
       .value(config.USER_ID, userId)
@@ -242,13 +242,10 @@ object Utility {
     val redisKey = s"user:karmaPoints:$userId"
     val redisValue = currentKarmaPoints.toString
     try {
-      val redisConnect = new RedisConnect(config,Option(config.metaRedisHost), Option(config.metaRedisPort))
-      val dataCache = new DataCache(config, redisConnect, config.cacheDbId, List())
-      dataCache.init()
       dataCache.setWithRetry(redisKey, redisValue)
     } catch {
       case e: Exception =>
-        e.printStackTrace()
+        logger.info(s"Failed to update Redis cache for userId: $userId", e)
     }
   }
 
@@ -325,7 +322,7 @@ object Utility {
   }
 
   def processUserKarmaSummaryUpdate(userId: String, points: Int, nonACBPQuota : Int)( implicit
-                                    config: KarmaPointsProcessorConfig, cassandraUtil: CassandraUtil): Unit = {
+                                    config: KarmaPointsProcessorConfig, cassandraUtil: CassandraUtil, dataCache: DataCache): Unit = {
     var totalPoints: Int = 0
     var infoMap = new util.HashMap[String, Any]()
     var nonACBPCourseQuotaCount: Int = 0
@@ -356,7 +353,7 @@ object Utility {
       case e: JsonProcessingException =>
         throw new RuntimeException(e)
     }
-    updateUserKarmaPointsSummary(userId, totalPoints + points, info)( config, cassandraUtil)
+    updateUserKarmaPointsSummary(userId, totalPoints + points, info)( config, cassandraUtil, dataCache)
   }
    def fetchUserAssessmentResult(userId: String,assessmentId : String)(implicit config: KarmaPointsProcessorConfig, cassandraUtil: CassandraUtil): util.List[Row] = {
     val query: Select = QueryBuilder.select(config.DB_COLUMN_SUBMIT_ASSESSMENT_RESPONSE).from(config.sunbird_keyspace, config.user_assessment_data_table)

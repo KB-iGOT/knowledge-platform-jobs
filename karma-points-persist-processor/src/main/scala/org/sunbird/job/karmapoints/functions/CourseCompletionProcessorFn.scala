@@ -12,6 +12,7 @@ import org.sunbird.job.karmapoints.task.KarmaPointsProcessorConfig
 import org.sunbird.job.karmapoints.util.Utility._
 import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil, ScalaJsonUtil}
 import org.sunbird.job.{BaseProcessFunction, Metrics}
+import org.sunbird.job.cache.{DataCache, RedisConnect}
 
 import java.time.{LocalDateTime, OffsetDateTime, Period}
 import java.time.format.DateTimeFormatter
@@ -24,13 +25,19 @@ class CourseCompletionProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: 
 
   private[this] val logger = LoggerFactory.getLogger(classOf[CourseCompletionProcessorFn])
   lazy private val mapper: ObjectMapper = new ObjectMapper()
+  private var dataCache: DataCache = _
+
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
     cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
+    val redisConnect = new RedisConnect(config, Option(config.metaRedisHost), Option(config.metaRedisPort))
+    dataCache = new DataCache(config, redisConnect, config.cacheDbId, List())
+    dataCache.init()
   }
 
   override def close(): Unit = {
     cassandraUtil.close()
+    dataCache.close()
     super.close()
   }
   override def metricsList(): List[String] = {
@@ -146,7 +153,7 @@ class CourseCompletionProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: 
         throw new RuntimeException(e)
     }
     insertKarmaPoints(userId, contextType,operationType,contextId,points, addInfo)(metrics,config, cassandraUtil)
-    processUserKarmaSummaryUpdate(userId, points, nonACBPCount)(config, cassandraUtil)
+    processUserKarmaSummaryUpdate(userId, points, nonACBPCount)(config, cassandraUtil, dataCache)
   }
   private def passThroughValidation(contextType:String, contextId : String, userId: String, operationType: String,
                                     config: KarmaPointsProcessorConfig,
