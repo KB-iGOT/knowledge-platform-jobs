@@ -245,7 +245,7 @@ object Utility {
       dataCache.setWithRetry(redisKey, redisValue)
     } catch {
       case e: Exception =>
-        logger.info(s"Failed to update Redis cache for userId: $userId", e)
+        logger.error(s"Failed to update Redis cache for userId: $userId", e)
     }
   }
 
