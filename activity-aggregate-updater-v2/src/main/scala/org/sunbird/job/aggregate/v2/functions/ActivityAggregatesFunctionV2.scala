@@ -29,7 +29,7 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
 
   @transient private var metrics: Metrics = _
   private[this] val logger = LoggerFactory.getLogger(classOf[ActivityAggregatesFunctionV2])
-  private var cache: DataCache = _
+//  private var cache: DataCache = _
   private var contentCache: DataCache = _
   var deDupEngine: DeDupEngine = _
 
@@ -42,10 +42,10 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
         config.cassandraConnectTimeoutMs,
         config.cassandraMaxRetries
       )
-    cache = new DataCache(config, new RedisConnect(config), config.nodeStore, List())
-    cache.init()
+    /*cache = new DataCache(config, new RedisConnect(config), config.nodeStore, List())
+    cache.init()*/
 
-    contentCache = new DataCache(config, new RedisConnect(config), config.contentStoreIndex, List())
+    contentCache = new DataCache(config, new RedisConnect(config, Option(config.deDupRedisHost), Option(config.deDupRedisPort)), config.contentStoreIndex, List())
     contentCache.init()
 
     metrics = Metrics(new ConcurrentHashMap[String, AtomicLong]())
@@ -295,7 +295,7 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       assignments = assignments.and(QueryBuilder.set("status", if (isCompleted) 2 else 1))
     }
 
-    if (isCompleted)
+    if (isCompleted && !isStatusTwo)
       assignments.and(QueryBuilder.set("completedon", new java.util.Date()))
 
     val update = assignments
@@ -445,7 +445,7 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
 
   override def close(): Unit = {
     if (cassandraUtil != null) cassandraUtil.close()
-    cache.close()
+    //cache.close()
     contentCache.close()
     super.close()
   }

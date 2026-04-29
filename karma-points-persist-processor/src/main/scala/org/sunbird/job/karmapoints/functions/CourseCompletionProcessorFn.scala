@@ -159,7 +159,7 @@ class CourseCompletionProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: 
                                     config: KarmaPointsProcessorConfig,
                                     cassandraUtil: CassandraUtil, metrics: Metrics,acbpExpiry:String): Boolean = {
     if(!config.COURSE.equals(contextType) ||
-      (StringUtils.isEmpty(acbpExpiry) && hasReachedNonACBPMonthlyCutOff(userId)(metrics, config, cassandraUtil)) ||
+      (config.enableKarmaPointsCapping && StringUtils.isEmpty(acbpExpiry) && hasReachedNonACBPMonthlyCutOff(userId)(metrics, config, cassandraUtil)) ||
       doesEntryExist(userId, contextType, operationType, contextId)( metrics,config, cassandraUtil))
       return java.lang.Boolean.FALSE
     else

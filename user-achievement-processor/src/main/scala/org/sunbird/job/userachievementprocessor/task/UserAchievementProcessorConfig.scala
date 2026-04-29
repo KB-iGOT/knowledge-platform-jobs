@@ -6,12 +6,15 @@ import org.apache.flink.api.java.typeutils.TypeExtractor
 import org.apache.flink.streaming.api.scala.OutputTag
 import org.sunbird.job.BaseJobConfig
 
+import java.util
+
 class UserBadgeAwardingConfig(override val config: Config) extends BaseJobConfig(config, "user-badge-awarding-processor") {
 
   implicit val stringTypeInfo: TypeInformation[String] = TypeExtractor.getForClass(classOf[String])
 
   //Redis config
   val collectionCacheStore: Int = 0
+  val badgeCountCacheStore: Int = 2
   val badgeCacheStore: Int = 12
   val recentBadgeActivityKey: String = config.getString("redis.recentBadgeActivityKey")
   val recentBadgeActivityMaxSize: Int = config.getInt("redis.recentBadgeActivityMaxSize")
@@ -49,9 +52,11 @@ class UserBadgeAwardingConfig(override val config: Config) extends BaseJobConfig
 
   // Content and External Content config
   val contentReadURL: String = config.getString("content.read.url")
+  val contentHierarchyURL: String = config.getString("content.hierarchy.url")
   val extContentUrl: String = config.getString("extcontent.read.url")
   val extCoursesContextType: String = config.getString("extcontent.extCourses")
   val iGOTCoursesContextType: String = config.getString("extcontent.iGOTCourses")
+  val curatedProgramContextType: String = config.getString("extcontent.curatedProgram")
   val extContentResponseKey: String = config.getString("extcontent.responseKey")
   val extContentUserExternalEnrolmentsIssuedCertificatesKey: String = config.getString("extcontent.issuedCertificatesKey")
   val lastIssuedOnKey: String = config.getString("extcontent.lastIssuedOnKey")
@@ -73,4 +78,19 @@ class UserBadgeAwardingConfig(override val config: Config) extends BaseJobConfig
   val notificationBadgeSubCategory: String = config.getString("notification.badge.subCategory")
   val notificationBadgeSubType: String = config.getString("notification.badge.subType")
   val notificationEnabled: Boolean = config.getBoolean("notification.badge.enabled")
+  val userId: String = "userid"
+  val batchId: String = "batchid"
+  val courseId: String = "courseid"
+  val firstName: String = "firstname"
+  val id: String = "id"
+  val badgeId: String = "badgeid"
+  val badgeTitle: String = "badgeTitle"
+  val criteria: String = "criteria"
+  val issuedOn: String = "issuedon"
+  val templateUrl: String = "templateurl"
+
+  val badgeEnabledCourses: util.List[String] = if (config.hasPath("badge.enabled.courses")) config.getStringList("badge.enabled.courses") else util.Arrays.asList("")
+  val badgeEnabledPrograms: util.List[String] = if (config.hasPath("badge.enabled.programs")) config.getStringList("badge.enabled.programs") else util.Arrays.asList("")
+
+  val programHierarchyCacheTtl: Int = if (config.hasPath("program.hierarchy.cache.ttl")) config.getInt("program.hierarchy.cache.ttl") else 3600000
 }

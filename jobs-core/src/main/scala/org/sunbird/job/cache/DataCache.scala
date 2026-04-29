@@ -186,6 +186,24 @@ class DataCache(val config: BaseJobConfig, val redisConnect: RedisConnect, val d
     }
   }
 
+  def addKeyMembers(key: String, values: List[String], ttl: Int): Unit = {
+    if (values == null || values.isEmpty) return
+
+    try {
+      redisConnection.sadd(key, values: _*)
+      if (ttl > 0) redisConnection.expire(key, ttl)
+    } catch {
+      case ex: JedisException =>
+        logger.error("Exception when adding data to redis set", ex)
+        close()
+        this.redisConnection = redisConnect.getConnection(dbIndex)
+
+        // retry once after reconnect
+        redisConnection.sadd(key, values: _*)
+        if (ttl > 0) redisConnection.expire(key, ttl)
+    }
+  }
+
   def del(key: String): Unit = {
     try {
       this.redisConnection.del(key)
@@ -297,17 +315,22 @@ class DataCache(val config: BaseJobConfig, val redisConnect: RedisConnect, val d
     }
   }
 
-  /**
-   * Push value to the head of a list stored at key
-   * Used for recent badge activity tracking
-   */
-  def lpush(key: String, value: String): Long = {
+  /* Set a string value with TTL (in seconds) */
+  def set(key: String, value: String, ttlSeconds: Int): Unit = {
     try {
-      redisConnection.lpush(key, value)
+      redisConnection.setex(key, ttlSeconds, value)
     } catch {
       case ex: JedisException =>
-        logger.error("Error in lpush: ", ex)
-        0L
+        logger.error("Error in lpush, retrying after reconnection: ", ex)
+        close()
+        this.redisConnection = redisConnect.getConnection(dbIndex)
+        try {
+          redisConnection.lpush(key, value)
+        } catch {
+          case retryEx: Exception =>
+            logger.error("Error in lpush retry: ", retryEx)
+            0L
+        }
     }
   }
 
@@ -320,7 +343,36 @@ class DataCache(val config: BaseJobConfig, val redisConnect: RedisConnect, val d
       redisConnection.ltrim(key, start, end)
     } catch {
       case ex: JedisException =>
-        logger.error("Error in ltrim: ", ex)
+        logger.error("Error in ltrim, retrying after reconnection: ", ex)
+        close()
+        this.redisConnection = redisConnect.getConnection(dbIndex)
+        try {
+          redisConnection.ltrim(key, start, end)
+        } catch {
+          case retryEx: Exception =>
+            logger.error("Error in ltrim retry: ", retryEx)
+        }
+    }
+  }
+  /**
+   * Push value to the head of a list stored at key
+   * Used for recent badge activity tracking
+   */
+  def lpush(key: String, value: String): Long = {
+    try {
+      redisConnection.lpush(key, value)
+    } catch {
+      case ex: JedisException =>
+        logger.error("Error in lpush, retrying after reconnection: ", ex)
+        close()
+        this.redisConnection = redisConnect.getConnection(dbIndex)
+        try {
+          redisConnection.lpush(key, value)
+        } catch {
+          case retryEx: Exception =>
+            logger.error("Error in lpush retry: ", retryEx)
+            0L
+        }
     }
   }
 }
