@@ -85,7 +85,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
             var isFailedEvent: Boolean = false;
             var lastCourseCompleteOn: Date = null
             var programCompletedOn: Date = null
-            var completedCoursesCount: Int = 0
+            val courseCompletionDates = new java.util.ArrayList[Long]()
             for (courseId <- programChildrenCourses) {
               val courseMetadata: java.util.Map[String, AnyRef] = getCourseInfo(courseId)(metrics, config, cache, httpUtil)
               val primaryCategory = courseMetadata.get(config.primaryCategory).asInstanceOf[String]
@@ -98,8 +98,10 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
                 logger.info("Is Certificate Available for courseId: " + courseId + " userId:" + userId + " :" + isCertificateIssued)
                 var courseCompletedOn: Date = null;
                 if (isCertificateIssued) {
-                  completedCoursesCount += 1
                   courseCompletedOn = courseEnrollmentRow.get.getTimestamp("completedon")
+                  if (courseCompletedOn != null) {
+                    courseCompletionDates.add(courseCompletedOn.getTime)
+                  }
                   if (lastCourseCompleteOn == null) {
                     lastCourseCompleteOn = courseCompletedOn
                   } else if (lastCourseCompleteOn.before(courseCompletedOn)) {
@@ -184,7 +186,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
                 isProgramCertificateToBeGenerated = false
               }
               updateEnrolment(event.userId, batchId, courseParentId, programContentStatus, status, progressCount, programCompletedOn)(metrics)
-              checkAndEmitBadgeEvent(event.userId, batchId, courseParentId, completedCoursesCount, context)(metrics)
+              checkAndEmitBadgeEvent(event.userId, batchId, courseParentId, courseCompletionDates, context)(metrics)
             }
 
             if (isProgramCertificateToBeGenerated) {
@@ -305,10 +307,38 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
   }
 
   /**
+   * Parse badge earning date time from various types
+   * Handles Double (including scientific notation), Float, Integer, Long, and String
+   */
+  private def parseBadgeEarningDateTime(value: Any): Long = {
+    try {
+      value match {
+        case d: java.lang.Double => d.toLong
+        case f: java.lang.Float => f.toLong
+        case i: java.lang.Integer => i.toLong
+        case l: java.lang.Long => l.longValue()
+        case s: String =>
+          try {
+            // Try parsing as double first (handles scientific notation like 1.774656E12)
+            s.toDouble.toLong
+          } catch {
+            case _: NumberFormatException => s.toLong
+          }
+        case _ => value.toString.toDouble.toLong
+      }
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Failed to parse badgeEarningDateTime: $value", ex)
+        throw new Exception(s"Invalid badgeEarningDateTime value: $value", ex)
+    }
+  }
+
+  /**
    * Check if badge should be awarded and emit badge event
    * This checks program metadata for badgeDetails_v1 with partialRandomCompletion criteria
+   * Counts courses completed within badgeEarningDateTime window and compares with requiredCourseCompletions
    */
-  def checkAndEmitBadgeEvent(userId: String, batchId: String, programId: String, progressCount: Int,
+  def checkAndEmitBadgeEvent(userId: String, batchId: String, programId: String, courseCompletionDates: java.util.List[Long],
                             context: KeyedProcessFunction[String, Event, String]#Context)(implicit metrics: Metrics): Unit = {
     try {
       val programMetadata = getCourseInfo(programId)(metrics, config, cache, httpUtil)
@@ -317,8 +347,6 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
       if (badgeDetailsV1Raw == null) {
         return
       }
-
-      import scala.collection.JavaConverters._
 
       // badgeDetails_v1 is an array/list of badge objects
       val badgeDetailsList = badgeDetailsV1Raw match {
@@ -363,70 +391,63 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
           } catch {
             case ex: Exception =>
               logger.error(s"Failed to parse requiredCompletionCount: $value", ex)
-              0
+              throw new Exception(s"Invalid requiredCourseCompletions value: $value")
           }
-        }
-        .getOrElse(0)
+        }.getOrElse(0)
 
-      // Check if progressCount >= requiredCompletionCount
-      if (progressCount >= requiredCompletionCount) {
-        logger.info(s"Badge criteria met: progressCount=$progressCount >= requiredCompletionCount=$requiredCompletionCount for programId=$programId")
+      if (requiredCompletionCount == 0) {
+        logger.warn(s"requiredCompletionCount 0 for programId=$programId")
+        return
+      }
 
-        // Check badgeEarningDateEnabled
-        val badgeEarningDateEnabled = Option(badgeDetailsObj.get(config.badgeEarningDateEnabled))
-          .map(_.toString.toBoolean)
-          .getOrElse(false)
 
-        val currentTime = System.currentTimeMillis()
-        var shouldEmitBadgeEvent = false
+      // Check badgeEarningDateEnabled
+      val badgeEarningDateEnabled = Option(badgeDetailsObj.get(config.badgeEarningDateEnabled))
+        .map(_.toString.toBoolean)
+        .getOrElse(false)
 
-        if (!badgeEarningDateEnabled) {
-          // If badgeEarningDateEnabled is false, emit badge event
-          shouldEmitBadgeEvent = true
-        } else {
-          // If badgeEarningDateEnabled is true, check badgeEarningDateTime > currentTime
-          val badgeEarningDateTime: Long = Option(badgeDetailsObj.get(config.badgeEarningDateTime))
-            .map { value =>
-              try {
-                value match {
-                  case d: java.lang.Double => d.toLong
-                  case f: java.lang.Float => f.toLong
-                  case i: java.lang.Integer => i.toLong
-                  case l: java.lang.Long => l.longValue()
-                  case s: String =>
-                    try {
-                      s.toDouble.toLong
-                    } catch {
-                      case _: NumberFormatException => s.toLong
-                    }
-                  case _ => value.toString.toDouble.toLong
-                }
-              } catch {
-                case ex: Exception =>
-                  logger.error(s"Failed to parse badgeEarningDateTime: $value", ex)
-                  0L
-              }
-            }
-            .getOrElse(0L)
+      var eligibleCompletedCount = 0
+      var shouldEmitBadgeEvent = false
 
-          if (badgeEarningDateTime == 0L) {
-            logger.warn(s"badgeEarningDateTime not found or invalid for programId=$programId, skipping badge event emission")
-            return
-          }
-
-          if (badgeEarningDateTime > currentTime) {
-            shouldEmitBadgeEvent = true
-          } else {
-            logger.debug(s"badgeEarningDateTime ($badgeEarningDateTime) <= currentTime ($currentTime) for programId=$programId, not eligible for badge")
-          }
-        }
-
-        // Emit badge event if eligible
-        if (shouldEmitBadgeEvent) {
-          createBadgeEvent(programId, userId, batchId, context)(metrics)
-        }
+      if (!badgeEarningDateEnabled) {
+        // If badgeEarningDateEnabled is false, count all completed courses
+        eligibleCompletedCount = courseCompletionDates.size()
+        logger.info(s"badgeEarningDateEnabled=false, counting all completed courses: $eligibleCompletedCount")
       } else {
-        logger.info(s"Badge criteria not met: progressCount=$progressCount < requiredCompletionCount=$requiredCompletionCount for programId=$programId")
+        // If badgeEarningDateEnabled is true, check each course completedOn against badgeEarningDateTime
+        val badgeEarningDateTime: Long = Option(badgeDetailsObj.get(config.badgeEarningDateTime))
+          .map(value => parseBadgeEarningDateTime(value))
+          .getOrElse(0L)
+
+        if (badgeEarningDateTime == 0L) {
+          logger.warn(s"badgeEarningDateTime not found or invalid for programId=$programId, skipping badge event emission")
+          return
+        }
+
+        // Count courses completed where badgeEarningDateTime > course completedOn
+        courseCompletionDates.asScala.foreach { courseCompletedOn =>
+            if (badgeEarningDateTime > courseCompletedOn) {
+              eligibleCompletedCount += 1
+              logger.debug(s"Course eligible: badgeEarningDateTime ($badgeEarningDateTime) > courseCompletedOn ($courseCompletedOn)")
+            } else {
+              logger.debug(s"Course not eligible: badgeEarningDateTime ($badgeEarningDateTime) <= courseCompletedOn ($courseCompletedOn)")
+            }
+
+        }
+        logger.info(s"Eligible completed courses count (within badge earning date): $eligibleCompletedCount for programId=$programId")
+      }
+
+      // Check if eligibleCompletedCount >= requiredCompletionCount
+      if (eligibleCompletedCount >= requiredCompletionCount) {
+        logger.info(s"Badge criteria met: eligibleCompletedCount=$eligibleCompletedCount >= requiredCompletionCount=$requiredCompletionCount for programId=$programId")
+        shouldEmitBadgeEvent = true
+      } else {
+        logger.info(s"Badge criteria not met: eligibleCompletedCount=$eligibleCompletedCount < requiredCompletionCount=$requiredCompletionCount for programId=$programId")
+      }
+
+      // Emit badge event if eligible
+      if (shouldEmitBadgeEvent) {
+        createBadgeEvent(programId, userId, batchId, context)(metrics)
       }
     } catch {
       case ex: Exception =>
