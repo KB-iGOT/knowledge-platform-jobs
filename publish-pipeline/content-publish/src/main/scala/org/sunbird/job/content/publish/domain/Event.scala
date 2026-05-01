@@ -37,4 +37,6 @@ class Event(eventMap: java.util.Map[String, Any], partition: Int, offset: Long) 
       && (config.supportedObjectType.contains(objectType) && config.supportedMimeType.contains(mimeType))
       && !StringUtils.equalsIgnoreCase("Asset", contentType))
   }
+
+  def resourceType: String = readOrDefault[String]("edata.resourceType", "")
 }

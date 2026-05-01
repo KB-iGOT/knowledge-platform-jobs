@@ -118,4 +118,10 @@ class ContentPublishConfig(override val config: Config) extends PublishConfig(co
     if (config.hasPath("defaultCompatibilityLevel")) config.getInt("defaultCompatibilityLevel") else 4
 
   val LEARNING_PATHWAY = "Learning Pathway"
+
+  val skipResourceTypes: util.List[String] =
+    if (config.hasPath("skipResourceTypes"))
+      config.getStringList("skipResourceTypes")
+    else
+      util.Arrays.asList[String]("externalTraining")
 }

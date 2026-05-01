@@ -23,6 +23,7 @@ import java.lang.reflect.Type
 import java.util.UUID
 import scala.concurrent.ExecutionContext
 
+
 class EventPublishFunction (config: ContentPublishConfig, httpUtil: HttpUtil,
                              @transient var neo4JUtil: Neo4JUtil = null,
                              @transient var cassandraUtil: CassandraUtil = null, 
@@ -68,18 +69,23 @@ extends BaseProcessFunction[Event, String](config) with EventPublisher with Fail
                 logger.info("Event publishing completed successfully for : " + data.identifier)
 
                 logger.info("Notification for EVENT_PUBLISH started successfully.")
-                  try {
+                try {
                     logger.info("Node metadata is {}", obj.metadata)
-                    new NotificationManager(config.notificationUrl, httpUtil).sendNotification(
-                      "EVENT_PUBLISHED",
-                      "UPDATE",
-                      List("global"),
-                      obj.metadata("name").asInstanceOf[String],
-                      Map[String, Any]("id" -> obj.identifier)
-                    )
-                  } catch {
+                    if (!config.skipResourceTypes.contains(data.resourceType)) {
+                        new NotificationManager(config.notificationUrl, httpUtil).sendNotification(
+                            "EVENT_PUBLISHED",
+                            "UPDATE",
+                            List("global"),
+                            obj.metadata("name").asInstanceOf[String],
+                            Map[String, Any]("id" -> obj.identifier)
+                        )
+                    } else {
+                        logger.info("Notification not sent as resourceType is externalTraining")
+                    }
+                } catch {
                     case e: Exception => logger.error("Error in sending notification for Event publish ", e)
-                  }
+                }
+
             }
         } catch {
         case ex@(_: InvalidInputException | _: ClientException | _:java.lang.IllegalArgumentException) => // ClientException - Invalid input exception.
