@@ -8,7 +8,7 @@ import org.sunbird.job.publish.config.PublishConfig
 import org.sunbird.job.content.publish.domain.Event
 
 import java.util
-
+import scala.collection.JavaConverters._
 
 class ContentPublishConfig(override val config: Config) extends PublishConfig(config, "content-publish") {
 
