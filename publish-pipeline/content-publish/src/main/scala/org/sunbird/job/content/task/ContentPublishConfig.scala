@@ -8,7 +8,7 @@ import org.sunbird.job.publish.config.PublishConfig
 import org.sunbird.job.content.publish.domain.Event
 
 import java.util
-import scala.collection.JavaConverters._
+
 
 class ContentPublishConfig(override val config: Config) extends PublishConfig(config, "content-publish") {
 
@@ -118,5 +118,5 @@ class ContentPublishConfig(override val config: Config) extends PublishConfig(co
     if (config.hasPath("defaultCompatibilityLevel")) config.getInt("defaultCompatibilityLevel") else 4
 
   val LEARNING_PATHWAY = "Learning Pathway"
-  val skipResourceTypes: util.List[String] = if (config.hasPath("skipResourceTypes")) config.getStringList("skipResourceTypes") else util.Arrays.asList[String]("externalTraining")
+  val skipResourceTypes = List[String]("externalTraining")
 }
