@@ -38,5 +38,5 @@ class Event(eventMap: java.util.Map[String, Any], partition: Int, offset: Long) 
       && !StringUtils.equalsIgnoreCase("Asset", contentType))
   }
 
-  def resourceType: String = readOrDefault[String]("edata.resourceType", "")
+  def resourceType: String = readOrDefault[String]("edata.metadata.resourceType", "")
 }
