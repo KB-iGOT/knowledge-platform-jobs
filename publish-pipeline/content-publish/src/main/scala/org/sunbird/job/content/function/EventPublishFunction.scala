@@ -22,6 +22,7 @@ import org.sunbird.job.{BaseProcessFunction, Metrics}
 import java.lang.reflect.Type
 import java.util.UUID
 import scala.concurrent.ExecutionContext
+import scala.collection.JavaConverters._
 
 class EventPublishFunction (config: ContentPublishConfig, httpUtil: HttpUtil,
                              @transient var neo4JUtil: Neo4JUtil = null,
@@ -70,8 +71,8 @@ extends BaseProcessFunction[Event, String](config) with EventPublisher with Fail
                 logger.info("Notification for EVENT_PUBLISH started successfully.")
                 try {
                     logger.info("Node metadata is {}", obj.metadata)
-                    val skipResourceTypes: Set[String] = Set("externalTraining")
-                    if (!skipResourceTypes.contains(data.resourceType)) {
+                    val skipList: List[String] = config.skipResourceTypes.asScala.toList
+                    if (!skipList.contains(data.resourceType)) {
                         new NotificationManager(config.notificationUrl, httpUtil).sendNotification(
                             "EVENT_PUBLISHED",
                             "UPDATE",
