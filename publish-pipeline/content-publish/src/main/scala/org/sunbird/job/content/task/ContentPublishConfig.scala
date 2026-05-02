@@ -119,9 +119,9 @@ class ContentPublishConfig(override val config: Config) extends PublishConfig(co
 
   val LEARNING_PATHWAY = "Learning Pathway"
 
-  val skipResourceTypes: util.List[String] =
+  val skipResourceTypes: Set[String] =
     if (config.hasPath("skipResourceTypes"))
-      config.getStringList("skipResourceTypes")
+      config.getStringList("skipResourceTypes").asScala.toSet
     else
-      util.Arrays.asList[String]("externalTraining")
+      Set("externalTraining")
 }
