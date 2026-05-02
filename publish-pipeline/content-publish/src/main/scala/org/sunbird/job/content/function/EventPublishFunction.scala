@@ -72,7 +72,7 @@ extends BaseProcessFunction[Event, String](config) with EventPublisher with Fail
                 try {
                     logger.info("Node metadata is {}", obj.metadata)
                     val resourceType = obj.metadata("resourceType").asInstanceOf[String]
-                    logger.info("data ResourceType is {} : ", resourceType)
+                    logger.info("Data ResourceType is {}", resourceType)
                     if (!config.skipResourceTypes.contains(resourceType)) {
                         new NotificationManager(config.notificationUrl, httpUtil).sendNotification(
                             "EVENT_PUBLISHED",
