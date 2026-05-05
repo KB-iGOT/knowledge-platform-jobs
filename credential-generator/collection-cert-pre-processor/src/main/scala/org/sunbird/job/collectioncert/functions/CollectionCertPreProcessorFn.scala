@@ -47,7 +47,7 @@ class CollectionCertPreProcessorFn(config: CollectionCertPreProcessorConfig, htt
 
     override def metricsList(): List[String] = {
         List(config.totalEventsCount, config.dbReadCount, config.dbUpdateCount, config.failedEventCount, config.skippedEventCount, config.successEventCount,
-            config.cacheHitCount)
+            config.cacheHitCount, config.courseInfoCacheL1Hit, config.courseInfoCacheL2Hit, config.courseInfoCacheL3ApiCall, config.courseInfoCacheL3ApiError)
     }
 
     override def processElement(event: Event,

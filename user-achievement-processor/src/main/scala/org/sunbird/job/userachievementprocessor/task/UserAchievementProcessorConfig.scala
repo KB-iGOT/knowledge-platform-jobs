@@ -16,6 +16,15 @@ class UserBadgeAwardingConfig(override val config: Config) extends BaseJobConfig
   val collectionCacheStore: Int = 0
   val badgeCountCacheStore: Int = 2
   val badgeCacheStore: Int = 12
+
+  // Content cache config
+  val contentCacheExpiryMs: Long = config.getLong("content.cache.expiry.ms")
+
+  // Program hierarchy cache metrics
+  val programHierarchyCacheL1Hit      = "program.hierarchy.cache.l1.hit"
+  val programHierarchyCacheL2Hit      = "program.hierarchy.cache.l2.hit"
+  val programHierarchyCacheL3ApiCall  = "program.hierarchy.cache.l3.api.call"
+  val programHierarchyCacheL3ApiError = "program.hierarchy.cache.l3.api.error"
   val recentBadgeActivityKey: String = config.getString("redis.recentBadgeActivityKey")
   val recentBadgeActivityMaxSize: Int = config.getInt("redis.recentBadgeActivityMaxSize")
 

@@ -29,7 +29,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
   private var cache: DataCache = _
   private var dataCache: DataCache = _
   private var contentCache: DataCache = _
-  val programHierarchyCache = new java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)]()
+  @transient private var programHierarchyCache: java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)] = _
 
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
@@ -41,15 +41,19 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     dataCache.init()
     contentCache = new DataCache(config, redisConnect, config.collectionCacheStore, List())
     contentCache.init()
+    programHierarchyCache = new java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)]()
   }
 
   override def close(): Unit = {
     cassandraUtil.close()
+    contentCache.close()
     super.close()
   }
 
   override def metricsList(): List[String] = {
-    List(config.totalEventsCount, config.dbUpdateCount, config.failedEventCount, config.skippedEventCount, config.successEventCount)
+    List(config.totalEventsCount, config.dbUpdateCount, config.failedEventCount, config.skippedEventCount, config.successEventCount,
+      config.programHierarchyCacheL1Hit, config.programHierarchyCacheL2Hit,
+      config.programHierarchyCacheL3ApiCall, config.programHierarchyCacheL3ApiError)
   }
 
   /**
@@ -320,6 +324,22 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     config: UserBadgeAwardingConfig,
     httpUtil: HttpUtil
   ): java.util.Map[String, AnyRef] = {
+
+    // ─── Layer 1: in-memory ConcurrentHashMap (TTL-based) ───────────────────────
+    val now = System.currentTimeMillis()
+    val l1Entry = programHierarchyCache.get(programId)
+    if (l1Entry != null) {
+      if (l1Entry._2 > now) {
+        metrics.incCounter(config.programHierarchyCacheL1Hit)
+        logger.debug(s"getProgramHierarchy - L1 in-memory cache HIT for programId=$programId")
+        return l1Entry._1
+      } else {
+        programHierarchyCache.remove(programId)  // evict stale entry to prevent memory leak
+      }
+    }
+    // ─── Layer 3: existing API calls (unchanged) ─────────────────────────────────
+    metrics.incCounter(config.programHierarchyCacheL3ApiCall)
+
     try {
       // Step 1: Fetch badgeDetails_v1 from content read API
       val courseMetadata: java.util.Map[String, AnyRef] = getCourseInfo(programId)(metrics, config, contentCache, httpUtil)
@@ -388,9 +408,12 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       programInfoMap.put("childNodes", childNodes)
       programInfoMap.put("parentCollections", new java.util.ArrayList[String]())
 
+      programHierarchyCache.put(programId, (programInfoMap, now + config.contentCacheExpiryMs))
+
       programInfoMap
     } catch {
       case ex: Exception =>
+        metrics.incCounter(config.programHierarchyCacheL3ApiError)
         logger.error(s"Error fetching program data for programId=$programId", ex)
         throw new Exception(s"Error fetching program data for programId=$programId: ${ex.getMessage}", ex)
     }
