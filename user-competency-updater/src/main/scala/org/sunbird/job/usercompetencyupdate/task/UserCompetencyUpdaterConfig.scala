@@ -44,8 +44,6 @@ class UserCompetencyUpdaterConfig(override val config: Config) extends BaseJobCo
   val programCertIssueEventsCount = "program-cert-issue-events-count"
   val cacheMissCount = "cache-miss-count"
 
-  // ── 3-layer content cache ─────────────────────────────────────────────────────
-  /** TTL (ms) for the JVM in-memory L1 cache.  Default = 1 hour. */
   val contentCacheExpiry: Int =
     if (config.hasPath("content.course.cache.expiry")) config.getInt("content.course.cache.expiry")
     else 3600000

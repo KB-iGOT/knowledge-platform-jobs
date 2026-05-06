@@ -24,9 +24,6 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
   private[this] val logger = LoggerFactory.getLogger(classOf[UserCompetencyPreProcessorFn])
   private var cache: DataCache = _
 
-  // ── Layer-1 in-memory caches (JVM heap, per task slot) ───────────────────────
-  // @transient: Flink checkpoint serialisation must NOT serialise these maps.
-  // Value tuple: (cachedMap, expiryTimestampMillis)
   @transient private var courseInfoCache: java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)] = _
   @transient private var extContentInfoCache: java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)] = _
 
@@ -43,7 +40,6 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     val redisConnect = new RedisConnect(config)
     cache = new DataCache(config, redisConnect, config.collectionCacheStore, List())
     cache.init()
-    // ── Initialise Layer-1 in-memory caches ─────────────────────────────────────
     courseInfoCache    = new java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)]()
     extContentInfoCache = new java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)]()
   }
