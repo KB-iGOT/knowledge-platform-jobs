@@ -297,7 +297,6 @@ trait IssueCertificateHelper {
         val l1Entry = courseInfoCache.get(courseId)
         if (l1Entry != null) {
             if (l1Entry._2 > now) {
-                metrics.incCounter(config.courseInfoCacheL1Hit)
                 return l1Entry._1
             } else {
                 courseInfoCache.remove(courseId)
@@ -329,7 +328,6 @@ trait IssueCertificateHelper {
             courseInfoMap.put("courseCategory", courseCategory)
             courseInfoMap
         } else {
-            metrics.incCounter(config.courseInfoCacheL2Hit)
             val courseName = StringContext.processEscapes(courseMetadata.getOrElse(config.name, "").asInstanceOf[String]).filter(_ >= ' ')
             val primaryCategory = StringContext.processEscapes(courseMetadata.getOrElse("primarycategory", "").asInstanceOf[String]).filter(_ >= ' ')
             val parentCollections = courseMetadata.getOrElse("parentcollections", new java.util.ArrayList()).asInstanceOf[java.util.ArrayList[String]]

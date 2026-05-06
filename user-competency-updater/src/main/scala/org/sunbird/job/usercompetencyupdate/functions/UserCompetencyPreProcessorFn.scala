@@ -55,8 +55,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
   }
 
   override def metricsList(): List[String] = {
-    List(config.totalEventsCount, config.dbReadCount, config.dbUpdateCount, config.failedEventCount, config.skippedEventCount, config.successEventCount,
-      config.cacheL1HitCount, config.cacheL2HitCount, config.cacheL3ApiCallCount, config.cacheL3ApiErrorCount)
+    List(config.totalEventsCount, config.dbReadCount, config.dbUpdateCount, config.failedEventCount, config.skippedEventCount, config.successEventCount)
   }
 
   override def processElement(event: Event,
@@ -610,7 +609,6 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       if (l1Entry._2 > now) {
         // — return immediately
         logger.info(s"getCourseInfo - L1 in-memory cache HIT for courseId=$courseId")
-        metrics.incCounter(config.cacheL1HitCount)
         return l1Entry._1
       } else {
         //  evict stale entry to prevent memory leak
@@ -627,13 +625,11 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       val raw = if (isL2Miss) {
         // ── Layer 3: Content Service API ───────────────────────────────────────
         logger.info(s"getCourseInfo - L2 Redis MISS, calling Content API for courseId=$courseId")
-        metrics.incCounter(config.cacheL3ApiCallCount)
         val url = config.contentReadURL + courseId + "?fields=competencies_v6"
         val response = getAPICall(url, "content")(config, httpUtil, metrics)
         response.get("competencies_v6")
       } else {
         logger.info(s"getCourseInfo - L2 Redis HIT for courseId=$courseId")
-        metrics.incCounter(config.cacheL2HitCount)
         courseMetadata.get("competencies_v6")
       }
       raw match {
@@ -872,7 +868,6 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       if (l1Entry._2 > now) {
         //  — return immediately
         logger.info(s"getExtCourseCompetencies - L1 in-memory cache HIT for courseId=$courseId")
-        metrics.incCounter(config.cacheL1HitCount)
         val rawFromL1 = l1Entry._1.get(config.competenciesV6Key)
         return rawFromL1 match {
           case null => new java.util.ArrayList[java.util.Map[String, AnyRef]]()
@@ -892,7 +887,6 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     val rawValue: AnyRef =
       if (courseMetadata != null && courseMetadata.contains(config.extContentResponseKey)) {
         logger.info(s"getExtCourseCompetencies - L2 Redis HIT for courseId=$courseId")
-        metrics.incCounter(config.cacheL2HitCount)
         val contentMap =
           courseMetadata(config.extContentResponseKey).asInstanceOf[java.util.Map[String, AnyRef]]
         val competenciesRaw = contentMap.get(config.competenciesV6Key)
@@ -905,7 +899,6 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       } else {
         // ── Layer 3: Ext Content API ─────────────────────────────────────────────
         logger.info(s"getExtCourseCompetencies  calling Ext Content API for courseId=$courseId")
-        metrics.incCounter(config.cacheL3ApiCallCount)
         val response =
           getExtContentAPICall(config.extContentUrl + courseId)(config, httpUtil, metrics)
         val competenciesRaw = response.get(config.competenciesV6Key)

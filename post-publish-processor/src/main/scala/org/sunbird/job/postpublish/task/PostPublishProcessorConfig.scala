@@ -155,9 +155,5 @@ class PostPublishProcessorConfig(override val config: Config) extends BaseJobCon
 
   // L1 in-memory cache TTL (milliseconds) — default 1 hour
   val contentCacheExpiry: Int = if (config.hasPath("content.cache.expiry")) config.getInt("content.cache.expiry") else 3600000
-  // Course info cache metrics
-  val courseInfoCacheL1Hit     = "course.info.cache.l1.hit"
-  val courseInfoCacheL2Hit     = "course.info.cache.l2.hit"
-  val courseInfoCacheL3ApiCall = "course.info.cache.l3.api.call"
 
 }

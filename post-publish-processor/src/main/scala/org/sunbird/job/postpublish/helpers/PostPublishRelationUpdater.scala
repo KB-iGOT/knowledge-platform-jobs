@@ -63,7 +63,6 @@ trait PostPublishRelationUpdater {
     val l1Entry = courseInfoCache.get(courseId)
     if (l1Entry != null) {
       if (l1Entry._2 > now) {
-        metrics.incCounter(config.courseInfoCacheL1Hit)
         logger.info(s"getCourseInfo - L1 in-memory cache HIT for courseId=$courseId")
         return l1Entry._1
       } else {
@@ -75,7 +74,6 @@ trait PostPublishRelationUpdater {
     val courseMetadata = cache.getWithRetry(courseId)
     if (null == courseMetadata || courseMetadata.isEmpty) {
       // ── Layer 3: HTTP Content API ──
-      metrics.incCounter(config.courseInfoCacheL3ApiCall)
       val url =
         config.contentReadURL + "/" + courseId + "?fields=identifier,name,versionKey,parentCollections,primaryCategory,languageMapV1,courseCategory,status,previousVersionCourseId,contentVersion,milestones_v1,preliminaryAssessment"
       val response = getAPICall(url, "content")(config, httpUtil, metrics)
@@ -150,7 +148,6 @@ trait PostPublishRelationUpdater {
       courseInfoMap
     } else {
       // ── Layer 2: Redis HIT ──
-      metrics.incCounter(config.courseInfoCacheL2Hit)
       val name = courseMetadata.getOrElse(config.name, "").asInstanceOf[String]
       val category = courseMetadata.getOrElse("primarycategory", "").asInstanceOf[String]
       val version = courseMetadata.getOrElse("versionkey", "").asInstanceOf[String]

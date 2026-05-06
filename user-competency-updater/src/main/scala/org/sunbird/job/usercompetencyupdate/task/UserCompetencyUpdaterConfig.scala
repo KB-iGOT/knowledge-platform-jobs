@@ -50,11 +50,6 @@ class UserCompetencyUpdaterConfig(override val config: Config) extends BaseJobCo
     if (config.hasPath("content.course.cache.expiry")) config.getInt("content.course.cache.expiry")
     else 3600000
 
-  // Observability counters for the 3-layer cache
-  val cacheL1HitCount    = "content.cache.l1.hit"
-  val cacheL2HitCount    = "content.cache.l2.hit"
-  val cacheL3ApiCallCount = "content.cache.l3.api.call"
-  val cacheL3ApiErrorCount = "content.cache.l3.api.error"
 
   //Constants
   val status: String = "status"

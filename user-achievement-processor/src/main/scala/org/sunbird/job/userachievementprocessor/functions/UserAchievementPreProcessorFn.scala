@@ -51,9 +51,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
   }
 
   override def metricsList(): List[String] = {
-    List(config.totalEventsCount, config.dbUpdateCount, config.failedEventCount, config.skippedEventCount, config.successEventCount,
-      config.programHierarchyCacheL1Hit, config.programHierarchyCacheL2Hit,
-      config.programHierarchyCacheL3ApiCall, config.programHierarchyCacheL3ApiError)
+    List(config.totalEventsCount, config.dbUpdateCount, config.failedEventCount, config.skippedEventCount, config.successEventCount)
   }
 
   /**
@@ -330,7 +328,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     val l1Entry = programHierarchyCache.get(programId)
     if (l1Entry != null) {
       if (l1Entry._2 > now) {
-        metrics.incCounter(config.programHierarchyCacheL1Hit)
         logger.debug(s"getProgramHierarchy - L1 in-memory cache HIT for programId=$programId")
         return l1Entry._1
       } else {
@@ -338,7 +335,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       }
     }
     // ─── Layer 3: existing API calls (unchanged) ─────────────────────────────────
-    metrics.incCounter(config.programHierarchyCacheL3ApiCall)
 
     try {
       // Step 1: Fetch badgeDetails_v1 from content read API
@@ -413,7 +409,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       programInfoMap
     } catch {
       case ex: Exception =>
-        metrics.incCounter(config.programHierarchyCacheL3ApiError)
         logger.error(s"Error fetching program data for programId=$programId", ex)
         throw new Exception(s"Error fetching program data for programId=$programId: ${ex.getMessage}", ex)
     }
