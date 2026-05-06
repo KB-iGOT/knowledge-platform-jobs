@@ -63,8 +63,6 @@ trait PostPublishRelationUpdater {
       if (inMemoryContentData._2 > now) {
         logger.info(s"getCourseInfo - in-memory cache HIT for courseId=$courseId")
         return inMemoryContentData._1
-      } else {
-        courseInfoCache.remove(courseId)
       }
     }
 

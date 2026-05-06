@@ -605,9 +605,6 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       if (inMemoryCourseInfo._2 > now) {
         logger.info(s"getCourseInfo -  in-memory cache HIT for courseId=$courseId")
         return inMemoryCourseInfo._1
-      } else {
-        courseInfoCache.remove(courseId)
-        logger.debug(s"getCourseInfo - in-memory cache has expired and evicted for courseId=$courseId")
       }
     }
     val courseMetadata = cache.getWithRetry(courseId)
@@ -856,15 +853,12 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     if (inMemoryExtContentInfo != null) {
       if (inMemoryExtContentInfo._2 > now) {
         logger.info(s"getExtCourseCompetencies - in-memory cache HIT for courseId=$courseId")
-        val rawFromL1 = inMemoryExtContentInfo._1.get(config.competenciesV6Key)
-        return rawFromL1 match {
+        val cachedCompetenciesData = inMemoryExtContentInfo._1.get(config.competenciesV6Key)
+        return cachedCompetenciesData match {
           case null => new java.util.ArrayList[java.util.Map[String, AnyRef]]()
           case jl: java.util.List[_] => jl.asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
           case _ => new java.util.ArrayList[java.util.Map[String, AnyRef]]()
         }
-      } else {
-        extContentInfoCache.remove(courseId)
-        logger.debug(s"getExtCourseCompetencies - in-memory entry expired and evicted for courseId=$courseId")
       }
     }
     // Redis DataCache

@@ -255,8 +255,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       if (inMemoryCacheData._2 > now) {
         logger.debug(s"getCourseInfo - in-memory cache HIT for courseId=$courseId")
         return inMemoryCacheData._1
-      } else {
-        courseInfoCache.remove(courseId)
       }
     }
 

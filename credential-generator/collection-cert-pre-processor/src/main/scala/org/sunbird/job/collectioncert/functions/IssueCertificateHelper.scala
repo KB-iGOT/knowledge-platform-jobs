@@ -297,8 +297,6 @@ trait IssueCertificateHelper {
         if (inMemoryContentData != null) {
             if (inMemoryContentData._2 > now) {
                 return inMemoryContentData._1
-            } else {
-                courseInfoCache.remove(courseId)
             }
         }
         //  Redis DataCache
