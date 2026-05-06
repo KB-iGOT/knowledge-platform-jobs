@@ -18,8 +18,6 @@ trait PostPublishRelationUpdater {
   private[this] val logger =
     LoggerFactory.getLogger(classOf[PostPublishRelationUpdater])
 
-  // ── L1: In-memory course info cache (keyed by courseId → (infoMap, expiryEpochMs)) ──
-  // @transient so Flink checkpoint serialization skips it; lazy so no open() needed
   @transient lazy val courseInfoCache: java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)] =
     new java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)]()
 
