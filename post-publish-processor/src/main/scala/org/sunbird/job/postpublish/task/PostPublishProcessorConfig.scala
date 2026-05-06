@@ -153,7 +153,6 @@ class PostPublishProcessorConfig(override val config: Config) extends BaseJobCon
   val live = "Live"
   val preliminaryAssessment = "preliminaryAssessment"
 
-  // L1 in-memory cache TTL (milliseconds) — default 1 hour
   val contentCacheExpiry: Int = if (config.hasPath("content.cache.expiry")) config.getInt("content.cache.expiry") else 3600000
 
 }

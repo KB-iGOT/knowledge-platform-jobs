@@ -58,22 +58,21 @@ trait PostPublishRelationUpdater {
       httpUtil: HttpUtil
   ): java.util.Map[String, AnyRef] = {
 
-    // ── Layer 1: In-memory ConcurrentHashMap TTL check ──
+    // In-memory cache
     val now = System.currentTimeMillis()
-    val l1Entry = courseInfoCache.get(courseId)
-    if (l1Entry != null) {
-      if (l1Entry._2 > now) {
-        logger.info(s"getCourseInfo - L1 in-memory cache HIT for courseId=$courseId")
-        return l1Entry._1
+    val inMemoryContentData = courseInfoCache.get(courseId)
+    if (inMemoryContentData != null) {
+      if (inMemoryContentData._2 > now) {
+        logger.info(s"getCourseInfo - in-memory cache HIT for courseId=$courseId")
+        return inMemoryContentData._1
       } else {
-        courseInfoCache.remove(courseId) // evict stale entry to prevent memory leak
+        courseInfoCache.remove(courseId)
       }
     }
 
-    // ── Layer 2: Redis DataCache (existing logic — unchanged) ──
+    // Redis DataCache
     val courseMetadata = cache.getWithRetry(courseId)
     if (null == courseMetadata || courseMetadata.isEmpty) {
-      // ── Layer 3: HTTP Content API ──
       val url =
         config.contentReadURL + "/" + courseId + "?fields=identifier,name,versionKey,parentCollections,primaryCategory,languageMapV1,courseCategory,status,previousVersionCourseId,contentVersion,milestones_v1,preliminaryAssessment"
       val response = getAPICall(url, "content")(config, httpUtil, metrics)
@@ -143,11 +142,9 @@ trait PostPublishRelationUpdater {
         )
         .filter(_ >= ' ')
       courseInfoMap.put(config.preliminaryAssessment, preliminaryAssessment)
-      // ── Write back to L1 in-memory cache (L3 hit) ──
       courseInfoCache.put(courseId, (courseInfoMap, now + config.contentCacheExpiry))
       courseInfoMap
     } else {
-      // ── Layer 2: Redis HIT ──
       val name = courseMetadata.getOrElse(config.name, "").asInstanceOf[String]
       val category = courseMetadata.getOrElse("primarycategory", "").asInstanceOf[String]
       val version = courseMetadata.getOrElse("versionkey", "").asInstanceOf[String]
@@ -184,7 +181,6 @@ trait PostPublishRelationUpdater {
       courseInfoMap.put(config.milestones_v1, milestonesV1.asInstanceOf[AnyRef])
       val preliminaryAssessment = courseMetadata.getOrElse("preliminaryassessment", "").asInstanceOf[String]
       courseInfoMap.put(config.preliminaryAssessment, preliminaryAssessment)
-      // ── Write back to L1 in-memory cache (L2 Redis hit) ──
       courseInfoCache.put(courseId, (courseInfoMap, now + config.contentCacheExpiry))
       courseInfoMap
     }

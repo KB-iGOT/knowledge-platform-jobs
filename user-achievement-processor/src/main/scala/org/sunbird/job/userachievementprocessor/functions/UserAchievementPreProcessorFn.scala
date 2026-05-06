@@ -30,6 +30,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
   private var dataCache: DataCache = _
   private var contentCache: DataCache = _
   @transient private var programHierarchyCache: java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)] = _
+  @transient private var courseInfoCache: java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)] = _
 
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
@@ -42,6 +43,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     contentCache = new DataCache(config, redisConnect, config.collectionCacheStore, List())
     contentCache.init()
     programHierarchyCache = new java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)]()
+    courseInfoCache = new java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)]()
   }
 
   override def close(): Unit = {
@@ -245,6 +247,19 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     contentCache: DataCache,
     httpUtil: HttpUtil
   ): java.util.Map[String, AnyRef] = {
+
+    // in-memory cache
+    val now = System.currentTimeMillis()
+    val inMemoryCacheData = courseInfoCache.get(courseId)
+    if (inMemoryCacheData != null) {
+      if (inMemoryCacheData._2 > now) {
+        logger.debug(s"getCourseInfo - in-memory cache HIT for courseId=$courseId")
+        return inMemoryCacheData._1
+      } else {
+        courseInfoCache.remove(courseId)
+      }
+    }
+
     logger.info(
       s"Fetching course details from Redis for Id: ${courseId}, Configured Index: " + contentCache.getDBConfigIndex() + ", Current Index: " + contentCache.getDBIndex()
     )
@@ -280,6 +295,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       courseInfoMap.put("childNodes", childNodes)
       courseInfoMap.put("badgeDetails_v1", badgeDetails_v1)
       courseInfoMap.put("name", courseName)
+      courseInfoCache.put(courseId, (courseInfoMap, now + config.contentCacheExpiryMs))
       courseInfoMap
     } else {
       val primaryCategory = StringContext
@@ -309,6 +325,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         .asInstanceOf[java.util.ArrayList[String]]
       courseInfoMap.put("badgeDetails_v1", badgeDetails_v1)
       courseInfoMap.put("name", courseName)
+      courseInfoCache.put(courseId, (courseInfoMap, now + config.contentCacheExpiryMs))
       courseInfoMap
     }
   }
@@ -322,19 +339,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     config: UserBadgeAwardingConfig,
     httpUtil: HttpUtil
   ): java.util.Map[String, AnyRef] = {
-
-    // ─── Layer 1: in-memory ConcurrentHashMap (TTL-based) ───────────────────────
-    val now = System.currentTimeMillis()
-    val l1Entry = programHierarchyCache.get(programId)
-    if (l1Entry != null) {
-      if (l1Entry._2 > now) {
-        logger.debug(s"getProgramHierarchy - L1 in-memory cache HIT for programId=$programId")
-        return l1Entry._1
-      } else {
-        programHierarchyCache.remove(programId)  // evict stale entry to prevent memory leak
-      }
-    }
-    // ─── Layer 3: existing API calls (unchanged) ─────────────────────────────────
 
     try {
       // Step 1: Fetch badgeDetails_v1 from content read API
@@ -403,9 +407,6 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       programInfoMap.put("primaryCategory", primaryCategory)
       programInfoMap.put("childNodes", childNodes)
       programInfoMap.put("parentCollections", new java.util.ArrayList[String]())
-
-      programHierarchyCache.put(programId, (programInfoMap, now + config.contentCacheExpiryMs))
-
       programInfoMap
     } catch {
       case ex: Exception =>

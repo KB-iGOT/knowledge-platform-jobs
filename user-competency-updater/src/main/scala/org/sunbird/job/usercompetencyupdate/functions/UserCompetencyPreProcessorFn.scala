@@ -602,34 +602,29 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     httpUtil: HttpUtil
   ): java.util.Map[String, AnyRef] = {
 
-    // ── Layer 1: in-memory ConcurrentHashMap with TTL ────────────────────────────
+    //in-memory cach
     val now = System.currentTimeMillis()
-    val l1Entry = courseInfoCache.get(courseId)
-    if (l1Entry != null) {
-      if (l1Entry._2 > now) {
-        // — return immediately
-        logger.info(s"getCourseInfo - L1 in-memory cache HIT for courseId=$courseId")
-        return l1Entry._1
+    val inMemoryCourseInfo = courseInfoCache.get(courseId)
+    if (inMemoryCourseInfo != null) {
+      if (inMemoryCourseInfo._2 > now) {
+        logger.info(s"getCourseInfo -  in-memory cache HIT for courseId=$courseId")
+        return inMemoryCourseInfo._1
       } else {
-        //  evict stale entry to prevent memory leak
         courseInfoCache.remove(courseId)
-        logger.debug(s"getCourseInfo - L1 entry expired and evicted for courseId=$courseId")
+        logger.debug(s"getCourseInfo - in-memory cache has expired and evicted for courseId=$courseId")
       }
     }
-
-    // ── Layer 2: Redis DataCache ─────────────────────────────────────────────────
     val courseMetadata = cache.getWithRetry(courseId)
-    val isL2Miss = courseMetadata == null || courseMetadata.isEmpty || !courseMetadata.contains("competenciesv6")
+    val isRedisCacheMiss = courseMetadata == null || courseMetadata.isEmpty || !courseMetadata.contains("competenciesv6")
     val courseInfoMap: java.util.Map[String, AnyRef] = new java.util.HashMap[String, AnyRef]()
     val competencies: java.util.List[java.util.Map[String, AnyRef]] = {
-      val raw = if (isL2Miss) {
-        // ── Layer 3: Content Service API ───────────────────────────────────────
-        logger.info(s"getCourseInfo - L2 Redis MISS, calling Content API for courseId=$courseId")
+      val raw = if (isRedisCacheMiss) {
+        logger.info(s"getCourseInfo - calling Content API for courseId=$courseId")
         val url = config.contentReadURL + courseId + "?fields=competencies_v6"
         val response = getAPICall(url, "content")(config, httpUtil, metrics)
         response.get("competencies_v6")
       } else {
-        logger.info(s"getCourseInfo - L2 Redis HIT for courseId=$courseId")
+        logger.info(s"getCourseInfo - calling Redis for courseId=$courseId")
         courseMetadata.get("competencies_v6")
       }
       raw match {
@@ -649,8 +644,6 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
       }
     }
     courseInfoMap.put("competencies_v6", competencies)
-
-    // ── Write back to Layer 1 (in-memory) ────────────────────────────────────────
     courseInfoCache.put(courseId, (courseInfoMap, now + config.contentCacheExpiry))
     courseInfoMap
   }
@@ -861,52 +854,44 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
                                         metrics: Metrics
                                       ): java.util.List[java.util.Map[String, AnyRef]] = {
 
-    // ── Layer 1: in-memory ConcurrentHashMap with TTL ────────────────────────────
+    // in-memory cache
     val now = System.currentTimeMillis()
-    val l1Entry = extContentInfoCache.get(courseId)
-    if (l1Entry != null) {
-      if (l1Entry._2 > now) {
-        //  — return immediately
-        logger.info(s"getExtCourseCompetencies - L1 in-memory cache HIT for courseId=$courseId")
-        val rawFromL1 = l1Entry._1.get(config.competenciesV6Key)
+    val inMemoryExtContentInfo = extContentInfoCache.get(courseId)
+    if (inMemoryExtContentInfo != null) {
+      if (inMemoryExtContentInfo._2 > now) {
+        logger.info(s"getExtCourseCompetencies - in-memory cache HIT for courseId=$courseId")
+        val rawFromL1 = inMemoryExtContentInfo._1.get(config.competenciesV6Key)
         return rawFromL1 match {
           case null => new java.util.ArrayList[java.util.Map[String, AnyRef]]()
           case jl: java.util.List[_] => jl.asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
           case _ => new java.util.ArrayList[java.util.Map[String, AnyRef]]()
         }
       } else {
-        //  evict stale entry to prevent memory leak
         extContentInfoCache.remove(courseId)
-        logger.debug(s"getExtCourseCompetencies - L1 entry expired and evicted for courseId=$courseId")
+        logger.debug(s"getExtCourseCompetencies - in-memory entry expired and evicted for courseId=$courseId")
       }
     }
-
-    // ── Layer 2: Redis DataCache ─────────────────────────────────────────────────
+    // Redis DataCache
     val courseMetadata = cache.getWithRetry(courseId)
 
     val rawValue: AnyRef =
       if (courseMetadata != null && courseMetadata.contains(config.extContentResponseKey)) {
-        logger.info(s"getExtCourseCompetencies - L2 Redis HIT for courseId=$courseId")
+        logger.info(s"getExtCourseCompetencies -  Redis HIT for courseId=$courseId")
         val contentMap =
           courseMetadata(config.extContentResponseKey).asInstanceOf[java.util.Map[String, AnyRef]]
         val competenciesRaw = contentMap.get(config.competenciesV6Key)
-        //  write back to L1 on Redis hit
-        val l1Map = new java.util.HashMap[String, AnyRef]()
-        l1Map.put(config.competenciesV6Key, competenciesRaw)
-        extContentInfoCache.put(courseId, (l1Map, now + config.contentCacheExpiry))
-        logger.debug(s"getExtCourseCompetencies - L2 Redis data written back to L1 for courseId=$courseId")
+        val cachedCompetencyData = new java.util.HashMap[String, AnyRef]()
+        cachedCompetencyData.put(config.competenciesV6Key, competenciesRaw)
+        extContentInfoCache.put(courseId, (cachedCompetencyData, now + config.contentCacheExpiry))
         competenciesRaw
       } else {
-        // ── Layer 3: Ext Content API ─────────────────────────────────────────────
         logger.info(s"getExtCourseCompetencies  calling Ext Content API for courseId=$courseId")
         val response =
           getExtContentAPICall(config.extContentUrl + courseId)(config, httpUtil, metrics)
         val competenciesRaw = response.get(config.competenciesV6Key)
-        //  write back to L1 on API hit (was already here, kept correctly)
-        val l1Map = new java.util.HashMap[String, AnyRef]()
-        l1Map.put(config.competenciesV6Key, competenciesRaw)
-        extContentInfoCache.put(courseId, (l1Map, now + config.contentCacheExpiry))
-        logger.debug(s"getExtCourseCompetencies - L3 API response written back to L1 for courseId=$courseId")
+        val cachedCompetencyData = new java.util.HashMap[String, AnyRef]()
+        cachedCompetencyData.put(config.competenciesV6Key, competenciesRaw)
+        extContentInfoCache.put(courseId, (cachedCompetencyData, now + config.contentCacheExpiry))
         competenciesRaw
       }
 

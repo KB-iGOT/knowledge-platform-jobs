@@ -20,7 +20,6 @@ import scala.collection.JavaConverters._
 trait IssueCertificateHelper {
     private[this] val logger = LoggerFactory.getLogger(classOf[CollectionCertPreProcessorFn])
 
-    // ── L1: In-memory course info cache (keyed by courseId → (infoMap, expiryEpochMs)) ──
     @transient lazy val courseInfoCache: java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)] =
         new java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)]()
 
@@ -294,16 +293,15 @@ trait IssueCertificateHelper {
     def getCourseInfo(courseId: String)(metrics: Metrics, config: CollectionCertPreProcessorConfig, cache: DataCache, httpUtil: HttpUtil): java.util.Map[String, AnyRef] = {
         val now = System.currentTimeMillis()
 
-        val l1Entry = courseInfoCache.get(courseId)
-        if (l1Entry != null) {
-            if (l1Entry._2 > now) {
-                return l1Entry._1
+        val inMemoryContentData = courseInfoCache.get(courseId)
+        if (inMemoryContentData != null) {
+            if (inMemoryContentData._2 > now) {
+                return inMemoryContentData._1
             } else {
                 courseInfoCache.remove(courseId)
             }
         }
-
-        // ── Layer 2: Redis DataCache (existing logic — unchanged) ──
+        //  Redis DataCache
         val courseMetadata = cache.getWithRetry(courseId)
         val finalCourseInfoMap = if (null == courseMetadata || courseMetadata.isEmpty) {
             val url = config.contentBasePath + config.contentReadApi + "/" + courseId + "?fields=name,parentCollections,primaryCategory,posterImage,organisation,languageMapV1,courseCategory"
@@ -349,7 +347,6 @@ trait IssueCertificateHelper {
             courseInfoMap.put("courseCategory", courseCategory)
             courseInfoMap
         }
-        // ── Write-back to L1 in-memory cache ──
         courseInfoCache.put(courseId, (finalCourseInfoMap, now + config.contentCacheExpiry))
         finalCourseInfoMap
     }
