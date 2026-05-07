@@ -44,6 +44,11 @@ class UserCompetencyUpdaterConfig(override val config: Config) extends BaseJobCo
   val programCertIssueEventsCount = "program-cert-issue-events-count"
   val cacheMissCount = "cache-miss-count"
 
+  val contentCacheExpiry: Int =
+    if (config.hasPath("content.course.cache.expiry")) config.getInt("content.course.cache.expiry")
+    else 3600000
+
+
   //Constants
   val status: String = "status"
   val name: String = "name"
