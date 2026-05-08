@@ -296,6 +296,7 @@ trait IssueCertificateHelper {
         val inMemoryContentData = courseInfoCache.get(courseId)
         if (inMemoryContentData != null) {
             if (inMemoryContentData._2 > now) {
+                logger.info(s"Fetching course details from in memory cache for Id: ${courseId}")
                 return inMemoryContentData._1
             }
         }
