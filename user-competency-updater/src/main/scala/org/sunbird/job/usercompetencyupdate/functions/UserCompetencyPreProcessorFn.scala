@@ -618,7 +618,7 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
         response.get("competencies_v6")
       } else {
         logger.info(s"getCourseInfo - calling Redis for courseId=$courseId")
-        courseMetadata.get("competencies_v6")
+        courseMetadata.get("competenciesv6")
       }
       raw match {
         case jl: java.util.List[_] =>
@@ -632,6 +632,17 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
             case jm: java.util.Map[_, _] => jm.asInstanceOf[java.util.Map[String, AnyRef]]
             case sm: Map[_, _] => sm.asJava.asInstanceOf[java.util.Map[String, AnyRef]]
             case other => other.asInstanceOf[java.util.Map[String, AnyRef]]
+          }.toList.asJava
+        case Some(value: java.util.List[_]) =>
+          value.asScala.map {
+            case jm: java.util.Map[_, _] =>
+              jm.asInstanceOf[java.util.Map[String, AnyRef]]
+
+            case sm: Map[_, _] =>
+              sm.asJava.asInstanceOf[java.util.Map[String, AnyRef]]
+
+            case other =>
+              other.asInstanceOf[java.util.Map[String, AnyRef]]
           }.toList.asJava
         case _ => new java.util.ArrayList[java.util.Map[String, AnyRef]]()
       }
