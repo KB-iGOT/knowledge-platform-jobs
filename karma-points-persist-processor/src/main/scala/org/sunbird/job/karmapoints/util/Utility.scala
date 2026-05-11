@@ -243,6 +243,7 @@ object Utility {
     val redisValue = currentKarmaPoints.toString
     try {
       dataCache.setWithRetry(redisKey, redisValue)
+      logger.info(s"Updating Redis cache for userId: $userId with karma points: $currentKarmaPoints")
     } catch {
       case e: Exception =>
         logger.error(s"Failed to update Redis cache for userId: $userId", e)
