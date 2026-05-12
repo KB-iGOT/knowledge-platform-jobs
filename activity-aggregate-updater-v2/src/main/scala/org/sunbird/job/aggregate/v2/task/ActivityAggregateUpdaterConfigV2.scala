@@ -156,4 +156,7 @@ class ActivityAggregateUpdaterConfigV2(override val config: Config) extends Base
 
   val contentReadFields: String = if (config.hasPath("content.read.fields")) config.getString("content.read.fields") else
     "identifier,name,versionKey,parentCollections,primaryCategory,courseCategory,languageMapV1,leafNodes,language,milestones_v1,preliminaryAssessment"
+
+  val courseInMemoryCacheExpiry: Int = if (config.hasPath("activity.course.in.memory.cache.expiry")) config.getInt("activity.course.in.memory.cache.expiry") else 3600000
+
 }

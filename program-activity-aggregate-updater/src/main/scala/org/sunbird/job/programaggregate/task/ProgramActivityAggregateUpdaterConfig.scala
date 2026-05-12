@@ -159,4 +159,6 @@ class ProgramActivityAggregateUpdaterConfig(override val config: Config) extends
   val batchid = "batchid"
   val active = "active"
   val contentstatus = "contentstatus"
+  val courseInMemoryCacheExpiry: Int = if (config.hasPath("activity.course.in.memory.cache.expiry")) config.getInt("activity.course.in.memory.cache.expiry") else 3600000
+
 }
