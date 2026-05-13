@@ -153,5 +153,6 @@ class PostPublishProcessorConfig(override val config: Config) extends BaseJobCon
   val live = "Live"
   val preliminaryAssessment = "preliminaryAssessment"
 
+  val contentCacheExpiry: Int = if (config.hasPath("content.cache.expiry")) config.getInt("content.cache.expiry") else 3600000
 
 }

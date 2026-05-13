@@ -158,7 +158,7 @@ trait ContentHelper {
       courseInfoMap.put("milestonesv1", milestonesV1.asInstanceOf[AnyRef])
       courseInfoMap
     }
-    courseInfoCache.put(courseId, (finalCourseInfoMap, currentTime + config.courseCacheExpiry))
+    courseInfoCache.put(courseId, (finalCourseInfoMap, currentTime + config.courseInMemoryCacheExpiry))
     finalCourseInfoMap
   }
 

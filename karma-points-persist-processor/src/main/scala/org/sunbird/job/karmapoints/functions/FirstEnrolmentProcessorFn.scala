@@ -10,6 +10,7 @@ import org.sunbird.job.karmapoints.task.KarmaPointsProcessorConfig
 import org.sunbird.job.karmapoints.util.Utility._
 import org.sunbird.job.util.{CassandraUtil, HttpUtil}
 import org.sunbird.job.{BaseProcessFunction, Metrics}
+import org.sunbird.job.cache.{DataCache, RedisConnect}
 
 import java.util
 
@@ -19,14 +20,19 @@ class FirstEnrolmentProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: Ht
   extends BaseProcessFunction[Event, String](config)   {
   lazy private val mapper: ObjectMapper = new ObjectMapper()
   private val logger = LoggerFactory.getLogger("org.sunbird.job.karmapoints.functions.FirstEnrolmentProcessorFn")
+  private var dataCache: DataCache = _
 
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
     cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
+    val redisConnect = new RedisConnect(config, Option(config.metaRedisHost), Option(config.metaRedisPort))
+    dataCache = new DataCache(config, redisConnect, config.cacheDbId, List())
+    dataCache.init()
   }
 
   override def close(): Unit = {
     cassandraUtil.close()
+    dataCache.close()
     super.close()
   }
 
@@ -75,6 +81,6 @@ class FirstEnrolmentProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: Ht
         throw new RuntimeException(e)
     }
     insertKarmaPoints(userId, contextType, operationType, contextId, points, addInfo)(metrics, config, cassandraUtil)
-    updateKarmaSummary(userId, points)( config, cassandraUtil)
+    updateKarmaSummary(userId, points)( config, cassandraUtil, dataCache)
   }
 }

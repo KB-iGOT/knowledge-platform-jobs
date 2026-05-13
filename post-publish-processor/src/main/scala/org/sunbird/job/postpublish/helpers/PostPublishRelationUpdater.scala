@@ -18,6 +18,9 @@ trait PostPublishRelationUpdater {
   private[this] val logger =
     LoggerFactory.getLogger(classOf[PostPublishRelationUpdater])
 
+  @transient lazy val courseInfoCache: java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)] =
+    new java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)]()
+
   def verifyPrimaryCategory(identifier: String)(
       metrics: Metrics,
       config: PostPublishProcessorConfig,
@@ -52,6 +55,18 @@ trait PostPublishRelationUpdater {
       cache: DataCache,
       httpUtil: HttpUtil
   ): java.util.Map[String, AnyRef] = {
+
+    // In-memory cache
+    val now = System.currentTimeMillis()
+    val inMemoryContentData = courseInfoCache.get(courseId)
+    if (inMemoryContentData != null) {
+      if (inMemoryContentData._2 > now) {
+        logger.info(s"getCourseInfo - in-memory cache HIT for courseId=$courseId")
+        return inMemoryContentData._1
+      }
+    }
+
+    // Redis DataCache
     val courseMetadata = cache.getWithRetry(courseId)
     if (null == courseMetadata || courseMetadata.isEmpty) {
       val url =
@@ -123,6 +138,7 @@ trait PostPublishRelationUpdater {
         )
         .filter(_ >= ' ')
       courseInfoMap.put(config.preliminaryAssessment, preliminaryAssessment)
+      courseInfoCache.put(courseId, (courseInfoMap, now + config.contentCacheExpiry))
       courseInfoMap
     } else {
       val name = courseMetadata.getOrElse(config.name, "").asInstanceOf[String]
@@ -161,6 +177,7 @@ trait PostPublishRelationUpdater {
       courseInfoMap.put(config.milestones_v1, milestonesV1.asInstanceOf[AnyRef])
       val preliminaryAssessment = courseMetadata.getOrElse("preliminaryassessment", "").asInstanceOf[String]
       courseInfoMap.put(config.preliminaryAssessment, preliminaryAssessment)
+      courseInfoCache.put(courseId, (courseInfoMap, now + config.contentCacheExpiry))
       courseInfoMap
     }
 
