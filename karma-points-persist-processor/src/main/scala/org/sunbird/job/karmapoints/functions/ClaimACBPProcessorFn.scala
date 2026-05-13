@@ -11,6 +11,7 @@ import org.sunbird.job.karmapoints.task.KarmaPointsProcessorConfig
 import org.sunbird.job.karmapoints.util.Utility.{mapper, _}
 import org.sunbird.job.util.{CassandraUtil, HttpUtil, JSONUtil}
 import org.sunbird.job.{BaseProcessFunction, Metrics}
+import org.sunbird.job.cache.{DataCache, RedisConnect}
 
 import java.util
 import java.util.Date
@@ -23,14 +24,19 @@ class ClaimACBPProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: HttpUti
   private[this] val logger = LoggerFactory.getLogger(classOf[ClaimACBPProcessorFn])
 
   lazy private val mapper: ObjectMapper = new ObjectMapper()
+  private var dataCache: DataCache = _
 
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
     cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
+    val redisConnect = new RedisConnect(config, Option(config.metaRedisHost), Option(config.metaRedisPort))
+    dataCache = new DataCache(config, redisConnect, config.cacheDbId, List())
+    dataCache.init()
   }
 
   override def close(): Unit = {
     cassandraUtil.close()
+    dataCache.close()
     super.close()
   }
 
@@ -88,7 +94,7 @@ class ClaimACBPProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: HttpUti
           return
       }
       insertKarmaPoints(userId, contextType, operationType, contextId, config.acbpQuotaKarmaPoints, addInfo)(metrics, config, cassandraUtil)
-      processUserKarmaSummaryUpdate(userId, config.acbpQuotaKarmaPoints, -1)(config, cassandraUtil)
+      processUserKarmaSummaryUpdate(userId, config.acbpQuotaKarmaPoints, -1)(config, cassandraUtil, dataCache)
     } else {
       logger.info(s"Updating entry for ACBP with userId: $userId, courseId: $contextId")
       val creditDate = res.get(0).getObject(config.DB_COLUMN_CREDIT_DATE).asInstanceOf[Date]
@@ -107,7 +113,7 @@ class ClaimACBPProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: HttpUti
       }
       points = points + config.acbpQuotaKarmaPoints
       updatePoints(userId, contextType, operationType, contextId, points, addInfoStr, creditDate.getTime)(config, cassandraUtil)
-      processUserKarmaSummaryUpdate(userId, config.acbpQuotaKarmaPoints, -1)(config, cassandraUtil)
+      processUserKarmaSummaryUpdate(userId, config.acbpQuotaKarmaPoints, -1)(config, cassandraUtil, dataCache)
     }
   }
 }
