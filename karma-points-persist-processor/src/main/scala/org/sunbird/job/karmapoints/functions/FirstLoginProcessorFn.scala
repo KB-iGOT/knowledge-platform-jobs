@@ -8,19 +8,26 @@ import org.sunbird.job.karmapoints.task.KarmaPointsProcessorConfig
 import org.sunbird.job.karmapoints.util.Utility._
 import org.sunbird.job.util.{CassandraUtil, HttpUtil}
 import org.sunbird.job.{BaseProcessFunction, BaseProcessKeyedFunction, Metrics}
+import org.sunbird.job.cache.{DataCache, RedisConnect}
 
 class FirstLoginProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: HttpUtil)
                            (implicit val stringTypeInfo: TypeInformation[String],
                                 @transient var cassandraUtil: CassandraUtil = null)
   extends BaseProcessFunction[Event, String](config) {
 
+  private var dataCache: DataCache = _
+
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
     cassandraUtil = new CassandraUtil(config.dbHost, config.dbPort)
+    val redisConnect = new RedisConnect(config, Option(config.metaRedisHost), Option(config.metaRedisPort))
+    dataCache = new DataCache(config, redisConnect, config.cacheDbId, List())
+    dataCache.init()
   }
 
   override def close(): Unit = {
     cassandraUtil.close()
+    dataCache.close()
     super.close()
   }
 
@@ -49,6 +56,6 @@ class FirstLoginProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: HttpUt
   private def kpOnFirstLogin(userId : String, contextType : String, operationType:String, contextId:String, config: KarmaPointsProcessorConfig, cassandraUtil: CassandraUtil)(metrics: Metrics) :Unit = {
     val points: Int = config.firstLoginQuotaKarmaPoints
     insertKarmaPoints(userId, contextType,operationType,contextId,points,config,cassandraUtil)(metrics)
-    updateKarmaSummary(userId, points) ( config, cassandraUtil)
+    updateKarmaSummary(userId, points) ( config, cassandraUtil, dataCache)
   }
 }
