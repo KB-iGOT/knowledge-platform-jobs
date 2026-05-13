@@ -3,9 +3,11 @@ package org.sunbird.job.collectioncert.functions
 import java.text.SimpleDateFormat
 import com.datastax.driver.core.querybuilder.QueryBuilder
 import com.datastax.driver.core.{Row, TypeTokens}
+import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import org.apache.commons.collections.CollectionUtils
 import org.apache.commons.lang3.StringUtils
-import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import org.sunbird.job.Metrics
 import org.sunbird.job.cache.DataCache
@@ -17,6 +19,14 @@ import scala.collection.JavaConverters._
 
 trait IssueCertificateHelper {
     private[this] val logger = LoggerFactory.getLogger(classOf[CollectionCertPreProcessorFn])
+
+    @transient lazy val courseInfoCache: java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)] =
+        new java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)]()
+
+    @transient lazy val courseInfoObjectMapper: ObjectMapper =
+        new ObjectMapper()
+            .registerModule(DefaultScalaModule)
+            .setSerializationInclusion(JsonInclude.Include.NON_EMPTY)
 
     def issueCertificate(event:Event, template: Map[String, String])(cassandraUtil: CassandraUtil, cache:DataCache, contentCache: DataCache, metrics: Metrics, config: CollectionCertPreProcessorConfig, httpUtil: HttpUtil): String = {
         //validCriteria
@@ -281,8 +291,18 @@ trait IssueCertificateHelper {
     }
 
     def getCourseInfo(courseId: String)(metrics: Metrics, config: CollectionCertPreProcessorConfig, cache: DataCache, httpUtil: HttpUtil): java.util.Map[String, AnyRef] = {
+        val now = System.currentTimeMillis()
+
+        val inMemoryContentData = courseInfoCache.get(courseId)
+        if (inMemoryContentData != null) {
+            if (inMemoryContentData._2 > now) {
+                logger.info(s"Fetching course details from in memory cache for Id: ${courseId}")
+                return inMemoryContentData._1
+            }
+        }
+        //  Redis DataCache
         val courseMetadata = cache.getWithRetry(courseId)
-        if (null == courseMetadata || courseMetadata.isEmpty) {
+        val finalCourseInfoMap = if (null == courseMetadata || courseMetadata.isEmpty) {
             val url = config.contentBasePath + config.contentReadApi + "/" + courseId + "?fields=name,parentCollections,primaryCategory,posterImage,organisation,languageMapV1,courseCategory"
             val response = getAPICall(url, "content")(config, httpUtil, metrics)
             val courseName = StringContext.processEscapes(response.getOrElse(config.name, "").asInstanceOf[String]).filter(_ >= ' ')
@@ -326,6 +346,8 @@ trait IssueCertificateHelper {
             courseInfoMap.put("courseCategory", courseCategory)
             courseInfoMap
         }
+        courseInfoCache.put(courseId, (finalCourseInfoMap, now + config.contentCacheExpiry))
+        finalCourseInfoMap
     }
 
     def toScalaNestedMap(obj: Any): Map[String, Map[String, AnyRef]] = obj match {

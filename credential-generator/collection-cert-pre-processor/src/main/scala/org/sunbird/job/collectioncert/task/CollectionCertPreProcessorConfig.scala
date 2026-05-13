@@ -107,4 +107,5 @@ class CollectionCertPreProcessorConfig(override val config: Config) extends Base
     val generateCertificateFailedEventProducer = "generate-certificate-failed-event-sink"
     val kafkaOutputFailedTopic: String = config.getString("kafka.output.failed.topic")
 
+    val contentCacheExpiry: Int = if (config.hasPath("content.cache.expiry")) config.getInt("content.cache.expiry") else 3600000
 }

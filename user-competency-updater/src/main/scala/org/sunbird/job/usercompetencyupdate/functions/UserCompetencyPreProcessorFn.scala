@@ -24,6 +24,9 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
   private[this] val logger = LoggerFactory.getLogger(classOf[UserCompetencyPreProcessorFn])
   private var cache: DataCache = _
 
+  @transient private var courseInfoCache: java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)] = _
+  @transient private var extContentInfoCache: java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)] = _
+
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
     if (cassandraUtil == null)
@@ -37,10 +40,13 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     val redisConnect = new RedisConnect(config)
     cache = new DataCache(config, redisConnect, config.collectionCacheStore, List())
     cache.init()
+    courseInfoCache    = new java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)]()
+    extContentInfoCache = new java.util.concurrent.ConcurrentHashMap[String, (java.util.Map[String, AnyRef], Long)]()
   }
 
   override def close(): Unit = {
     cassandraUtil.close()
+    if (cache != null) cache.close()
     super.close()
   }
 
@@ -591,15 +597,28 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
     cache: DataCache,
     httpUtil: HttpUtil
   ): java.util.Map[String, AnyRef] = {
+
+    //in-memory cach
+    val now = System.currentTimeMillis()
+    val inMemoryCourseInfo = courseInfoCache.get(courseId)
+    if (inMemoryCourseInfo != null) {
+      if (inMemoryCourseInfo._2 > now) {
+        logger.info(s"getCourseInfo -  in-memory cache HIT for courseId=$courseId")
+        return inMemoryCourseInfo._1
+      }
+    }
     val courseMetadata = cache.getWithRetry(courseId)
+    val isRedisCacheMiss = courseMetadata == null || courseMetadata.isEmpty || !courseMetadata.contains("competenciesv6")
     val courseInfoMap: java.util.Map[String, AnyRef] = new java.util.HashMap[String, AnyRef]()
     val competencies: java.util.List[java.util.Map[String, AnyRef]] = {
-      val raw = if (courseMetadata == null || courseMetadata.isEmpty || !courseMetadata.contains("competencies_v6")) {
+      val raw = if (isRedisCacheMiss) {
+        logger.info(s"getCourseInfo - calling Content API for courseId=$courseId")
         val url = config.contentReadURL + courseId + "?fields=competencies_v6"
         val response = getAPICall(url, "content")(config, httpUtil, metrics)
         response.get("competencies_v6")
       } else {
-        courseMetadata.get("competencies_v6")
+        logger.info(s"getCourseInfo - calling Redis for courseId=$courseId")
+        courseMetadata.get("competenciesv6")
       }
       raw match {
         case jl: java.util.List[_] =>
@@ -614,10 +633,22 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
             case sm: Map[_, _] => sm.asJava.asInstanceOf[java.util.Map[String, AnyRef]]
             case other => other.asInstanceOf[java.util.Map[String, AnyRef]]
           }.toList.asJava
+        case Some(value: java.util.List[_]) =>
+          value.asScala.map {
+            case jm: java.util.Map[_, _] =>
+              jm.asInstanceOf[java.util.Map[String, AnyRef]]
+
+            case sm: Map[_, _] =>
+              sm.asJava.asInstanceOf[java.util.Map[String, AnyRef]]
+
+            case other =>
+              other.asInstanceOf[java.util.Map[String, AnyRef]]
+          }.toList.asJava
         case _ => new java.util.ArrayList[java.util.Map[String, AnyRef]]()
       }
     }
     courseInfoMap.put("competencies_v6", competencies)
+    courseInfoCache.put(courseId, (courseInfoMap, now + config.contentCacheExpiry))
     courseInfoMap
   }
 
@@ -827,17 +858,42 @@ class UserCompetencyPreProcessorFn(config: UserCompetencyUpdaterConfig, httpUtil
                                         metrics: Metrics
                                       ): java.util.List[java.util.Map[String, AnyRef]] = {
 
+    // in-memory cache
+    val now = System.currentTimeMillis()
+    val inMemoryExtContentInfo = extContentInfoCache.get(courseId)
+    if (inMemoryExtContentInfo != null) {
+      if (inMemoryExtContentInfo._2 > now) {
+        logger.info(s"getExtCourseCompetencies - in-memory cache HIT for courseId=$courseId")
+        val cachedCompetenciesData = inMemoryExtContentInfo._1.get(config.competenciesV6Key)
+        return cachedCompetenciesData match {
+          case null => new java.util.ArrayList[java.util.Map[String, AnyRef]]()
+          case jl: java.util.List[_] => jl.asInstanceOf[java.util.List[java.util.Map[String, AnyRef]]]
+          case _ => new java.util.ArrayList[java.util.Map[String, AnyRef]]()
+        }
+      }
+    }
+    // Redis DataCache
     val courseMetadata = cache.getWithRetry(courseId)
 
     val rawValue: AnyRef =
       if (courseMetadata != null && courseMetadata.contains(config.extContentResponseKey)) {
+        logger.info(s"getExtCourseCompetencies -  Redis HIT for courseId=$courseId")
         val contentMap =
           courseMetadata(config.extContentResponseKey).asInstanceOf[java.util.Map[String, AnyRef]]
-        contentMap.get(config.competenciesV6Key)
+        val competenciesRaw = contentMap.get(config.competenciesV6Key)
+        val cachedCompetencyData = new java.util.HashMap[String, AnyRef]()
+        cachedCompetencyData.put(config.competenciesV6Key, competenciesRaw)
+        extContentInfoCache.put(courseId, (cachedCompetencyData, now + config.contentCacheExpiry))
+        competenciesRaw
       } else {
+        logger.info(s"getExtCourseCompetencies  calling Ext Content API for courseId=$courseId")
         val response =
           getExtContentAPICall(config.extContentUrl + courseId)(config, httpUtil, metrics)
-        response.get(config.competenciesV6Key)
+        val competenciesRaw = response.get(config.competenciesV6Key)
+        val cachedCompetencyData = new java.util.HashMap[String, AnyRef]()
+        cachedCompetencyData.put(config.competenciesV6Key, competenciesRaw)
+        extContentInfoCache.put(courseId, (cachedCompetencyData, now + config.contentCacheExpiry))
+        competenciesRaw
       }
 
     rawValue match {

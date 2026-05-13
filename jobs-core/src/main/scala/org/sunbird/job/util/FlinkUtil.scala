@@ -3,7 +3,7 @@ package org.sunbird.job.util
 import org.apache.flink.api.common.restartstrategy.RestartStrategies
 import org.apache.flink.runtime.state.StateBackend
 import org.apache.flink.runtime.state.filesystem.FsStateBackend
-import org.apache.flink.streaming.api.TimeCharacteristic
+import org.apache.flink.streaming.api.{CheckpointingMode, TimeCharacteristic}
 import org.apache.flink.streaming.api.environment.CheckpointConfig
 import org.apache.flink.streaming.api.environment.CheckpointConfig.ExternalizedCheckpointCleanup
 import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
@@ -14,6 +14,7 @@ object FlinkUtil {
   def getExecutionContext(config: BaseJobConfig): StreamExecutionEnvironment = {
     val env: StreamExecutionEnvironment = StreamExecutionEnvironment.getExecutionEnvironment
     env.getConfig.setUseSnapshotCompression(config.enableCompressedCheckpointing)
+    env.getCheckpointConfig.setCheckpointingMode(CheckpointingMode.AT_LEAST_ONCE)
     env.enableCheckpointing(config.checkpointingInterval)
     env.getCheckpointConfig.setCheckpointTimeout(config.checkpointingTimeout)
 
