@@ -1,6 +1,6 @@
 package org.sunbird.job.aggregate.v2.functions
 
-import com.datastax.driver.core.{ConsistencyLevel, SimpleStatement, TypeTokens}
+import com.datastax.driver.core.{ConsistencyLevel, SimpleStatement, Statement, TypeTokens}
 import com.datastax.driver.core.querybuilder.{QueryBuilder, Select, Update}
 import com.google.gson.Gson
 import com.twitter.storehaus.cache.TTLCache
@@ -145,9 +145,8 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       )
 
       val updateAggQuery = getUserAggQuery(userAgg)
-      // LOCAL_QUORUM: ensure the agg write reaches majority of nodes before
-      // the next event can read a stale aggregates value.
-      updateAggQuery.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
+      // Apply configured consistency level to ensure the aggregates write is durable
+      applyConsistencyLevel(updateAggQuery)
       cassandraUtil.update(updateAggQuery)
     }
     if (config.dedupEnabled) {
@@ -199,8 +198,7 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
             .and(QueryBuilder.eq("language", event.language))
             .and(QueryBuilder.eq("contentid", contentId))
 
-           // LOCAL_QUORUM: ensure write reaches majority of nodes before proceeding
-           updateQuery.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
+           applyConsistencyLevel(updateQuery)
            cassandraUtil.update(updateQuery)
 
           updatedMap += (contentId -> finalStatus)
@@ -305,9 +303,7 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       .and(QueryBuilder.eq("courseid", courseId))
       .and(QueryBuilder.eq("batchid", batchId))
     logger.info(s"Updating user enrolment for user: $userId, course: $courseId, batch: $batchId with lang_contentstatus: $langMap")
-    // LOCAL_QUORUM: ensure this write is visible to at least 2/3 nodes before
-    // any subsequent read (which also uses LOCAL_QUORUM) can proceed.
-    update.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
+    applyConsistencyLevel(update)
     cassandraUtil.update(update)
   }
 
@@ -330,9 +326,8 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       .and(QueryBuilder.eq("contentid", contentId))
       .limit(1)
 
-    // LOCAL_QUORUM: require majority of replica nodes to respond so we never read stale data
     val stmt = new SimpleStatement(query.toString)
-      .setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
+    applyConsistencyLevel(stmt)
     val rows = cassandraUtil.findWithStatement(stmt).asScala
 
     if (rows.nonEmpty) {
@@ -455,6 +450,22 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
     super.close()
   }
 
+  /**
+   * Apply configured consistency level to a query statement.
+   * Supports: LOCAL_QUORUM, QUORUM, LOCAL_ONE, ONE, etc.
+   */
+  private def applyConsistencyLevel(stmt: Statement): Statement = {
+    try {
+      val consistencyLevel = ConsistencyLevel.valueOf(config.dbConsistencyLevel.toUpperCase)
+      stmt.setConsistencyLevel(consistencyLevel)
+    } catch {
+      case ex: IllegalArgumentException =>
+        logger.warn(s"Invalid consistency level '${config.dbConsistencyLevel}', defaulting to LOCAL_QUORUM")
+        stmt.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
+    }
+    stmt
+  }
+
   def getEnrolment(userId: String, courseId: String, batchId: String) = {
     val selectWhere: Select.Where = QueryBuilder.select().all()
       .from(config.dbKeyspace, config.dbUserEnrolmentsTable)
@@ -463,10 +474,8 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       .and(QueryBuilder.eq("userid", userId))
       .and(QueryBuilder.eq("courseid", courseId))
       .and(QueryBuilder.eq("batchid", batchId))
-    // LOCAL_QUORUM: require majority of replica nodes to respond so we never
-    // read stale data that hasn't yet been replicated from a prior write.
     val stmt = new SimpleStatement(selectWhere.toString)
-      .setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
+    applyConsistencyLevel(stmt)
     cassandraUtil.findOneWithStatement(stmt)
   }
 
@@ -721,9 +730,8 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       .and(QueryBuilder.eq(JsonKeys.COURSE_ID_KEY, lpId))
       .and(QueryBuilder.eq(JsonKeys.BATCH_ID_KEY, batchId))
 
-     // LOCAL_QUORUM: ensure write reaches majority of nodes before proceeding
-     updateQuery.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
-     cassandraUtil.update(updateQuery)
+      applyConsistencyLevel(updateQuery)
+      cassandraUtil.update(updateQuery)
 
     logger.info(
       s"LP marked as completed (status=2) for user=$userId, lpId=$lpId, batchId=$batchId"
@@ -736,7 +744,9 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       where()
     selectWhere.and(QueryBuilder.eq(JsonKeys.USER_ID_KEY, userId))
       .and(QueryBuilder.eq(JsonKeys.COURSE_ID_KEY, courseId))
-    cassandraUtil.findOne(selectWhere.toString)
+    val stmt = new SimpleStatement(selectWhere.toString)
+    applyConsistencyLevel(stmt)
+    cassandraUtil.findOneWithStatement(stmt)
   }
 
 }

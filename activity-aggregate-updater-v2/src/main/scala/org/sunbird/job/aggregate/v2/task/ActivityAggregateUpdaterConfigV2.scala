@@ -49,6 +49,7 @@ class ActivityAggregateUpdaterConfigV2(override val config: Config) extends Base
   val dbKeyspace: String = config.getString("lms-cassandra.keyspace")
   val dbHost: String = config.getString("lms-cassandra.host")
   val dbPort: Int = config.getInt("lms-cassandra.port")
+  val dbConsistencyLevel: String = if (config.hasPath("lms-cassandra.consistency.level")) config.getString("lms-cassandra.consistency.level") else "LOCAL_QUORUM"
 
   // Redis Configurations
   val nodeStore: Int = config.getInt("redis.database.relationCache.id") // Both LeafNodes And Ancestor nodes
