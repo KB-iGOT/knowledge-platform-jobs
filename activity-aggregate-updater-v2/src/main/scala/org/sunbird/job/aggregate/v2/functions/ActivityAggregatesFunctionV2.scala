@@ -199,7 +199,9 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
             .and(QueryBuilder.eq("language", event.language))
             .and(QueryBuilder.eq("contentid", contentId))
 
-          cassandraUtil.update(updateQuery)
+           // LOCAL_QUORUM: ensure write reaches majority of nodes before proceeding
+           updateQuery.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
+           cassandraUtil.update(updateQuery)
 
           updatedMap += (contentId -> finalStatus)
         }
@@ -328,7 +330,10 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       .and(QueryBuilder.eq("contentid", contentId))
       .limit(1)
 
-    val rows = cassandraUtil.find(query.toString).asScala
+    // LOCAL_QUORUM: require majority of replica nodes to respond so we never read stale data
+    val stmt = new SimpleStatement(query.toString)
+      .setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
+    val rows = cassandraUtil.findWithStatement(stmt).asScala
 
     if (rows.nonEmpty) {
       val row = rows.head
@@ -716,7 +721,9 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
       .and(QueryBuilder.eq(JsonKeys.COURSE_ID_KEY, lpId))
       .and(QueryBuilder.eq(JsonKeys.BATCH_ID_KEY, batchId))
 
-    cassandraUtil.update(updateQuery)
+     // LOCAL_QUORUM: ensure write reaches majority of nodes before proceeding
+     updateQuery.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM)
+     cassandraUtil.update(updateQuery)
 
     logger.info(
       s"LP marked as completed (status=2) for user=$userId, lpId=$lpId, batchId=$batchId"
