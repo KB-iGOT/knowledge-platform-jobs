@@ -1060,7 +1060,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       val badgeCountRows = cassandraUtil.find(badgeCountQuery.toString)
 
       if (badgeCountRows != null && !badgeCountRows.isEmpty) {
-        val badgeCount = badgeCountRows.get(0).getLong("badge_count")
+        val badgeCount = badgeCountRows.get(0).getLong(0)
         cache.setWithRetryAndTTL(redisKey, badgeCount.toString)
         logger.info(s"Updated badge count cache in Redis (index 2) for userId=$userId, key=$redisKey, count=$badgeCount")
       } else {
