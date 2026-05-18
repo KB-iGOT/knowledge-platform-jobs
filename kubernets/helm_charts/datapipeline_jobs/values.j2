@@ -1396,6 +1396,9 @@ user-achievement-processor:
       hierarchy {
         url = "{{ core_content_service_base_url }}content/v3/hierarchy/"
       }
+      cache {
+    expiry.ms = 3600000
+      }
     }
     extcontent {
       read {
