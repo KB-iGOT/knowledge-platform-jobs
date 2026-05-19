@@ -216,6 +216,7 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
 
     val courseLangs = courseMetadata.get("language").map {
       case l: java.util.List[_] => l.asInstanceOf[java.util.List[String]].asScala.toList.map(_.toLowerCase)
+      case l: List[_] => l.asInstanceOf[List[String]].map(_.toLowerCase)
       case s: String            => List(s.toLowerCase)
       case _                    => List.empty[String]
     }.getOrElse(List.empty[String])
