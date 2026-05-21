@@ -348,7 +348,17 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
     try {
       val courseInfo = getCourseInfo(courseId)(metrics, config, contentCache, httpUtil)
       if (courseInfo != null && courseInfo.containsKey("leafNodes")) {
-        courseInfo.get("leafNodes").asInstanceOf[java.util.List[String]].asScala.toList
+        courseInfo.get("leafNodes") match {
+
+          case scalaList: List[_] =>
+            scalaList.map(_.toString)
+
+          case javaList: java.util.List[_] =>
+            javaList.asScala.map(_.toString).toList
+
+          case _ =>
+            List.empty[String]
+        }
       } else {
         List.empty[String]
       }
