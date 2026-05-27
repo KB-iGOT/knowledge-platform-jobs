@@ -400,6 +400,7 @@ dialcode_external_indexer_parallelism: 1
 dialcode_metric_indexer_parallelism: 1
 event_cert_generator_dashboard_parallelism: 1
 event_cert_generator_karmapoints_parallelism: 1
+event_user_competency_updater_parallelism: 1
 
 framework_search_indexer_consumer_parallelism: 1
 composite_framework_search_indexer_parallelism: 1
