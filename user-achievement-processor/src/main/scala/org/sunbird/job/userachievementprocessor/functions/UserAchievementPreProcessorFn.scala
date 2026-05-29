@@ -839,12 +839,27 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       }
 
       // Check if user is enrolled in the program and get batchId
-      val programEnrollmentQuery = QueryBuilder.select(config.batchId).from(config.coursesdb, config.enrolmentTable)
+      val programEnrollmentQuery = QueryBuilder.select(config.batchId, "active").from(config.coursesdb, config.enrolmentTable)
         .where(QueryBuilder.eq(config.userId, userId)).and(QueryBuilder.eq(config.courseId, programId))
 
-      val programEnrollmentRows = cassandraUtil.findOne(programEnrollmentQuery.toString)
-      if (programEnrollmentRows == null) {
+      val programEnrollmentRows = cassandraUtil.find(programEnrollmentQuery.toString)
+
+      if (programEnrollmentRows == null || programEnrollmentRows.isEmpty) {
         logger.info(s"User not enrolled in program. userId=$userId, programId=$programId. Skipping badge award.")
+        return
+      }
+
+      // Find the active enrollment record
+      val activeEnrollmentRow = programEnrollmentRows.asScala.find { row =>
+        try {
+          row.getBool("active")
+        } catch {
+          case _: Exception => false
+        }
+      }
+
+      if (activeEnrollmentRow.isEmpty) {
+        logger.info(s"No active enrollment found for userId=$userId, programId=$programId. Skipping badge award.")
         return
       }
 
@@ -859,8 +874,8 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
 
       val programName = Option(programMetadata.get("name")).map(_.toString).getOrElse(programId)
 
-      // Get the actual batchId from enrollment record
-      val programBatchId = programEnrollmentRows.getString(config.batchId)
+      // Get the actual batchId from active enrollment record
+      val programBatchId = activeEnrollmentRow.get.getString(config.batchId)
       logger.info(s"User enrolled in program verified. userId=$userId, programId=$programId, batchId=$programBatchId")
 
       // Check badgeEarningDateEnabled
