@@ -839,7 +839,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       }
 
       // Check if user is enrolled in the program and get batchId
-      val programEnrollmentQuery = QueryBuilder.select(config.batchId, "active").from(config.coursesdb, config.enrolmentTable)
+      val programEnrollmentQuery = QueryBuilder.select(config.batchId, config.active).from(config.coursesdb, config.enrolmentTable)
         .where(QueryBuilder.eq(config.userId, userId)).and(QueryBuilder.eq(config.courseId, programId))
 
       val programEnrollmentRows = cassandraUtil.find(programEnrollmentQuery.toString)
@@ -852,7 +852,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       // Find the active enrollment record
       val activeEnrollmentRow = programEnrollmentRows.asScala.find { row =>
         try {
-          row.getBool("active")
+          row.getBool(config.active)
         } catch {
           case _: Exception => false
         }
