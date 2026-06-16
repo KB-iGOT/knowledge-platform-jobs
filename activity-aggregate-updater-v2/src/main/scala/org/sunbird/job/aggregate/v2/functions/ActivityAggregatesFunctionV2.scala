@@ -66,6 +66,7 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
     val language = event.language
     val contents = event.contents
 
+    logger.info("userId" + userId + " courseId: " + courseId + " batchId: " + batchId + " language: " + language + " contents: " + contents.map(c => s"${c.contentId}:${c.status}").mkString(","))
     val (isValid, category) = verifyPrimaryCategory(courseId)(metrics, config, httpUtil, contentCache)
     if (!isValid) return
 
@@ -210,6 +211,7 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
   }
 
   def getTranslatedLeafNodes(language: String, courseMetadata: Map[String, AnyRef], contentId: String, courseId: String): Set[String] = {
+    logger.info(s"Getting translated leaf nodes for language: $language, courseId: $courseId, contentId: $contentId")
     val languageMapV1 = courseMetadata
       .getOrElse("languageMapV1", Map.empty[String, AnyRef])
       .asInstanceOf[Map[String, Map[String, AnyRef]]]
@@ -223,6 +225,12 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
 
     if (courseLangs.contains(language.toLowerCase)) {
       return getLeafNodes(courseId)(metrics).toSet
+    } else {
+      logger.info("The course does not have the specified language for course languages: " + courseLangs.mkString(",") + " and languageMapV1 is " + languageMapV1.keys.mkString(","))
+      if (languageMapV1.nonEmpty) {
+        logger.info(s"Course languages: ${courseLangs.mkString(",")}, looking for language '$language' in languageMapV1 with keys: ${languageMapV1.keys.mkString(",")}")
+      }
+      logger.info(s"Language '$language' not in course languages ${courseLangs.mkString(",")}, checking languageMapV1 for translations")
     }
 
     val translatedCourseIdOpt = languageMapV1
