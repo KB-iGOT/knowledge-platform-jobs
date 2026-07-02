@@ -1,8 +1,6 @@
 package org.sunbird.job.karmapoints.functions
-import com.fasterxml.jackson.core.JsonProcessingException
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.configuration.Configuration
-import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper
 import org.apache.flink.streaming.api.functions.ProcessFunction
 import org.slf4j.LoggerFactory
 import org.sunbird.job.karmapoints.domain.Event
@@ -12,13 +10,12 @@ import org.sunbird.job.util.{CassandraUtil, HttpUtil}
 import org.sunbird.job.{BaseProcessFunction, Metrics}
 import org.sunbird.job.cache.{DataCache, RedisConnect}
 
-import java.util
+import java.util.Date
 
 class FirstEnrolmentProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: HttpUtil)
                                (implicit val stringTypeInfo: TypeInformation[String],
                                 @transient var cassandraUtil: CassandraUtil = null)
   extends BaseProcessFunction[Event, String](config)   {
-  lazy private val mapper: ObjectMapper = new ObjectMapper()
   private val logger = LoggerFactory.getLogger("org.sunbird.job.karmapoints.functions.FirstEnrolmentProcessorFn")
   private var dataCache: DataCache = _
 
@@ -58,29 +55,36 @@ class FirstEnrolmentProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: Ht
       return
     val contextType = hierarchy.get(config.PRIMARY_CATEGORY).asInstanceOf[String]
     logger.info(String.format("Enrolment check - User ID:+"+ usrId+",Context Type:"+contextType+", Context ID:" +contextId))
-    if (doesEntryExist(usrId, contextType, config.OPERATION_TYPE_ENROLMENT, contextId)(metrics, config,cassandraUtil)
-      || !isUserFirstEnrollment(usrId)(config, cassandraUtil) || !config.COURSE.equalsIgnoreCase(contextType))
+    if (!config.COURSE.equalsIgnoreCase(contextType))
       return
-    kpOnFirstEnrollment(usrId, contextType,config.OPERATION_TYPE_ENROLMENT,contextId,cassandraUtil)(metrics)
+    kpOnFirstEnrollment(usrId, contextType, config.OPERATION_TYPE_ENROLMENT, contextId, hierarchy, cassandraUtil)(metrics)
   }
 
   private def kpOnFirstEnrollment(userId: String, contextType: String,
-                                  operationType: String, contextId: String,
+                                  operationType: String, contextId: String, hierarchy: java.util.Map[String, AnyRef],
                                   cassandraUtil: CassandraUtil)(implicit metrics: Metrics): Unit = {
     val points: Int = config.firstEnrolmentQuotaKarmaPoints
-    val addInfoMap = new util.HashMap[String, AnyRef]()
-    val hierarchy: java.util.Map[String, AnyRef] = fetchContentHierarchy(contextId) (metrics,config, cassandraUtil)
-    if (hierarchy == null || hierarchy.size() < 1)
-      return
-    addInfoMap.put(config.ADDINFO_COURSENAME, hierarchy.get(config.name))
-    var addInfo = config.EMPTY
-    try {
-      addInfo = mapper.writeValueAsString(addInfoMap)
-    } catch {
-      case e: JsonProcessingException =>
-        throw new RuntimeException(e)
+    val lookup = fetchUserKarmaPointsCreditLookup(userId, contextType, operationType, contextId)(config, cassandraUtil)
+    if (lookup == null || lookup.isEmpty) {
+      // No entry for this course. Only a user who has never actively earned first-enrolment
+      // points (i.e. no course with points > 0) is eligible - this covers both a genuinely
+      // new user, and a user whose only prior first-enrolment entry was reverted to 0 on unenrolment.
+      if (hasEarnedFirstEnrolmentPoints(userId)(config, cassandraUtil))
+        return
+      val addInfo = buildAddInfo(null, config.ADDINFO_COURSENAME -> hierarchy.get(config.name))
+      insertKarmaPoints(userId, contextType, operationType, contextId, points, addInfo)(metrics, config, cassandraUtil)
+    } else {
+      val creditDate = lookup.get(0).getObject(config.DB_COLUMN_CREDIT_DATE).asInstanceOf[Date]
+      val entry = fetchUserKarmaPoints(creditDate, userId, contextType, operationType, contextId)(config, cassandraUtil)
+      // Points > 0 means this exact course is already actively credited (duplicate/redelivered event).
+      // Points == 0 means the course was previously unenrolled - re-enrolling re-awards on the same
+      // row (same credit_date), tagged as a re-enrolment.
+      if (entry == null || entry.isEmpty || entry.get(0).getInt(config.POINTS) > 0)
+        return
+      val addInfo = buildAddInfo(entry.get(0).getString(config.ADD_INFO),
+        config.ADDINFO_COURSENAME -> hierarchy.get(config.name), config.ADDINFO_REENROLMENT -> java.lang.Boolean.TRUE)
+      updatePoints(userId, contextType, operationType, contextId, points, addInfo, creditDate.getTime)(config, cassandraUtil)
     }
-    insertKarmaPoints(userId, contextType, operationType, contextId, points, addInfo)(metrics, config, cassandraUtil)
     updateKarmaSummary(userId, points)( config, cassandraUtil, dataCache)
   }
 }
