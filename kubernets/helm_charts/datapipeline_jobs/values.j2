@@ -995,6 +995,7 @@ karma-points-persist-processor:
       input.claim.acbp.karma.points.topic = "{{ env}}.user.claim.acbp.karma.points"
       input.event.attended.topic = "{{env}}.user.claim.event.karma.points"
       groupId = "{{ env}}-karma-points-processor-group"
+      input.unenrolment.topic = "{{ env}}.user.unenrolment.event"
     }
     task {
       parallelism = {{ karma_points_persist_processor_parallelism }}
