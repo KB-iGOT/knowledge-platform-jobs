@@ -78,8 +78,11 @@ class FirstEnrolmentProcessorFn(config: KarmaPointsProcessorConfig, httpUtil: Ht
       val entry = fetchUserKarmaPoints(creditDate, userId, contextType, operationType, contextId)(config, cassandraUtil)
       // Points > 0 means this exact course is already actively credited (duplicate/redelivered event).
       // Points == 0 means the course was previously unenrolled - re-enrolling re-awards on the same
-      // row (same credit_date), tagged as a re-enrolment.
+      // row (same credit_date), tagged as a re-enrolment - but only if the user doesn't already hold
+      // an active first-enrolment credit from another course.
       if (entry == null || entry.isEmpty || entry.get(0).getInt(config.POINTS) > 0)
+        return
+      if (hasEarnedFirstEnrolmentPoints(userId)(config, cassandraUtil))
         return
       val addInfo = buildAddInfo(entry.get(0).getString(config.ADD_INFO),
         config.ADDINFO_COURSENAME -> hierarchy.get(config.name), config.ADDINFO_REENROLMENT -> java.lang.Boolean.TRUE)
