@@ -123,6 +123,37 @@ object Utility {
        cassandraUtil.find(enrollmentLookupQuery.toString).size() < 2
   }
 
+  def hasEarnedFirstEnrolmentPoints(userId: String)(implicit config: KarmaPointsProcessorConfig, cassandraUtil: CassandraUtil): Boolean = {
+    val karmaQuery: Select = QueryBuilder.select().from(config.sunbird_keyspace, config.user_karma_points_table)
+    karmaQuery.where(QueryBuilder.eq(config.DB_COLUMN_USERID, userId))
+    val rows = cassandraUtil.find(karmaQuery.toString)
+    rows != null && rows.exists(row => config.OPERATION_TYPE_ENROLMENT.equals(row.getString(config.DB_COLUMN_OPERATION_TYPE)) && row.getInt(config.POINTS) > 0)
+  }
+
+  // Merges the given key/value updates into an existing (possibly empty) addinfo JSON blob.
+  def buildAddInfo(existingAddInfo: String, updates: (String, Any)*): String = {
+    val infoMap: java.util.Map[String, Any] = if (StringUtils.isEmpty(existingAddInfo)) new util.HashMap[String, Any]()
+      else JSONUtil.deserialize[java.util.HashMap[String, Any]](existingAddInfo)
+    updates.foreach { case (key, value) => infoMap.put(key, value.asInstanceOf[AnyRef]) }
+    mapper.writeValueAsString(infoMap)
+  }
+
+  // Zeroes out an existing karma points entry in place (same credit_date, no delete/insert) and tags addinfo with the reason.
+  def revertKarmaPoints(userId: String, contextType: String, operationType: String, contextId: String, addInfoRevertFlagKey: String)
+                        (implicit metrics: Metrics, config: KarmaPointsProcessorConfig, cassandraUtil: CassandraUtil, dataCache: DataCache): Unit = {
+    val lookup = fetchUserKarmaPointsCreditLookup(userId, contextType, operationType, contextId)(config, cassandraUtil)
+    if (lookup == null || lookup.isEmpty) return
+    val creditDate = lookup.get(0).getObject(config.DB_COLUMN_CREDIT_DATE).asInstanceOf[Date]
+    val entry = fetchUserKarmaPoints(creditDate, userId, contextType, operationType, contextId)(config, cassandraUtil)
+    if (entry == null || entry.isEmpty) return
+    val currentPoints = entry.get(0).getInt(config.POINTS)
+    if (currentPoints == 0) return
+    val addInfo = buildAddInfo(entry.get(0).getString(config.ADD_INFO), addInfoRevertFlagKey -> java.lang.Boolean.TRUE)
+    updatePoints(userId, contextType, operationType, contextId, 0, addInfo, creditDate.getTime)(config, cassandraUtil)
+    updateKarmaSummary(userId, -currentPoints)(config, cassandraUtil, dataCache)
+    metrics.incCounter(config.dbUpdateCount)
+  }
+
   def fetchUserRootOrgId(userId: String)(implicit config: KarmaPointsProcessorConfig, cassandraUtil: CassandraUtil): String = {
     val userLookupQuery: Select = QueryBuilder
       .select(config.ROOT_ORG_ID)

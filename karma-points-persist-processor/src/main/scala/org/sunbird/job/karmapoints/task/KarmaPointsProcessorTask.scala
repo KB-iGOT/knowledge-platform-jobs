@@ -8,7 +8,7 @@ import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
 import org.slf4j.LoggerFactory
 import org.sunbird.job.connector.FlinkKafkaConnector
 import org.sunbird.job.karmapoints.domain.Event
-import org.sunbird.job.karmapoints.functions.{ClaimACBPProcessorFn, CourseCompletionProcessorFn, FirstEnrolmentProcessorFn, FirstLoginProcessorFn, RatingProcessorFn,EventAttendedProcessorFn}
+import org.sunbird.job.karmapoints.functions.{ClaimACBPProcessorFn, CourseCompletionProcessorFn, FirstEnrolmentProcessorFn, FirstLoginProcessorFn, RatingProcessorFn,EventAttendedProcessorFn, UnenrolmentProcessorFn}
 import org.sunbird.job.util.{FlinkUtil, HttpUtil}
 
 class KarmaPointsProcessorTask(config: KarmaPointsProcessorConfig, kafkaConnector: FlinkKafkaConnector, httpUtil: HttpUtil) {
@@ -66,6 +66,14 @@ class KarmaPointsProcessorTask(config: KarmaPointsProcessorConfig, kafkaConnecto
       .setParallelism(config.kafkaConsumerParallelism)
       .rebalance
       .process(new EventAttendedProcessorFn(config, httpUtil))
+      .setParallelism(config.parallelism)
+
+    env.addSource(kafkaConnector.kafkaJobRequestSource[Event](config.kafkaInputUnenrolmentTopic))
+      .name(config.karmaPointsUnenrolmentPersistProcessorConsumer)
+      .uid(config.karmaPointsUnenrolmentPersistProcessorConsumer)
+      .setParallelism(config.kafkaConsumerParallelism)
+      .rebalance
+      .process(new UnenrolmentProcessorFn(config, httpUtil))
       .setParallelism(config.parallelism)
 
      env.execute(config.jobName)
