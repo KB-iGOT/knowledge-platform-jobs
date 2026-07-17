@@ -385,7 +385,7 @@ post-publish-processor:
       learning_service.basePath = "{{ kp_learning_service_base_url }}"
       dial.basePath = "https://{{domain_name}}/dial/"
       content.basePath = "{{ kp_content_service_base_url }}"
-      batchCreation.event.categories = ["Karmayogi Saptah", "Karmayogi Talks", "Rajya Karmayogi Saptah", "Webinar", "Samuhik Charcha", "Sadhana Saptah", "Samuhik Charcha - NLW 2026"]
+      batchCreation.event.categories = ["Karmayogi Saptah", "Karmayogi Talks", "Rajya Karmayogi Saptah", "Webinar", "Samuhik Charcha", "Sadhana Saptah", "Samuhik Charcha - NLW 2026", "Bharat Kalp - Talks", "Bharat Kalp - Podcast"]
     }
 
   flink-conf: |+
@@ -792,6 +792,7 @@ collection-certificate-generator:
       groupId = {{ env_name }}-certificate-generator-group
       program.cert.output.topic= {{ env_name }}.issue.program.certificate.request
       output.competency.topic = "{{env_name}}.user.competency.mapping.event"
+      output.badge.topic = {{ env_name }}.user.badge.award.request
     }
     task {
       restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
@@ -840,7 +841,7 @@ collection-certificate-generator:
     enable.suppress.exception = {{ collection_certificate_generator_enable_suppress_exception | lower }}
     enable.rc.certificate = false
     allowed.course.category.certificate.processor = []
-    specialEventCertificateName = "NLW_2026"
+    specialEventCertificateName = ""
     enable.user.email.notification = false
 
   flink-conf: |+
@@ -881,7 +882,7 @@ event-cert-generator:
       certreg.table ="{{ cert_registry_table }}"
       user_event_enrolments.table = "user_entity_enrolments"
       event_batch.table = "event_batch"
-      user_external_training.table="user_external_training_enrolments"
+      user_external_training.table = "user_external_training_enrolments"
     }
     cert_domain_url = "{{ cert_domain_url }}"
     web.portal.url = "{{ cert_domain_url }}"
@@ -916,7 +917,7 @@ event-cert-generator:
     
     enable.suppress.exception = {{ event_cert_generator_enable_suppress_exception | lower }}
     enable.rc.certificate = false
-    specialEventCertificateExceptionEvents = ["Karmayogi Talks", "Karmayogi Saptah", "Rajya Karmayogi Saptah", "Sadhana Saptah", "Samuhik Charcha - NLW 2026"]
+    specialEventCertificateExceptionEvents = ["Karmayogi Talks", "Karmayogi Saptah", "Rajya Karmayogi Saptah"]
 
 
   flink-conf: |+
@@ -997,6 +998,7 @@ karma-points-persist-processor:
       input.claim.acbp.karma.points.topic = "{{ env}}.user.claim.acbp.karma.points"
       input.event.attended.topic = "{{env}}.user.claim.event.karma.points"
       groupId = "{{ env}}-karma-points-processor-group"
+      input.unenrolment.topic = "{{ env}}.user.unenrolment.event"
     }
     task {
       parallelism = {{ karma_points_persist_processor_parallelism }}
@@ -1233,6 +1235,7 @@ user-competency-updater:
       restart-strategy.delay = {{ user_competency_updater_restart_strategy_delay }} # in milli-seconds # on max restarts (3) within 4 min the job will fail.
       consumer.parallelism = {{ user_competency_updater_consumer_parallelism }}
       parallelism = {{ user_competency_updater_parallelism }}
+      competency.parallelism = {{ user_competency_updater_competency_parallelism }}
 
       checkpointing.interval = {{ user_competency_updater_checkpointing_interval }}
       checkpointing.pause.between.seconds = {{ user_competency_updater_checkpointing_pause_interval }}
@@ -1254,6 +1257,9 @@ user-competency-updater:
       sunbird{
       db = "sunbird"
       }
+      read.timeout.ms = 8000
+      connect.timeout.ms = 3000
+      max.retries = 3
     }
     redis {
       host = {{data_redis_host}}
@@ -1336,8 +1342,15 @@ user-competency-updater:
       competencyAreaIdentifier = "competencyAreaId"
       competencySubThemeId = "competencyThemeId"
       competencySubThemeId = "competencySubThemeId"
+      changeUrl = "changeurl"
     }
-
+  flink-conf: |+
+    jobmanager.memory.flink.size: {{ flink_job_names['user-competency-updater'].jobmanager_memory }}
+    taskmanager.memory.flink.size: {{ flink_job_names['user-competency-updater'].taskmanager_memory }}
+    taskmanager.numberOfTaskSlots: {{ flink_job_names['user-competency-updater'].taskslots }}
+    parallelism.default: 1
+    jobmanager.execution.failover-strategy: region
+    taskmanager.memory.network.fraction: 0.1
 
 user-achievement-processor:
   user-achievement-processor: |+
@@ -1386,6 +1399,9 @@ user-achievement-processor:
       }
       hierarchy {
         url = "{{ core_content_service_base_url }}content/v3/hierarchy/"
+      }
+      cache {
+    expiry.ms = 3600000
       }
     }
     extcontent {
