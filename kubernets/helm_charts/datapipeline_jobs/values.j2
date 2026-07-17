@@ -1255,12 +1255,12 @@ user-competency-updater:
         }
       }
       sunbird{
-      db = "sunbird"
-      }
+        db = "sunbird"
+        }
       read.timeout.ms = 8000
       connect.timeout.ms = 3000
       max.retries = 3
-    }
+      }
     redis {
       host = {{data_redis_host}}
       port = {{data_redis_port}}
@@ -1437,9 +1437,6 @@ user-achievement-processor:
         enabled = true
       }
     }
-
-    badge.enabled.courses = ["do_1145017404968058881383", "do_1145024453025873921492", "do_1145024452515594241488", "do_1145024501170995201528", "do_1145031630659747841640", "do_1145031637481717761649", "do_1145031676893511681666", "do_1145031681500774401677", "do_114505610290970624116", "do_114505995234164736198", "do_1145059961633669121109", "do_1145109590876160001466", "do_114511676761350144180", "do_11452303057827430412621"]
-    badge.enabled.programs = ["do_114538264263991296126"]
 
   flink-conf: |+
     jobmanager.memory.flink.size: {{ flink_job_names['user-achievement-processor'].jobmanager_memory }}
