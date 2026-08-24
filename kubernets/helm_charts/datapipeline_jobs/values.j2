@@ -1045,6 +1045,7 @@ karma-points-persist-processor:
       event.read = "{{ core_content_service_base_url }}event/v4/read/"
     }
     enable.suppress.exception = true
+    enableCapping = true
 
   flink-conf: |+
     jobmanager.memory.flink.size: {{ flink_job_names['karma-points-persist-processor'].jobmanager_memory }}
