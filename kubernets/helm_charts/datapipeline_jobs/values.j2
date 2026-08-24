@@ -1016,7 +1016,7 @@ karma-points-persist-processor:
       firstEnrolmentQuotaKarmaPoints = 5
       nonAcbpCourseQuota = 4
       eventQuotaKarmaPoints = 10
-      enableCapping = false
+      enableCapping = true
     }
     cassandra {
       sunbird.keyspace = "sunbird"
@@ -1045,7 +1045,6 @@ karma-points-persist-processor:
       event.read = "{{ core_content_service_base_url }}event/v4/read/"
     }
     enable.suppress.exception = true
-    enableCapping = true
 
   flink-conf: |+
     jobmanager.memory.flink.size: {{ flink_job_names['karma-points-persist-processor'].jobmanager_memory }}
