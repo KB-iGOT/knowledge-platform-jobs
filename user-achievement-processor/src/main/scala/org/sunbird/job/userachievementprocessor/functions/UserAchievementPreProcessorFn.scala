@@ -232,11 +232,18 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
     val courseId = event.contentId
     val batchId = event.batchId
 
-    if (!config.badgeEnabledCourses.contains(courseId)) {
+    val courseMetadata: java.util.Map[String, AnyRef] = getCourseInfo(courseId)(metrics, config, contentCache, httpUtil)
+    val courseCategory = Option(courseMetadata.get(config.courseCategory)).map(_.toString).getOrElse("")
+
+    // Learning Pathway badges are driven by content metadata, so they bypass the badge.enabled.courses allowlist
+    val isLearningPathway = config.LEARNING_PATHWAY.equalsIgnoreCase(courseCategory)
+
+    if (isLearningPathway) {
+      logger.info("CourseId: " + courseId + " is a Learning Pathway, skipping badge config validation.")
+    } else if (!config.badgeEnabledCourses.contains(courseId)) {
       logger.info("CourseId: " + courseId + " is not enabled for badge awarding, skipping.")
       return
     }
-    val courseMetadata: java.util.Map[String, AnyRef] = getCourseInfo(courseId)(metrics, config, contentCache, httpUtil)
     // Process badge awarding for iGOTCourses
     processBadgeAwardingForIGOTCourses(userId, courseId, batchId, courseMetadata, metrics)
   }
