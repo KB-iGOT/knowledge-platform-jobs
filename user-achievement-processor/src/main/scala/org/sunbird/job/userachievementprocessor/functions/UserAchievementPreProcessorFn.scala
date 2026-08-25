@@ -274,11 +274,16 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         s"Fetching course details from Content Service for Id: ${courseId}"
       )
       val url =
-        config.contentReadURL + "/" + courseId + "?fields=identifier,name,parentCollections,primaryCategory,childNodes,badgeDetails_v1"
+        config.contentReadURL + "/" + courseId + "?fields=identifier,name,parentCollections,primaryCategory,courseCategory,childNodes,badgeDetails_v1"
       val response = getAPICall(url, "content")(config, httpUtil, metrics)
       val primaryCategory = StringContext
         .processEscapes(
           response.getOrElse("primaryCategory", "").asInstanceOf[String]
+        )
+        .filter(_ >= ' ')
+      val courseCategory = StringContext
+        .processEscapes(
+          response.getOrElse(config.courseCategory, "").asInstanceOf[String]
         )
         .filter(_ >= ' ')
       val parentCollections = response
@@ -297,6 +302,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       courseInfoMap.put("courseId", courseId)
       courseInfoMap.put("parentCollections", parentCollections)
       courseInfoMap.put("primaryCategory", primaryCategory)
+      courseInfoMap.put(config.courseCategory, courseCategory)
       courseInfoMap.put("childNodes", childNodes)
       courseInfoMap.put("badgeDetails_v1", badgeDetails_v1)
       courseInfoMap.put("name", courseName)
@@ -307,6 +313,13 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
         .processEscapes(
           courseMetadata
             .getOrElse("primarycategory", "")
+            .asInstanceOf[String]
+        )
+        .filter(_ >= ' ')
+      val courseCategory = StringContext
+        .processEscapes(
+          courseMetadata
+            .getOrElse(config.coursecategory, "")
             .asInstanceOf[String]
         )
         .filter(_ >= ' ')
@@ -321,6 +334,7 @@ class UserAchievementPreProcessorFn(config: UserBadgeAwardingConfig, httpUtil: H
       courseInfoMap.put("courseId", courseId)
       courseInfoMap.put("parentCollections", parentCollections)
       courseInfoMap.put("primaryCategory", primaryCategory)
+      courseInfoMap.put(config.courseCategory, courseCategory)
       val childNodes = courseMetadata
         .getOrElse("childnodes", new java.util.ArrayList())
         .asInstanceOf[java.util.ArrayList[String]]
