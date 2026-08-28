@@ -154,7 +154,7 @@
         </dependency>
         <dependency>
             <groupId>org.sunbird</groupId>
-            <artifactId> user-achievement-processor</artifactId>
+            <artifactId>user-achievement-processor</artifactId>
             <version>1.0.0</version>
             <type>jar</type>
         </dependency>
