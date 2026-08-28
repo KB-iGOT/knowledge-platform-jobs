@@ -100,4 +100,5 @@ class UserBadgeAwardingConfig(override val config: Config) extends BaseJobConfig
   val badgeEnabledPrograms: util.List[String] = if (config.hasPath("badge.enabled.programs")) config.getStringList("badge.enabled.programs") else util.Arrays.asList("")
 
   val programHierarchyCacheTtl: Int = if (config.hasPath("program.hierarchy.cache.ttl")) config.getInt("program.hierarchy.cache.ttl") else 3600000
+  val active: String = "active"
 }
