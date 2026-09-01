@@ -363,6 +363,7 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
     val mid = s"LP.$ets.${UUID.randomUUID().toString}"
     val event =
       s"""{
+         |"eventType": "COURSE_COMPLETION",
          |"eid": "BE_JOB_REQUEST",
          |"ets": $ets,
          |"mid": "$mid",
@@ -378,7 +379,8 @@ class ActivityAggregatesFunctionV2(config: ActivityAggregateUpdaterConfigV2,
          |  "reIssue": false,
          |  "courseId": "$courseId",
          |  "completedLanguage": "$completedLanguage"
-         |}
+         |},
+         |"version": 2
          |}""".stripMargin
 
     logger.info(s"Issuing cert for user: $userId in batch: $batchId course: $courseId")
