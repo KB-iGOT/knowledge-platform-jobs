@@ -118,7 +118,7 @@
         </dependency>
         <dependency>
             <groupId>org.sunbird</groupId>
-            <artifactId>karma-points-persist-processor</artifactId>
+            <artifactId>karma-points-processor-v2</artifactId>
             <version>1.0.0</version>
             <type>jar</type>
         </dependency>
