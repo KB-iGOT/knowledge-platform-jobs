@@ -1582,8 +1582,8 @@ assessment-public-certificate-generator:
     jobmanager.execution.failover-strategy: region
     taskmanager.memory.network.fraction: 0.1
     
-karma-points-unified-v2-event:
-  karma-points-unified-v2-event: |+
+karma-points-processor-v2:
+  karma-points-processor-v2: |+
     include file("/data/flink/conf/base-config.conf")
     kafka {
       input.topic = {{ env_name }}.karma.points.unified.v2.event
@@ -1595,8 +1595,8 @@ karma-points-unified-v2-event:
       restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
       restart-strategy.delay = 240000 # in milli-seconds # on max restarts (3) within 4 min the job will fail.
       consumer.parallelism = {{ karma_points_unified_v2_event_consumer_parallelism }}
-      parallelism = {{ karma_points_unified_v2_event_parallelism }}
-      notifier.parallelism = {{ karma_points_unified_v2_event_notifier_parallelism }}
+      parallelism = {{ karma-points-processor-v2_parallelism }}
+      notifier.parallelism = {{ karma-points-processor-v2_notifier_parallelism }}
     }
     cassandra {
       sunbird.keyspace = "sunbird"
@@ -1642,9 +1642,9 @@ karma-points-unified-v2-event:
     }
 
   flink-conf: |+
-    jobmanager.memory.flink.size: {{ flink_job_names['karma-points-unified-v2-event'].jobmanager_memory }}
-    taskmanager.memory.flink.size: {{ flink_job_names['karma-points-unified-v2-event'].taskmanager_memory }}
-    taskmanager.numberOfTaskSlots: {{ flink_job_names['karma-points-unified-v2-event'].taskslots }}
+    jobmanager.memory.flink.size: {{ flink_job_names['karma-points-processor-v2'].jobmanager_memory }}
+    taskmanager.memory.flink.size: {{ flink_job_names['karma-points-processor-v2'].taskmanager_memory }}
+    taskmanager.numberOfTaskSlots: {{ flink_job_names['karma-points-processor-v2'].taskslots }}
     parallelism.default: 1
     jobmanager.execution.failover-strategy: region
     taskmanager.memory.network.fraction: 0.1
