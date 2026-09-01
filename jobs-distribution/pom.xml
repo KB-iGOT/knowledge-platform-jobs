@@ -118,7 +118,7 @@
         </dependency>
         <dependency>
             <groupId>org.sunbird</groupId>
-            <artifactId>karma-points-processor-v2</artifactId>
+            <artifactId>karma-points-persist-processor</artifactId>
             <version>1.0.0</version>
             <type>jar</type>
         </dependency>
@@ -161,6 +161,12 @@
         <dependency>
             <groupId>org.sunbird</groupId>
             <artifactId>user-competency-updater</artifactId>
+            <version>1.0.0</version>
+            <type>jar</type>
+        </dependency>
+         <dependency>
+            <groupId>org.sunbird</groupId>
+            <artifactId>karma-points-processor-v2</artifactId>
             <version>1.0.0</version>
             <type>jar</type>
         </dependency>
