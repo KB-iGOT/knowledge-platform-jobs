@@ -215,10 +215,10 @@ user_achievement_updater_checkpointing_pause_interval: 90000
 ### to be removed
 job_classname: ""
 
-#####karma-points-unified-v2-event#####
-karma_points_unified_v2_event_notifier_parallelism: 1
-karma_points_unified_v2_event_consumer_parallelism: 1
-karma_points_unified_v2_event_parallelism: 1
+#####karma-points-processor-v2#####
+karma-points-processor-v2_notifier_parallelism: 1
+karma-points-processor-v2_consumer_parallelism: 1
+karma-points-processor-v2_parallelism: 1
 
 ### class name vars
 flink_job_names:
