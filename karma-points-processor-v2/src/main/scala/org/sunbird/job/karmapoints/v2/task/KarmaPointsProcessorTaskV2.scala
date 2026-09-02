@@ -2,6 +2,7 @@ package org.sunbird.job.karmapoints.v2.task
 
 import com.typesafe.config.ConfigFactory
 import org.apache.flink.api.common.typeinfo.TypeInformation
+import org.apache.flink.api.java.functions.KeySelector
 import org.apache.flink.api.java.typeutils.TypeExtractor
 import org.apache.flink.api.java.utils.ParameterTool
 import org.apache.flink.streaming.api.CheckpointingMode
@@ -37,19 +38,9 @@ class KarmaPointsProcessorTaskV2(config: KarmaPointsV2Config, kafkaConnector: Fl
       .name(config.karmaPointsV2Consumer)
       .uid(config.karmaPointsV2Consumer)
       .setParallelism(config.kafkaConsumerParallelism)
-      // RATING's and EVENT_ATTENDED's V1 payloads carry userId at data.user_id,
-      // FIRST_ENROLMENT's and ACBP_CLAIM's at data.edata.userId, FIRST_LOGIN's at data.edata.id,
-      // UNENROLMENT's at data.edata.userIds, COURSE_COMPLETION's at edata.userIds[0] (unwrapped,
-      // a JSON array) - none of them have the top-level `userId` field every other event type
-      // uses. Keyed here per event type so per-user ordering still holds for all of them.
-      .keyBy(event => event.eventType match {
-        case config.EVENT_TYPE_RATING | config.EVENT_TYPE_EVENT_ATTENDED => event.dataString("user_id")
-        case config.EVENT_TYPE_FIRST_ENROLMENT | config.EVENT_TYPE_ACBP_CLAIM => event.dataEdataString("userId")
-        case config.EVENT_TYPE_FIRST_LOGIN => event.dataEdataString("id")
-        case config.EVENT_TYPE_UNENROLMENT => event.dataEdataString("userIds")
-        case config.EVENT_TYPE_COURSE_COMPLETION => event.edataStringArrayFirst("userIds")
-        case _ => event.userId
-      })
+      // Keyed per event type so per-user ordering still holds for all of them; see
+      // KarmaPointsKeySelector for the per-event-type userId field paths.
+      .keyBy(new KarmaPointsKeySelector(config))
       .process(new KarmaPointsProcessorFnV2(config, httpUtil))
       .setParallelism(config.parallelism)
 
@@ -68,5 +59,26 @@ object KarmaPointsProcessorTaskV2 {
     val httpUtil = new HttpUtil()
     val task = new KarmaPointsProcessorTaskV2(karmaPointsV2Config, kafkaUtil, httpUtil)
     task.process()
+  }
+}
+
+/**
+ * RATING's and EVENT_ATTENDED's V1 payloads carry userId at data.user_id,
+ * FIRST_ENROLMENT's and ACBP_CLAIM's at data.edata.userId, FIRST_LOGIN's at data.edata.id,
+ * UNENROLMENT's at data.edata.userIds, COURSE_COMPLETION's at edata.userIds[0] (unwrapped,
+ * a JSON array) - none of them have the top-level `userId` field every other event type uses.
+ *
+ * Defined as a standalone KeySelector (rather than an inline lambda in `keyBy`) because a lambda
+ * referencing `config` would capture the enclosing KarmaPointsProcessorTaskV2 instance, which is
+ * not Serializable, causing a Flink "Task not serializable" failure at job submission.
+ */
+class KarmaPointsKeySelector(config: KarmaPointsV2Config) extends KeySelector[UnifiedEvent, String] {
+  override def getKey(event: UnifiedEvent): String = event.eventType match {
+    case config.EVENT_TYPE_RATING | config.EVENT_TYPE_EVENT_ATTENDED => event.dataString("user_id")
+    case config.EVENT_TYPE_FIRST_ENROLMENT | config.EVENT_TYPE_ACBP_CLAIM => event.dataEdataString("userId")
+    case config.EVENT_TYPE_FIRST_LOGIN => event.dataEdataString(config.ID)
+    case config.EVENT_TYPE_UNENROLMENT => event.dataEdataString("userIds")
+    case config.EVENT_TYPE_COURSE_COMPLETION => event.edataStringArrayFirst("userIds")
+    case _ => event.userId
   }
 }
