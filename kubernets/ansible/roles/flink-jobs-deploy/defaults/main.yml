@@ -182,6 +182,11 @@ karma_points_persist_processor_generate_certificate_parallelism: 1
 user_karma_points_table: "user_karma_points"
 user_karma_points_credit_lookup_table: "user_karma_points_credit_lookup"
 
+### Karma Points Persist Processor v2
+karma_points_processor_v2_parallelism: 1
+karma_points_processor_v2_consumer_parallelism: 1
+karma_points_processor_v2_notifier_parallelism: 1
+
 ###  common_certificate_generator_utility Job related Vars
 common_certificate_generator_utility_consumer_parallelism: 1
 common_certificate_generator_utility_parallelism: 1
