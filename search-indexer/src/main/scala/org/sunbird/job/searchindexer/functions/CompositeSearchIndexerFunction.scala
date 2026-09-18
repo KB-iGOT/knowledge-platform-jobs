@@ -37,7 +37,8 @@ class CompositeSearchIndexerFunction(config: SearchIndexerConfig,
     metrics.incCounter(config.compositeSearchEventCount)
     try {
       val compositeObject = getCompositeIndexerObject(event)
-      processESMessage(compositeObject)(elasticUtil, defCache)
+      val trainingPlanEvents = processESMessage(compositeObject)(elasticUtil, defCache)
+      trainingPlanEvents.foreach(context.output(config.trainingPlanEventOutTag, _))
       metrics.incCounter(config.successCompositeSearchEventCount)
     } catch {
       case ex: Throwable =>
