@@ -63,7 +63,7 @@ class CollectionPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil
   }
 
   override def metricsList(): List[String] = {
-    List(config.collectionPublishEventCount, config.collectionPublishSuccessEventCount, config.collectionPublishFailedEventCount, config.skippedEventCount, config.collectionPostPublishProcessEventCount)
+    List(config.collectionPublishEventCount, config.collectionPublishSuccessEventCount, config.collectionPublishFailedEventCount, config.skippedEventCount, config.collectionPostPublishProcessEventCount, config.trainingPlanV2EventCount)
   }
 
   override def processElement(data: Event, context: ProcessFunction[Event, String]#Context, metrics: Metrics): Unit = {
@@ -105,7 +105,10 @@ class CollectionPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil
           
           val collRelationalMetadata = getRelationalMetadata(obj.identifier, obj.pkgVersion-1, readerConfig)(cassandraUtil).getOrElse(Map.empty[String, AnyRef])
 
-          saveOnSuccess(new ObjectData(objWithEcar.identifier, objWithEcar.metadata.-("children"), objWithEcar.extData, objWithEcar.hierarchy))(neo4JUtil, cassandraUtil, readerConfig, definitionCache, definitionConfig)
+          val publishObj = new ObjectData(objWithEcar.identifier, objWithEcar.metadata.-("children"), objWithEcar.extData, objWithEcar.hierarchy)
+          val previousTrainingPlan = getTrainingPlanV2(publishObj.identifier)(neo4JUtil)
+          saveOnSuccess(publishObj)(neo4JUtil, cassandraUtil, readerConfig, definitionCache, definitionConfig)
+          pushTrainingPlanLinkEvent(publishObj, previousTrainingPlan, context)(metrics)
           logger.info("CollectionPublishFunction:: Published Collection Object metadata saved successfully to graph DB: " + objWithEcar.identifier)
 
           val variantsJsonString = ScalaJsonUtil.serialize(objWithEcar.metadata("variants"))
@@ -232,6 +235,53 @@ class CollectionPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil
     val failedEvent = if (error == null) getFailedEvent(event.jobName, event.getMap(), errorMessage) else getFailedEvent(event.jobName, event.getMap(), error)
     context.output(config.failedEventOutTag, failedEvent)
     metrics.incCounter(config.collectionPublishFailedEventCount)
+  }
+
+  private val TRAINING_PLAN_V2 = "trainingPlan_v2"
+
+  // trainingPlan_v2 is persisted as a JSON-serialized string (see ObjectUpdater.metaDataQuery), so both the
+  // Neo4j-read value and the in-memory ObjectData value (populated straight off Neo4j by ObjectReader.getMetadata,
+  // with no deserialization) arrive as raw JSON strings, not parsed maps - never cast, always parse defensively.
+  private def parseTrainingPlan(value: AnyRef): Option[Map[String, AnyRef]] = value match {
+    case s: String if s.trim.nonEmpty =>
+      try Some(ScalaJsonUtil.deserialize[Map[String, AnyRef]](s)) catch {
+        case ex: Exception =>
+          logger.error(s"Failed to parse $TRAINING_PLAN_V2 value: $s", ex)
+          None
+      }
+    case m: Map[String@unchecked, AnyRef@unchecked] => Some(m.asInstanceOf[Map[String, AnyRef]])
+    case _ => None
+  }
+
+  def getTrainingPlanV2(identifier: String)(implicit neo4JUtil: Neo4JUtil): Option[Map[String, AnyRef]] = {
+    val props = neo4JUtil.getNodeProperties(identifier)
+    if (null == props) None else parseTrainingPlan(props.get(TRAINING_PLAN_V2))
+  }
+
+  private def pushTrainingPlanLinkEvent(obj: ObjectData, previousTrainingPlan: Option[Map[String, AnyRef]], context: ProcessFunction[Event, String]#Context)(implicit metrics: Metrics): Unit = {
+    val currentTrainingPlan = parseTrainingPlan(obj.metadata.getOrElse(TRAINING_PLAN_V2, null))
+    if (!previousTrainingPlan.equals(currentTrainingPlan)) {
+      val event = getTrainingPlanLinkEvent(obj, previousTrainingPlan, currentTrainingPlan)
+      context.output(config.trainingPlanV2OutTag, event)
+      metrics.incCounter(config.trainingPlanV2EventCount)
+    }
+  }
+
+  def getTrainingPlanLinkEvent(obj: ObjectData, previousTrainingPlan: Option[Map[String, AnyRef]], currentTrainingPlan: Option[Map[String, AnyRef]]): String = {
+    val ets = System.currentTimeMillis
+    val mid = s"""LP.$ets.${UUID.randomUUID}"""
+    val channelId = obj.getString("channel", "")
+    val event = ScalaJsonUtil.serialize(Map(
+      "eid" -> "CA_TRAININGPLAN_LINK",
+      "ets" -> ets,
+      "mid" -> mid,
+      "identifier" -> obj.identifier,
+      "objectType" -> "Collection",
+      "channel" -> channelId,
+      "trainingPlan" -> Map("previous" -> previousTrainingPlan.orNull, "current" -> currentTrainingPlan.orNull)
+    ))
+    logger.info(s"Training Plan Link Event for identifier ${obj.identifier} is : $event")
+    event
   }
 
 }

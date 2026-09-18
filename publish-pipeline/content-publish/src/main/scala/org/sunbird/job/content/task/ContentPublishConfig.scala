@@ -27,6 +27,7 @@ class ContentPublishConfig(override val config: Config) extends PublishConfig(co
   val postPublishTopic: String = config.getString("kafka.post_publish.topic")
   val mvcTopic: String = config.getString("kafka.mvc.topic")
   val kafkaErrorTopic: String = config.getString("kafka.error.topic")
+  val trainingPlanV2Topic: String = config.getString("kafka.trainingplan_v2.topic")
   val inputConsumerName = "content-publish-consumer"
 
   // Parallelism
@@ -48,6 +49,7 @@ class ContentPublishConfig(override val config: Config) extends PublishConfig(co
   val eventTypePublishCount = "event-publish-count"
   val eventTypePublishSuccessCount = "event-publish-success-count"
   val eventTypePublishFailedCount = "event-publish-failed-count"
+  val trainingPlanV2EventCount = "trainingplan-v2-event-count"
 
   // Cassandra Configurations
   val cassandraHost: String = config.getString("lms-cassandra.host")
@@ -72,6 +74,7 @@ class ContentPublishConfig(override val config: Config) extends PublishConfig(co
   val generatePostPublishProcessTag: OutputTag[String] = OutputTag[String]("post-publish-process-request")
   val mvcProcessorTag: OutputTag[String] = OutputTag[String]("mvc-processor-request")
   val eventPublishOutTag: OutputTag[Event] = OutputTag[Event]("event-publish")
+  val trainingPlanV2OutTag: OutputTag[String] = OutputTag[String]("trainingplan-v2-changed")
 
   // Service Urls
   val printServiceBaseUrl: String = config.getString("service.print.basePath")

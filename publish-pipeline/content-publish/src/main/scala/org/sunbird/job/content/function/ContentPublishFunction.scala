@@ -17,7 +17,7 @@ import org.sunbird.job.exception.InvalidInputException
 import org.sunbird.job.helper.FailedEventHelper
 import org.sunbird.job.publish.core.{DefinitionConfig, ExtDataConfig, ObjectData}
 import org.sunbird.job.publish.helpers.EcarPackageType
-import org.sunbird.job.util.{CassandraUtil, CloudStorageUtil, HttpUtil, Neo4JUtil}
+import org.sunbird.job.util.{CassandraUtil, CloudStorageUtil, HttpUtil, Neo4JUtil, ScalaJsonUtil}
 import org.sunbird.job.{BaseProcessFunction, Metrics}
 
 import java.lang.reflect.Type
@@ -61,7 +61,7 @@ class ContentPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil,
 
   override def metricsList(): List[String] = {
     List(config.contentPublishEventCount, config.contentPublishSuccessEventCount, config.contentPublishFailedEventCount,
-      config.videoStreamingGeneratorEventCount, config.skippedEventCount, config.mvProcessorEventCount)
+      config.videoStreamingGeneratorEventCount, config.skippedEventCount, config.mvProcessorEventCount, config.trainingPlanV2EventCount)
   }
 
   override def processElement(data: Event, context: ProcessFunction[Event, String]#Context, metrics: Metrics): Unit = {
@@ -93,7 +93,9 @@ class ContentPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil,
           } else {
             logger.info("Ecar file generation is skipped as per configuration")
           }
+          val previousTrainingPlan = getTrainingPlanV2(objWithEcar.identifier)(neo4JUtil)
           saveOnSuccess(objWithEcar)(neo4JUtil, cassandraUtil, readerConfig, definitionCache, definitionConfig)
+          pushTrainingPlanLinkEvent(objWithEcar, previousTrainingPlan, context)(metrics)
           pushStreamingUrlEvent(enrichedObj, context)(metrics)
           pushMVCProcessorEvent(enrichedObj, context)(metrics)
           metrics.incCounter(config.contentPublishSuccessEventCount)
@@ -209,6 +211,53 @@ class ContentPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil,
 
   def getStringValue(map: Map[String, AnyRef], key: String): Option[String] = {
     map.get(key) collect { case s: String if s.trim.nonEmpty => s.trim }
+  }
+
+  private val TRAINING_PLAN_V2 = "trainingPlan_v2"
+
+  // trainingPlan_v2 is persisted as a JSON-serialized string (see ObjectUpdater.metaDataQuery), so both the
+  // Neo4j-read value and the in-memory ObjectData value (populated straight off Neo4j by ObjectReader.getMetadata,
+  // with no deserialization) arrive as raw JSON strings, not parsed maps - never cast, always parse defensively.
+  private def parseTrainingPlan(value: AnyRef): Option[Map[String, AnyRef]] = value match {
+    case s: String if s.trim.nonEmpty =>
+      try Some(ScalaJsonUtil.deserialize[Map[String, AnyRef]](s)) catch {
+        case ex: Exception =>
+          logger.error(s"Failed to parse $TRAINING_PLAN_V2 value: $s", ex)
+          None
+      }
+    case m: Map[String@unchecked, AnyRef@unchecked] => Some(m.asInstanceOf[Map[String, AnyRef]])
+    case _ => None
+  }
+
+  def getTrainingPlanV2(identifier: String)(implicit neo4JUtil: Neo4JUtil): Option[Map[String, AnyRef]] = {
+    val props = neo4JUtil.getNodeProperties(identifier)
+    if (null == props) None else parseTrainingPlan(props.get(TRAINING_PLAN_V2))
+  }
+
+  private def pushTrainingPlanLinkEvent(obj: ObjectData, previousTrainingPlan: Option[Map[String, AnyRef]], context: ProcessFunction[Event, String]#Context)(implicit metrics: Metrics): Unit = {
+    val currentTrainingPlan = parseTrainingPlan(obj.metadata.getOrElse(TRAINING_PLAN_V2, null))
+    if (!previousTrainingPlan.equals(currentTrainingPlan)) {
+      val event = getTrainingPlanLinkEvent(obj, previousTrainingPlan, currentTrainingPlan)
+      context.output(config.trainingPlanV2OutTag, event)
+      metrics.incCounter(config.trainingPlanV2EventCount)
+    }
+  }
+
+  def getTrainingPlanLinkEvent(obj: ObjectData, previousTrainingPlan: Option[Map[String, AnyRef]], currentTrainingPlan: Option[Map[String, AnyRef]]): String = {
+    val ets = System.currentTimeMillis
+    val mid = s"""LP.$ets.${UUID.randomUUID}"""
+    val channelId = obj.getString("channel", "")
+    val event = ScalaJsonUtil.serialize(Map(
+      "eid" -> "CA_TRAININGPLAN_LINK",
+      "ets" -> ets,
+      "mid" -> mid,
+      "identifier" -> obj.identifier,
+      "objectType" -> "Content",
+      "channel" -> channelId,
+      "trainingPlan" -> Map("previous" -> previousTrainingPlan.orNull, "current" -> currentTrainingPlan.orNull)
+    ))
+    logger.info(s"Training Plan Link Event for identifier ${obj.identifier} is : $event")
+    event
   }
 
 }
