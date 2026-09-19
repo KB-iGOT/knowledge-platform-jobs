@@ -13,8 +13,6 @@ import org.sunbird.job.searchindexer.task.SearchIndexerConfig
 import org.sunbird.job.util.ElasticSearchUtil
 import org.sunbird.job.{BaseProcessFunction, Metrics}
 
-import scala.collection.JavaConverters._
-
 
 class CompositeSearchIndexerFunction(config: SearchIndexerConfig,
                                      @transient var elasticUtil: ElasticSearchUtil = null)
@@ -55,9 +53,9 @@ class CompositeSearchIndexerFunction(config: SearchIndexerConfig,
 
   /** One-line summary of the event for error logs: identifiers plus the names of the changed properties (not their values). */
   private def describeEvent(event: Event): String = {
-    val changedProperties = event.getMap().asScala.get("transactionData") match {
-      case Some(td: java.util.Map[_, _]) => td.asScala.get("properties") match {
-        case Some(props: java.util.Map[_, _]) => props.asScala.keys.mkString(",")
+    val changedProperties = event.getMap().get("transactionData") match {
+      case td: java.util.Map[_, _] => td.get("properties") match {
+        case props: java.util.Map[_, _] => props.keySet().toArray.mkString(",")
         case _ => ""
       }
       case _ => ""
