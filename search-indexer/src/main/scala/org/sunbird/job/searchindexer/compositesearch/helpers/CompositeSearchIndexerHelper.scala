@@ -139,19 +139,45 @@ trait CompositeSearchIndexerHelper {
 
     val transactionData = message.getOrElse("transactionData", Map[String, Any]()).asInstanceOf[Map[String, Any]]
     val properties = transactionData.getOrElse("properties", Map[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
-    properties.get(TRAINING_PLAN_V2) match {
-      case Some(change: Map[_, _]) =>
-        val changeMap = change.asInstanceOf[Map[String, AnyRef]]
-        val oldPlanId = getTrainingPlanId(identifier, "ov", changeMap.getOrElse("ov", null))
-        val newPlanId = getTrainingPlanId(identifier, "nv", changeMap.getOrElse("nv", null))
-        if (oldPlanId.nonEmpty && oldPlanId == newPlanId) {
-          logger.error(s"trainingPlan_v2 ov and nv have the same identifier ${oldPlanId.get} for $identifier. Skipping training plan events.")
-          List()
-        } else {
-          oldPlanId.map(trainingPlanEvent("REMOVE", _, identifier)).toList ++ newPlanId.map(trainingPlanEvent("ADD", _, identifier)).toList
-        }
-      case _ => List()
+    val statusRetired = isRetiredStatus(properties)
+    val trainingPlanChange = properties.get(TRAINING_PLAN_V2) match {
+      case Some(change: Map[_, _]) => Some(change.asInstanceOf[Map[String, AnyRef]])
+      case _ => None
     }
+
+    val oldPlanId = trainingPlanChange match {
+      case Some(changeMap) => getTrainingPlanId(identifier, "ov", changeMap.getOrElse("ov", null))
+      case None if statusRetired => getTrainingPlanIdFromDocument(indexDocument)
+      case _ => None
+    }
+    val newPlanId = trainingPlanChange match {
+      case Some(changeMap) => getTrainingPlanId(identifier, "nv", changeMap.getOrElse("nv", null))
+      case _ => None
+    }
+
+    if (oldPlanId.nonEmpty && oldPlanId == newPlanId) {
+      logger.error(s"trainingPlan_v2 ov and nv have the same identifier ${oldPlanId.get} for $identifier. Skipping training plan events.")
+      List()
+    } else if (oldPlanId.nonEmpty && (statusRetired || newPlanId.nonEmpty)) {
+      oldPlanId.map(trainingPlanEvent("REMOVE", _, identifier)).toList ++ newPlanId.map(trainingPlanEvent("ADD", _, identifier)).toList
+    } else {
+      newPlanId.map(trainingPlanEvent("ADD", _, identifier)).toList
+    }
+  }
+
+  private def isRetiredStatus(properties: Map[String, AnyRef]): Boolean = {
+    properties.get("status") match {
+      case Some(change: Map[_, _]) =>
+        val statusMap = change.asInstanceOf[Map[String, AnyRef]]
+        StringUtils.equalsIgnoreCase(statusMap.getOrElse("nv", "").toString, "Retired")
+      case _ => false
+    }
+  }
+
+  private def getTrainingPlanIdFromDocument(indexDocument: Map[String, AnyRef]): Option[String] = {
+    val planValue = indexDocument.getOrElse(TRAINING_PLAN_V2, null)
+    if (planValue == null) None
+    else getTrainingPlanId("ca", "current", planValue.asInstanceOf[AnyRef])
   }
 
   private def getTrainingPlanId(identifier: String, key: String, value: AnyRef): Option[String] = {
