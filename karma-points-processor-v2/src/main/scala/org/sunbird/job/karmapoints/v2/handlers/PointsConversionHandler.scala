@@ -80,7 +80,10 @@ class PointsConversionHandler(config: KarmaPointsV2Config, cassandraUtil: Cassan
     } catch {
       case ex: DataQualityException =>
         val userId = event.dataString("userId")
-        if (StringUtils.isNotEmpty(userId)) redisUtil.deleteKarmaCoinConvertLock(userId)
+        val contextId = event.dataString("contextId")
+        if (StringUtils.isNotEmpty(userId) && StringUtils.isNotEmpty(contextId)) {
+          redisUtil.deleteKarmaCoinConvertLock(userId, contextId)
+        }
         throw ex
     }
 
@@ -120,7 +123,7 @@ class PointsConversionHandler(config: KarmaPointsV2Config, cassandraUtil: Cassan
             updateLookupStatus(request, creditDate, config.STATUS_FAILED,
               config.ADDINFO_ERROR_CODE -> config.ERROR_CODE_CONVERSION_LIMIT_EXCEEDED,
               config.ADDINFO_ERROR_MESSAGE -> ex.message)
-            redisUtil.deleteKarmaCoinConvertLock(request.userId)
+            redisUtil.deleteKarmaCoinConvertLock(request.userId, request.contextId)
             throw ex
         }
         val plan = freezeConversionPlan(request, calculation, creditDate)
@@ -383,9 +386,12 @@ class PointsConversionHandler(config: KarmaPointsV2Config, cassandraUtil: Cassan
    * frozen plan's identity - and the wallet's current (unmodified) balance as balance_after. */
   private[v2] def insertFailedConversionTransaction(request: PointsConversionRequest)(implicit metrics: Metrics): Unit = {
     val (totalEarned, totalRedeemed) = readWallet(request.userId)
-    val failedAddInfo = cassandraUtil.buildAddInfo(null, config.STATUS -> config.STATUS_FAILED)
+    val failedAddInfo = cassandraUtil.buildAddInfo(null,
+      config.STATUS -> config.STATUS_FAILED,
+      config.ADDINFO_USER_KARMA_COIN_KEY -> userKarmaCoinKey(request),
+      config.ADDINFO_RATIO -> config.pointsConversionRatio)
     cassandraUtil.insertKarmaCoinTransaction(request.userId, System.currentTimeMillis(), TransactionIdGenerator.generate(config),
-      config.OPERATION_CREDIT, 0L, totalEarned - totalRedeemed,
+      config.OPERATION_CREDIT, request.pointsToConvert, totalEarned - totalRedeemed,
       request.actionType, request.contextType, request.contextId, failedAddInfo)
   }
 
@@ -430,8 +436,9 @@ class PointsConversionHandler(config: KarmaPointsV2Config, cassandraUtil: Cassan
    * much of it a previous attempt already completed, so no probing/branching on which step was
    * already done is needed.
    *
-   * For POINTS_CONVERSION only: deletes the Redis conversion lock key (CB_EXT_karmaCoinConvertLock:<userId>)
-   * after the lookup status is successfully persisted as COMPLETED, ensuring idempotent cleanup.
+   * For POINTS_CONVERSION only: deletes the Redis conversion lock key
+   * (CB_EXT_karmaCoinConvertLock:<userId>:<contextId>) after the lookup status is successfully
+   * persisted as COMPLETED, ensuring idempotent cleanup.
    */
   private[v2] def applyConversionPlan(request: PointsConversionRequest, plan: ConversionPlan)(implicit metrics: Metrics): Unit = {
     logger.info(
@@ -448,7 +455,7 @@ class PointsConversionHandler(config: KarmaPointsV2Config, cassandraUtil: Cassan
       config.STATUS -> config.STATUS_SUCCESS,
       config.ADDINFO_USER_KARMA_COIN_KEY -> userKarmaCoinKey(request),
       config.ADDINFO_POINTS_CONVERTED -> request.pointsToConvert,
-      config.ADDINFO_RATIO -> config.RATIO_ONE_TO_ONE)
+      config.ADDINFO_RATIO -> config.pointsConversionRatio)
     cassandraUtil.insertKarmaCoinTransaction(request.userId, plan.createdAt, plan.transactionId, config.OPERATION_CREDIT,
       calculateCoins(request.pointsToConvert), balanceAfter, config.EVENT_TYPE_POINTS_CONVERSION,
       request.contextType, request.contextId, transactionAddInfo)
@@ -460,7 +467,7 @@ class PointsConversionHandler(config: KarmaPointsV2Config, cassandraUtil: Cassan
       plan.targetYearMonth, plan.targetPointsConverted)
 
     // Delete the Redis conversion lock key after successful POINTS_CONVERSION completion
-    redisUtil.deleteKarmaCoinConvertLock(request.userId)
+    redisUtil.deleteKarmaCoinConvertLock(request.userId, request.contextId)
     logger.info(
       s"POINTS_CONVERSION completed, userId=${request.userId}, " +
         s"transactionId=${plan.transactionId}, points=${request.pointsToConvert}"

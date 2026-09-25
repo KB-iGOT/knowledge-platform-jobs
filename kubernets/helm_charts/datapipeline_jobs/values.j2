@@ -128,7 +128,7 @@ activity-aggregate-updater:
     task {
       window.shards = {{ activity_agg_window_shards }}
       checkpointing.interval = {{ activity_agg_checkpointing_interval }}
-
+      
       checkpointing.pause.between.seconds = {{ activity_agg_checkpointing_pause_interval }}
       restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
       restart-strategy.delay = {{ activity_agg_restart_strategy_delay }} # in milli-seconds # on max restarts (3) within 4 min the job will fail.
@@ -445,6 +445,7 @@ search-indexer:
     kafka {
       input.topic = "{{ env_name }}.learning.graph.events"
       error.topic = "{{ env_name }}.learning.events.failed"
+      output.trainingplan.topic = "{{ env_name }}.trainingplan.ca.events"
       groupId = "{{ env_name }}-search-indexer-group"
       output.trainingplan.topic = "{{ env_name }}.trainingplan.ca.events"
     }
@@ -459,7 +460,7 @@ search-indexer:
     dialcode.index.name = "dialcode"
     dailcodemetrics.index.name = "dialcodemetrics"
     restrict.metadata.objectTypes = []
-    nested.fields = ["badgeAssertions", "targets", "badgeAssociations", "plugins", "me_totalTimeSpent", "me_totalPlaySessionCount", "me_totalTimeSpentInSec", "batches", "trackable", "credentials", "discussionForum", "provider", "osMetadata", "actions", "transcripts", "accessibility", "taxonomyPaths_v2", "competencies_v3", "test_competencies_v2", "competencies_v2", "secureSettings", "test_competencies_v4", "competencies_v5", "test_secureSettings", "competencies_v6", "referenceNodes", "resourceTypeDetails", "sectorDetails_v1", "preEnrolmentResources", "languageMapV1", "milestones_v1", "badgeDetails_v1", "trainingPlan_v2", "batchSettings", "trainingPlan_v2"]
+    nested.fields = ["badgeAssertions", "targets", "badgeAssociations", "plugins", "me_totalTimeSpent", "me_totalPlaySessionCount", "me_totalTimeSpentInSec", "batches", "trackable", "credentials", "discussionForum", "provider", "osMetadata", "actions", "transcripts", "accessibility", "taxonomyPaths_v2", "competencies_v3", "test_competencies_v2", "competencies_v2", "secureSettings", "test_competencies_v4", "competencies_v5", "test_secureSettings", "competencies_v6", "referenceNodes", "resourceTypeDetails", "sectorDetails_v1", "preEnrolmentResources", "languageMapV1", "milestones_v1", "badgeDetails_v1", "trainingPlan_v2", "batchSettings"]
     schema.definition_cache.expiry = {{ schema_definition_cache_expiry_in_sec }}
     restrict.objectTypes=["EventSet", "Questionnaire", "Misconception", "FrameworkType", "Term", "CategoryInstance","Framework"]
     ignored.fields={{ search_indexer_ignored_fields | to_json }}
@@ -687,7 +688,6 @@ collection-cert-pre-processor:
       output.failed.topic = {{ env_name }}.issue.certificate.failed
       event.output.topic = {{ env_name }}.event.generate.certificate.request
       groupId = {{ env_name }}-collection-cert-pre-processor-group
-      output.course.completion.topic = {{ env_name }}.karma.points.unified.v2.event
     }
     task {
       restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
@@ -796,7 +796,7 @@ collection-certificate-generator:
       program.cert.output.topic= {{ env_name }}.issue.program.certificate.request
       output.competency.topic = "{{env_name}}.user.competency.mapping.event"
       output.badge.topic = {{ env_name }}.user.badge.award.request
-      output.course.completion.topic = "{{env_name}}.karma.points.unified.v2.event"
+      output.course.completion.topic = {{ env_name }}.karma.points.unified.v2.event
     }
     task {
       restart-strategy.attempts = {{ restart_attempts }} # max 3 restart attempts
@@ -1640,13 +1640,19 @@ karma-points-processor-v2:
     }
     karmaCoin {
       pointsConversion {
-      monthlyLimit = 300
-      ratio = "1:1"
+        monthlyLimit = 300
+        ratio = "1:1"
+      }
+      pendingEnrolment {
+          ttlSeconds = 5
+      }
     }
+    
     transactionId {
-    length = 12
-    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+      length = 12
+      alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     }
+    
     redis {
       database {
         relationCache.id = 6
@@ -1659,11 +1665,13 @@ karma-points-processor-v2:
         releaseDedupOnException = true
       }
     }
-    }
+    
     redis {
       database {
         karmaPointCache.id = 0
+        pendingEnrolmentCache.id = 1
       }
+      
       host = {{ dp_redis_host }}
       port = 6379
       cache.ttl.seconds = 259200

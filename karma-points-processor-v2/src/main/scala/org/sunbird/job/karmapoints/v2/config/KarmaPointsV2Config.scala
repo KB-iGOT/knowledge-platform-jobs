@@ -46,6 +46,10 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
 
   // Redis
   val cacheDbId: Int = if (config.hasPath("redis.database.karmaPointCache.id")) config.getInt("redis.database.karmaPointCache.id") else 0
+  // Dedicated Redis logical DB for the COINS_REDEMPTION pendingEnrolment_<userId>_<contextId>
+  // failure-status key only (RedisUtil.setPendingEnrolmentStatus) - every other Redis operation
+  // stays on cacheDbId.
+  val pendingEnrolmentCacheDbId: Int = if (config.hasPath("redis.database.pendingEnrolmentCache.id")) config.getInt("redis.database.pendingEnrolmentCache.id") else 1
   val metaRedisHost: String = config.getString("redis.host")
   val metaRedisPort: Int = config.getInt("redis.port")
   val karmaRedisTTLSeconds: Int = if (config.hasPath("redis.cache.ttl.seconds")) config.getInt("redis.cache.ttl.seconds") else 259200
@@ -93,8 +97,7 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val ACTION_TYPE_POINTS_REDEMPTION = "POINTS_REDEMPTION"
   val ACTION_TYPE_ENROLLMENT = "ENROLLMENT"
 
-  val pointsConversionMonthlyLimit: Int =
-    if (config.hasPath("karmaCoin.pointsConversion.monthlyLimit")) config.getInt("karmaCoin.pointsConversion.monthlyLimit") else 300
+  val pointsConversionMonthlyLimit: Int = config.getInt("karmaCoin.pointsConversion.monthlyLimit")
 
   val karmaCoinCacheTTLSeconds: Int =
     if (config.hasPath("karmaCoin.redis.cacheTtlSeconds")) config.getInt("karmaCoin.redis.cacheTtlSeconds") else 3600
@@ -212,6 +215,11 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   // COINS_REDEMPTION (C3): prefix for the `pendingEnrolment_<userId>_<contextId>` Redis status key -
   // see RedisUtil.setPendingEnrolmentStatus.
   val PENDING_ENROLMENT_PREFIX = "pendingEnrolment"
+  // JSON field name for the requested Karma Coin amount in the pendingEnrolment Redis value.
+  val PENDING_ENROLMENT_KARMA_COINS = "karmaCoins"
+  // TTL (seconds) applied to every pendingEnrolment Redis write (PENDING/FAILED) - mandatory,
+  // no default: a missing value fails job startup rather than silently guessing a TTL.
+  val pendingEnrolmentTTLSeconds: Int = config.getInt("karmaCoin.pendingEnrolment.ttlSeconds")
 
   val TOTAL_EARNED = "total_earned"
   val TOTAL_REDEEMED = "total_redeemed"
@@ -233,7 +241,9 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val ADDINFO_POINTS_CONVERTED = "pointsConverted"
   val ADDINFO_POINTS_USED = "pointsUsed"
   val ADDINFO_RATIO = "ratio"
-  val RATIO_ONE_TO_ONE = "1:1"
+  // Label only - written into transaction addinfo, never used in the points->coins calculation
+  // (see PointsConversionHandler.calculateCoins, which is independent of this value).
+  val pointsConversionRatio: String = config.getString("karmaCoin.pointsConversion.ratio")
 
   val ADDINFO_COURSE_NAME = "courseName"
   val ADDINFO_PROVIDER_NAME = "providerName"
