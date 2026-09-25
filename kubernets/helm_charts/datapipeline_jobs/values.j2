@@ -447,6 +447,7 @@ search-indexer:
       error.topic = "{{ env_name }}.learning.events.failed"
       output.trainingplan.topic = "{{ env_name }}.trainingplan.ca.events"
       groupId = "{{ env_name }}-search-indexer-group"
+      output.trainingplan.topic = "{{ env_name }}.trainingplan.ca.events"
     }
     task {
       consumer.parallelism = {{ search_indexer_consumer_parallelism }}
@@ -1591,7 +1592,7 @@ karma-points-processor-v2:
     kafka {
       input.topic = {{ env_name }}.karma.points.unified.v2.event
       failed.topic = {{ env_name }}.karma.points.unified.v2.failed
-      groupId = {{ env_name }}.-karma-points-processor-v2-group
+      groupId = {{ env_name }}-karma-points-processor-v2-group
       output.paid.course.enrolment.topic = {{ env_name }}.user.paid.course.enrolment
 
     }
