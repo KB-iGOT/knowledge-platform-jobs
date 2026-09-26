@@ -75,6 +75,10 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val courseTimeSpentQuotaKarmaPoints: Int = config.getInt("karmapoints.courseTimeSpentQuotaKarmaPoints")
   val verifiedProfileQuotaKarmaPoints: Int = config.getInt("karmapoints.verifiedProfileQuotaKarmaPoints")
   val engagementStreakQuotaKarmaPoints: Int = config.getInt("karmapoints.engagementStreakQuotaKarmaPoints")
+  val assessmentPassedQuotaKarmaPoints: Int = config.getInt("karmapoints.assessmentPassedQuotaKarmaPoints")
+  val assessmentHighScoreQuotaKarmaPoints: Int = config.getInt("karmapoints.assessmentHighScoreQuotaKarmaPoints")
+  val assessmentHighScoreThreshold: Double =
+    if (config.hasPath("karmapoints.assessmentHighScoreThreshold")) config.getDouble("karmapoints.assessmentHighScoreThreshold") else 75.0
   val enableKarmaPointsCapping: Boolean = if (config.hasPath("karmapoints.enableCapping")) config.getBoolean("karmapoints.enableCapping") else true
 
   // Metrics enablement
@@ -108,6 +112,9 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val EVENT_TYPE_COURSE_TIME_SPENT = "COURSE_TIME_SPENT"
   // Once-per-user karma-points award - see EngagementStreakHandler.
   val EVENT_TYPE_ENGAGEMENT_STREAK = "ENGAGEMENT_STREAK"
+  // Both handled by the same AssessmentHandler, independently dedup'd/awarded - see its class doc.
+  val EVENT_TYPE_ASSESSMENT_PASSED = "ASSESSMENT_PASSED"
+  val EVENT_TYPE_ASSESSMENT_HIGH_SCORE = "ASSESSMENT_HIGH_SCORE"
 
   val OPERATION_CREDIT = "CREDIT"
   val OPERATION_DEBIT = "DEBIT"
@@ -198,6 +205,8 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val OPERATION_TYPE_SURVEY_SUBMISSION = "SURVEY_SUBMISSION"
   val OPERATION_TYPE_COURSE_TIME_SPENT = "COURSE_TIME_SPENT"
   val OPERATION_TYPE_ENGAGEMENT_STREAK = "ENGAGEMENT_STREAK"
+  val OPERATION_TYPE_ASSESSMENT_PASSED = "ASSESSMENT_PASSED"
+  val OPERATION_TYPE_ASSESSMENT_HIGH_SCORE = "ASSESSMENT_HIGH_SCORE"
   val CONTEXT_TYPE_EVENT = "EVENT"
   val ADDINFO_ASSESSMENT = "ASSESSMENT"
   val ADDINFO_ACBP = "ACBP"
@@ -274,6 +283,11 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val ADDINFO_SURVEY_ID = "surveyId"
   val ADDINFO_START_DATE = "startDate"
   val ADDINFO_END_DATE = "endDate"
+  val ADDINFO_ASSESSMENT_STATUS = "assessment"
+  val ADDINFO_SCORE = "score"
+  val ADDINFO_ASSESSMENT_ID = "assessmentId"
+  val ASSESSMENT_STATUS_PASS = "PASS"
+  val ASSESSMENT_STATUS_HIGH_SCORE = "HIGH_SCORE"
 
   val ADDINFO_CREATED_AT = "createdAt"
   val ADDINFO_TARGET_TOTAL_EARNED = "targetTotalEarned"
