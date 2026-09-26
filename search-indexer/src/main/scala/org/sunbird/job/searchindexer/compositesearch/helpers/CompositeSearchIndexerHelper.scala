@@ -140,6 +140,13 @@ trait CompositeSearchIndexerHelper {
     val transactionData = message.getOrElse("transactionData", Map[String, Any]()).asInstanceOf[Map[String, Any]]
     val properties = transactionData.getOrElse("properties", Map[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
     val statusRetired = isRetiredStatus(properties)
+    // Only ignore image child nodes (identifier ending with .img) when the status change is a Retired
+    // event. This ensures .img nodes are considered for other operations but do not trigger
+    // trainingPlan REMOVE events on CA retire which were causing duplicates.
+    if (statusRetired && identifier != null && identifier.toLowerCase.endsWith(".img")) {
+      logger.debug(s"Skipping training plan events for image node identifier (retired): $identifier")
+      return List()
+    }
     val trainingPlanChange = properties.get(TRAINING_PLAN_V2) match {
       case Some(change: Map[_, _]) => Some(change.asInstanceOf[Map[String, AnyRef]])
       case _ => None
