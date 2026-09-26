@@ -605,4 +605,17 @@ class CassandraUtil(config: KarmaPointsV2Config, cassandraUtil: JobsCoreCassandr
     }
     metrics.incCounter(config.dbUpdateCount)
   }
+
+  /**
+   * Same as [[addToKarmaSummary]] but persists a caller-supplied `addInfo` on the summary row
+   * instead of leaving it unset - used by ENGAGEMENT_STREAK, whose summary row should reflect the
+   * most recently processed streak period (`{"startDate":...,"endDate":...}`), not any history of
+   * past periods. Reuses [[readSummary]]/[[updateUserKarmaPointsSummary]] unmodified; does not
+   * touch [[addToKarmaSummary]] itself, which other handlers rely on with its existing null-addInfo
+   * behavior.
+   */
+  def addToKarmaSummaryWithAddInfo(userId: String, points: Int, addInfo: String): Int = {
+    val (total, _) = readSummary(userId)
+    updateUserKarmaPointsSummary(userId, total + points, addInfo)
+  }
 }
