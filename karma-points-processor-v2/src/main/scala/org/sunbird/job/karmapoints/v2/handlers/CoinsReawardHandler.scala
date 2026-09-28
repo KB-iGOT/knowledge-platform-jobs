@@ -59,6 +59,7 @@ class CoinsReawardHandler(config: KarmaPointsV2Config, cassandraUtil: CassandraU
   private[v2] var lastHandledEvent: Option[UnifiedEvent] = None
 
   override protected def doHandle(event: UnifiedEvent)(implicit metrics: Metrics): Unit = {
+    redisUtil.refreshKarmaWalletBalanceTtl(event.dataString("userId"))
     // Reset before this event's own claim attempt, so a prior event's key can never leak into
     // this event's exception-cleanup decision (see EventHandler.lastClaimedDedupKey's doc).
     lastClaimedDedupKey = None

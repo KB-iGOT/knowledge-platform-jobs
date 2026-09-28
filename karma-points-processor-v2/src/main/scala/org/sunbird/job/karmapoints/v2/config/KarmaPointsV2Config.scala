@@ -131,6 +131,24 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
 
   val KARMA_COIN_CONVERT_LOCK_PREFIX = "CB_EXT_karmaCoinConvertLock"
 
+  // enrollment-service-owned Redis key (karmaWalletBalance_<userId>, on pendingEnrolmentCacheDbId
+  // to match that service's spring.redis.index) - this job only ever touches its VALUE for
+  // POINTS_CONVERSION credits (the one credit path enrollment-service has zero visibility into;
+  // COINS_REDEMPTION/COINS_REAWARD never touch the value, enrollment-service already applies both
+  // itself) and refreshes its TTL (value untouched) at the start of processing any of the three
+  // event types, so the TTL enrollment-service set at seed time doesn't lapse purely because this
+  // job took a while to pick an event up. Default 300s matches enrollment-service's own default
+  // (karma.wallet.cache.ttl.seconds) - must be kept in sync with that value, not just this default.
+  val karmaWalletBalanceCacheTTLSeconds: Int =
+    if (config.hasPath("karmaCoin.walletBalance.ttlSeconds")) config.getInt("karmaCoin.walletBalance.ttlSeconds") else 300
+  val KARMA_WALLET_BALANCE_PREFIX = "karmaWalletBalance"
+  // Job-internal only (never read by enrollment-service): guards RedisUtil.creditKarmaWalletBalance
+  // against double-incrementing the same confirmed credit if PointsConversionHandler.applyConversionPlan
+  // ever re-runs for an already-frozen plan (crash-and-resume) - unlike every other write in that
+  // method, a bare INCRBY is not naturally idempotent under replay. Reuses karmaCoinRequestClaimTTLSeconds
+  // as its TTL - no new "how long to remember this claim" value needed.
+  val KARMA_WALLET_BALANCE_CREDIT_CLAIM_PREFIX = "karmaWalletBalanceCredited"
+
   val pointsConversionDedupEnabled: Boolean =
     if (config.hasPath("karmaCoin.redis.pointsConversionDedupEnabled"))
       config.getBoolean("karmaCoin.redis.pointsConversionDedupEnabled")
