@@ -115,7 +115,7 @@ class CourseCompletionHandler(config: KarmaPointsV2Config, cassandraUtil: Cassan
       config.courseCompletionQuotaKarmaPoints
     }
 
-    val assessmentIdentifier = cassandraUtil.doesAssessmentExistInHierarchy(hierarchy)
+    /*val assessmentIdentifier = cassandraUtil.doesAssessmentExistInHierarchy(hierarchy)
     if (StringUtils.isNotEmpty(assessmentIdentifier)) {
       val assessmentResponse = cassandraUtil.fetchUserAssessmentResult(userId, assessmentIdentifier)
       var passed = false
@@ -128,8 +128,14 @@ class CourseCompletionHandler(config: KarmaPointsV2Config, cassandraUtil: Cassan
       }
       addInfoMap.put(config.ADDINFO_ASSESSMENT, java.lang.Boolean.TRUE)
       addInfoMap.put(config.ADDINFO_ASSESSMENT_PASS, java.lang.Boolean.valueOf(passed))
-      if (passed) points += config.assessmentQuotaKarmaPoints
-    }
+      if (passed) {
+        points += config.assessmentQuotaKarmaPoints
+        logger.info(
+          s"Final assessment Karma Points awarded: userId=$userId, courseId=$courseId, " +
+            s"assessmentId=$assessmentIdentifier, points=${config.assessmentQuotaKarmaPoints}"
+        )
+      }
+    }*/
 
     if (StringUtils.isNotEmpty(acbpExpiry)) {
       nonACBPCount = 0
