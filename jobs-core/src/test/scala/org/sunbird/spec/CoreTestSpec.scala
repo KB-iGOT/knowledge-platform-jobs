@@ -110,6 +110,32 @@ class CoreTestSpec extends BaseSpec with Matchers with MockitoSugar {
   }
 
 
+  "DataCache incrByIfExistsWithRetry function" should "increment only an existing key, and not create it otherwise" in {
+    val redisConnection = new RedisConnect(baseConfig)
+    val dataCache = new DataCache(baseConfig, redisConnection, 5, List())
+    dataCache.init()
+
+    dataCache.incrByIfExistsWithRetry("counter_missing", 10) should be(None)
+    redisConnection.getConnection(5).exists("counter_missing").booleanValue() should be(false)
+
+    redisConnection.getConnection(5).set("counter_present", "100")
+    dataCache.incrByIfExistsWithRetry("counter_present", 25) should be(Some(125L))
+    redisConnection.getConnection(5).get("counter_present") should equal("125")
+  }
+
+  "DataCache expireIfExistsWithRetry function" should "refresh the TTL only on an existing key, and not create it otherwise" in {
+    val redisConnection = new RedisConnect(baseConfig)
+    val dataCache = new DataCache(baseConfig, redisConnection, 5, List())
+    dataCache.init()
+
+    dataCache.expireIfExistsWithRetry("ttl_missing", 60) should be(false)
+    redisConnection.getConnection(5).exists("ttl_missing").booleanValue() should be(false)
+
+    redisConnection.getConnection(5).set("ttl_present", "value")
+    dataCache.expireIfExistsWithRetry("ttl_present", 120) should be(true)
+    (redisConnection.getConnection(5).ttl("ttl_present") > 0) should be(true)
+  }
+
   "FilnkUtil" should "get the flink util context" in {
     val config = ConfigFactory.empty()
     config.entrySet()

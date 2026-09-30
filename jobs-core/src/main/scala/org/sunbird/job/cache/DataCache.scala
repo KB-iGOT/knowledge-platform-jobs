@@ -170,6 +170,28 @@ class DataCache(val config: BaseJobConfig, val redisConnect: RedisConnect, val d
     redisConnection.set(key, value)
   }
 
+  /**
+   * Atomic set-if-absent with TTL (Redis `SET key value NX EX ttlSeconds`), for callers that need
+   * a distributed claim rather than an unconditional mirror-write. Returns true if this call set
+   * the key (it did not previously exist); false if the key already existed (NX prevented the
+   * write - Jedis returns null in that case).
+   */
+  def setIfAbsentWithTTL(key: String, value: String, ttlSeconds: Int): Boolean = {
+    try {
+      setIfAbsent(key, value, ttlSeconds)
+    } catch {
+      case ex: JedisException =>
+        logger.error("Exception when set-if-absent to redis cache", ex)
+        close()
+        this.redisConnection = redisConnect.getConnection(dbIndex)
+        setIfAbsent(key, value, ttlSeconds)
+    }
+  }
+
+  private def setIfAbsent(key: String, value: String, ttlSeconds: Int): Boolean = {
+    redisConnection.set(key, value, "NX", "EX", ttlSeconds.toLong) != null
+  }
+
   def sMembers(key: String): util.Set[String] = {
     redisConnection.smembers(key)
   }
@@ -374,6 +396,54 @@ class DataCache(val config: BaseJobConfig, val redisConnect: RedisConnect, val d
             0L
         }
     }
+  }
+
+  /**
+   * Atomic increment (Redis INCRBY), but only if the key currently exists - used to credit back a
+   * cache-mirrored balance without ever creating/reviving a key that isn't there (e.g. because it
+   * already expired). Returns the post-increment value, or None if the key didn't exist (no write
+   * happened).
+   */
+  def incrByIfExistsWithRetry(key: String, delta: Long): Option[Long] = {
+    try {
+      incrByIfExists(key, delta)
+    } catch {
+      case ex: JedisException =>
+        logger.error("Exception when incrementing key in redis cache", ex)
+        close()
+        this.redisConnection = redisConnect.getConnection(dbIndex)
+        incrByIfExists(key, delta)
+    }
+  }
+
+  private def incrByIfExists(key: String, delta: Long): Option[Long] = {
+    if (redisConnection.exists(key)) {
+      Some(redisConnection.incrBy(key, delta))
+    } else {
+      None
+    }
+  }
+
+  /**
+   * Refreshes a key's TTL without touching its value (Redis EXPIRE) - used to keep a key alive
+   * while something for it is still being actively processed, so a fixed TTL set at seed time
+   * doesn't lapse out from under still-outstanding work. Returns false (a no-op) if the key
+   * doesn't exist - EXPIRE returns 0 in that case rather than creating the key.
+   */
+  def expireIfExistsWithRetry(key: String, ttlSeconds: Int): Boolean = {
+    try {
+      expireIfExists(key, ttlSeconds)
+    } catch {
+      case ex: JedisException =>
+        logger.error("Exception when refreshing TTL for key in redis cache", ex)
+        close()
+        this.redisConnection = redisConnect.getConnection(dbIndex)
+        expireIfExists(key, ttlSeconds)
+    }
+  }
+
+  private def expireIfExists(key: String, ttlSeconds: Int): Boolean = {
+    redisConnection.expire(key, ttlSeconds) == 1L
   }
 }
 

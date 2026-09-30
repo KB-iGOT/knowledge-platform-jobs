@@ -11,6 +11,8 @@ import scala.collection.JavaConverters._
 trait CompositeSearchIndexerHelper {
 
   private[this] val logger = LoggerFactory.getLogger(classOf[CompositeSearchIndexerHelper])
+  private val COMPREHENSIVE_ASSESSMENT = "Comprehensive Assessment"
+  private val TRAINING_PLAN_V2 = "trainingPlan_v2"
 
   def createCompositeSearchIndex()(esUtil: ElasticSearchUtil): Boolean = {
     val settings = """{"max_ngram_diff":"29","mapping":{"total_fields":{"limit":"1500"}},"analysis":{"filter":{"mynGram":{"token_chars":["letter","digit","whitespace","punctuation","symbol"],"min_gram":"1","type":"nGram","max_gram":"30"}},"analyzer":{"cs_index_analyzer":{"filter":["lowercase","mynGram"],"type":"custom","tokenizer":"standard"},"keylower":{"filter":"lowercase","tokenizer":"keyword"},"cs_search_analyzer":{"filter":["standard","lowercase"],"type":"custom","tokenizer":"standard"}}}}"""
@@ -88,7 +90,11 @@ trait CompositeSearchIndexerHelper {
     esUtil.addDocument(identifier, jsonIndexDocument)
   }
 
-  def processESMessage(compositeObject: CompositeIndexer)(esUtil: ElasticSearchUtil, defCache: DefinitionCache): Unit = {
+  /**
+   * Processes the event against ES and returns the training plan events (serialized JSON) to be published to Kafka.
+   * Non-empty only for UPDATE of a "Comprehensive Assessment" whose trainingPlan_v2 changed.
+   */
+  def processESMessage(compositeObject: CompositeIndexer)(esUtil: ElasticSearchUtil, defCache: DefinitionCache): List[String] = {
     val definition = defCache.getDefinition(compositeObject.objectType, compositeObject.getVersionAsString(), compositeObject.getDefinitionBasePath())
 
     val compositeMap = compositeObject.message.asScala.toMap
@@ -96,7 +102,7 @@ trait CompositeSearchIndexerHelper {
   }
 
 
-  private def upsertDocument(identifier: String, message: Map[String, Any], definition: ObjectDefinition, nestedFields: List[String], ignoredFields: List[String])(esUtil: ElasticSearchUtil): Unit = {
+  private def upsertDocument(identifier: String, message: Map[String, Any], definition: ObjectDefinition, nestedFields: List[String], ignoredFields: List[String])(esUtil: ElasticSearchUtil): List[String] = {
     val operationType = message.getOrElse("operationType", "").asInstanceOf[String]
     logger.debug("The message is" + ScalaJsonUtil.serialize(message))
     operationType match {
@@ -104,20 +110,112 @@ trait CompositeSearchIndexerHelper {
         val indexDocument = getIndexDocument(message, false, definition, nestedFields, ignoredFields)(esUtil)
         val jsonIndexDocument = ScalaJsonUtil.serialize(indexDocument)
         upsertDocument(identifier, jsonIndexDocument)(esUtil)
+        List()
       case "UPDATE" =>
         val indexDocument = getIndexDocument(message, true, definition, nestedFields, ignoredFields)(esUtil)
         val jsonIndexDocument = ScalaJsonUtil.serialize(indexDocument)
         upsertDocument(identifier, jsonIndexDocument)(esUtil)
+        getTrainingPlanEvents(identifier, indexDocument, message)
       case "DELETE" =>
         val id = message.getOrElse("nodeUniqueId", "").asInstanceOf[String]
         val indexDocument = getIndexDocument(id)(esUtil)
         val visibility = indexDocument.getOrElse("visibility", "").asInstanceOf[String]
         if (StringUtils.equalsIgnoreCase("Parent", visibility)) logger.info(s"Not deleting the document (visibility: Parent) with ID: $id")
         else esUtil.deleteDocument(identifier)
+        List()
       case _ =>
         logger.info(s"Unknown Operation Type : $operationType for the identifier: $identifier.")
+        List()
     }
   }
+
+  /**
+   * For a "Comprehensive Assessment" whose event carries a trainingPlan_v2 change, builds the
+   * REMOVE (for ov) and ADD (for nv) training plan events, in that order.
+   */
+  def getTrainingPlanEvents(identifier: String, indexDocument: Map[String, AnyRef], message: Map[String, Any]): List[String] = {
+    val courseCategory = indexDocument.getOrElse("courseCategory", "").asInstanceOf[String]
+    if (!StringUtils.equalsIgnoreCase(COMPREHENSIVE_ASSESSMENT, courseCategory)) return List()
+
+    val transactionData = message.getOrElse("transactionData", Map[String, Any]()).asInstanceOf[Map[String, Any]]
+    val properties = transactionData.getOrElse("properties", Map[String, AnyRef]()).asInstanceOf[Map[String, AnyRef]]
+    val statusRetired = isRetiredStatus(properties)
+    // Only ignore image child nodes (identifier ending with .img) when the status change is a Retired
+    // event. This ensures .img nodes are considered for other operations but do not trigger
+    // trainingPlan REMOVE events on CA retire which were causing duplicates.
+    if (statusRetired && identifier != null && identifier.toLowerCase.endsWith(".img")) {
+      logger.debug(s"Skipping training plan events for image node identifier (retired): $identifier")
+      return List()
+    }
+    val trainingPlanChange = properties.get(TRAINING_PLAN_V2) match {
+      case Some(change: Map[_, _]) => Some(change.asInstanceOf[Map[String, AnyRef]])
+      case _ => None
+    }
+
+    val oldPlanId = trainingPlanChange match {
+      case Some(changeMap) => getTrainingPlanId(identifier, "ov", changeMap.getOrElse("ov", null))
+      case None if statusRetired => getTrainingPlanIdFromDocument(indexDocument)
+      case _ => None
+    }
+    val newPlanId = trainingPlanChange match {
+      case Some(changeMap) => getTrainingPlanId(identifier, "nv", changeMap.getOrElse("nv", null))
+      case _ => None
+    }
+
+    if (oldPlanId.nonEmpty && oldPlanId == newPlanId) {
+      logger.error(s"trainingPlan_v2 ov and nv have the same identifier ${oldPlanId.get} for $identifier. Skipping training plan events.")
+      List()
+    } else if (oldPlanId.nonEmpty && (statusRetired || newPlanId.nonEmpty)) {
+      oldPlanId.map(trainingPlanEvent("REMOVE", _, identifier)).toList ++ newPlanId.map(trainingPlanEvent("ADD", _, identifier)).toList
+    } else {
+      newPlanId.map(trainingPlanEvent("ADD", _, identifier)).toList
+    }
+  }
+
+  private def isRetiredStatus(properties: Map[String, AnyRef]): Boolean = {
+    properties.get("status") match {
+      case Some(change: Map[_, _]) =>
+        val statusMap = change.asInstanceOf[Map[String, AnyRef]]
+        StringUtils.equalsIgnoreCase(statusMap.getOrElse("nv", "").toString, "Retired")
+      case _ => false
+    }
+  }
+
+  private def getTrainingPlanIdFromDocument(indexDocument: Map[String, AnyRef]): Option[String] = {
+    val planValue = indexDocument.getOrElse(TRAINING_PLAN_V2, null)
+    if (planValue == null) None
+    else getTrainingPlanId("ca", "current", planValue.asInstanceOf[AnyRef])
+  }
+
+  private def getTrainingPlanId(identifier: String, key: String, value: AnyRef): Option[String] = {
+    if (value == null) return None
+    val plan: Map[String, AnyRef] = value match {
+      case str: String =>
+        if (str.trim.isEmpty) {
+          logger.error(s"trainingPlan_v2 $key is empty for $identifier. Skipping.")
+          return None
+        }
+        try ScalaJsonUtil.deserialize[Map[String, AnyRef]](str)
+        catch {
+          case ex: Exception =>
+            logger.error(s"Unable to parse trainingPlan_v2 $key for $identifier. Skipping.", ex)
+            return None
+        }
+      case map: Map[_, _] => map.asInstanceOf[Map[String, AnyRef]]
+      case other =>
+        logger.error(s"Unexpected trainingPlan_v2 $key type ${other.getClass.getName} for $identifier. Skipping.")
+        return None
+    }
+    plan.getOrElse("identifier", null) match {
+      case id: String if id.trim.nonEmpty => Some(id)
+      case _ =>
+        logger.error(s"trainingPlan_v2 $key has no identifier for $identifier. Skipping.")
+        None
+    }
+  }
+
+  private def trainingPlanEvent(eventType: String, trainingPlanId: String, caIdentifier: String): String =
+    ScalaJsonUtil.serialize(Map("eventType" -> eventType, "trainingPlanId" -> trainingPlanId, "caIdentifier" -> caIdentifier))
 
   private def addMetadataToDocument(propertyName: String, propertyValue: AnyRef, nestedFields: List[String]): AnyRef = {
     val propertyNewValue = if (nestedFields.contains(propertyName)) ScalaJsonUtil.deserialize[AnyRef](propertyValue.asInstanceOf[String]) else propertyValue

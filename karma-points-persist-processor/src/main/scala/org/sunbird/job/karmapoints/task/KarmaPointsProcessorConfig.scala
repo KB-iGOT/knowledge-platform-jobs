@@ -16,6 +16,7 @@ class KarmaPointsProcessorConfig(override val config: Config) extends BaseJobCon
   val kafkaInputFirstEnrolmentTopic: String = config.getString("kafka.input.first.enrolment.topic")
   val kafkaInputClaimACBPTopic: String = config.getString("kafka.input.claim.acbp.karma.points.topic")
   val kafkaInputEventAttendedTopic: String = config.getString("kafka.input.event.attended.topic")
+  val kafkaInputUnenrolmentTopic: String = config.getString("kafka.input.unenrolment.topic")
 
   val karmaPointsRatingPersistProcessorConsumer: String = "karma-points-rating-persist-consumer"
   val karmaPointsCourseCompletionPersistProcessorConsumer: String = "karma-points-course-completion-persist-consumer"
@@ -23,6 +24,7 @@ class KarmaPointsProcessorConfig(override val config: Config) extends BaseJobCon
   val karmaPointsFirstEnrolmentPersistProcessorConsumer: String = "karma-points-first-enrolment-persist-processor-consumer"
   val karmaPointsClaimACBPPersistProcessorConsumer: String = "karma-points-acbp-claim-karma-points-persist-processor-consumer"
   val karmaPointsEventAttendedPersistProcessorConsumer: String = "karma-points-event-persist-consumer"
+  val karmaPointsUnenrolmentPersistProcessorConsumer: String = "karma-points-unenrolment-persist-processor-consumer"
 
 
   override val kafkaConsumerParallelism: Int = config.getInt("task.consumer.parallelism")
@@ -137,6 +139,12 @@ class KarmaPointsProcessorConfig(override val config: Config) extends BaseJobCon
   val ADDINFO_COURSENAME="COURSENAME"
   val ADDINFO_ASSESSMENT_PASS="ASSESSMENT_PASS"
   val ADDINFO_EVENTNAME="EVENTNAME"
+  val ADDINFO_UNENROLMENT="UNENROLMENT"
+  val ADDINFO_REENROLMENT="REENROLMENT"
+
+  val EVENT_USERID = "edata.userIds"
+  val EVENT_COURSEID = "edata.courseId"
+  val EVENT_BATCHID = "edata.batchId"
   val EVENT = "event"
   val NAME = "name"
 

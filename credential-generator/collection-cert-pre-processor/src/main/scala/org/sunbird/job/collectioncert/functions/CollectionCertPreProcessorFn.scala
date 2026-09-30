@@ -12,7 +12,7 @@ import org.sunbird.job.cache.{DataCache, RedisConnect}
 import org.sunbird.job.collectioncert.domain.Event
 import org.sunbird.job.collectioncert.task.CollectionCertPreProcessorConfig
 import org.sunbird.job.exception.InvalidEventException
-import org.sunbird.job.util.{CassandraUtil, HttpUtil}
+import org.sunbird.job.util.{CassandraUtil, HttpUtil, ScalaJsonUtil}
 import org.sunbird.job.{BaseProcessKeyedFunction, Metrics}
 
 import java.util.UUID
