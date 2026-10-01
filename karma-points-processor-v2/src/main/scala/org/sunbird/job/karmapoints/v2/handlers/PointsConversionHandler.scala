@@ -440,8 +440,8 @@ class PointsConversionHandler(config: KarmaPointsV2Config, cassandraUtil: Cassan
    * much of it a previous attempt already completed, so no probing/branching on which step was
    * already done is needed.
    *
-   * For POINTS_CONVERSION only: deletes the Redis conversion lock key
-   * (CB_EXT_karmaCoinConvertLock:<userId>:<contextId>) after the lookup status is successfully
+   * For POINTS_CONVERSION only: deletes this request's field (contextId) from the Redis conversion
+   * lock hash (CB_EXT_karmaCoinConvertLock:<userId>) after the lookup status is successfully
    * persisted as COMPLETED, ensuring idempotent cleanup.
    */
   private[v2] def applyConversionPlan(request: PointsConversionRequest, plan: ConversionPlan)(implicit metrics: Metrics): Unit = {
@@ -476,7 +476,7 @@ class PointsConversionHandler(config: KarmaPointsV2Config, cassandraUtil: Cassan
     // RedisUtil.creditKarmaWalletBalance's doc.
     redisUtil.creditKarmaWalletBalance(request.userId, plan.transactionId, calculateCoins(request.pointsToConvert))
 
-    // Delete the Redis conversion lock key after successful POINTS_CONVERSION completion
+    // Delete this request's field from the Redis conversion lock hash after successful POINTS_CONVERSION completion
     redisUtil.deleteKarmaCoinConvertLock(request.userId, request.contextId)
     logger.info(
       s"POINTS_CONVERSION completed, userId=${request.userId}, " +
