@@ -67,6 +67,7 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val assessmentQuotaKarmaPoints: Int = config.getInt("karmapoints.assessmentQuotaKarmaPoints")
   val ratingQuotaKarmaPoints: Int = config.getInt("karmapoints.ratingQuotaKarmaPoints")
   val firstLoginQuotaKarmaPoints: Int = config.getInt("karmapoints.firstLoginQuotaKarmaPoints")
+  val firstLoginMobileQuotaKarmaPoints: Int = config.getInt("karmapoints.firstLoginMobileQuotaKarmaPoints")
   val firstEnrolmentQuotaKarmaPoints: Int = config.getInt("karmapoints.firstEnrolmentQuotaKarmaPoints")
   val nonAcbpCourseQuota: Int = config.getInt("karmapoints.nonAcbpCourseQuota")
   val eventQuotaKarmaPoints: Int = config.getInt("karmapoints.eventQuotaKarmaPoints")
@@ -89,6 +90,8 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val EVENT_TYPE_RATING = "RATING"
   val EVENT_TYPE_FIRST_ENROLMENT = "FIRST_ENROLMENT"
   val EVENT_TYPE_FIRST_LOGIN = "FIRST_LOGIN"
+  // Same FirstLoginHandler as FIRST_LOGIN, independently dedup'd/awarded - see its class doc.
+  val EVENT_TYPE_FIRST_LOGIN_MOBILE = "FIRST_LOGIN_MOBILE"
   val EVENT_TYPE_ACBP_CLAIM = "ACBP_CLAIM"
   val EVENT_TYPE_EVENT_ATTENDED = "EVENT_ATTENDED"
   val EVENT_TYPE_UNENROLMENT = "UNENROLMENT"
@@ -214,6 +217,7 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val PASS = "pass"
   val OPERATION_TYPE_RATING = "RATING"
   val OPERATION_TYPE_FIRST_LOGIN = "FIRST_LOGIN"
+  val OPERATION_TYPE_FIRST_LOGIN_MOBILE = "FIRST_LOGIN_MOBILE"
   val OPERATION_TYPE_ENROLMENT = "FIRST_ENROLMENT"
   val OPERATION_COURSE_COMPLETION = "COURSE_COMPLETION"
   val OPERATION_LEARNING_PATHWAY_COMPLETION = "LEARNING_PATHWAY_COMPLETION"
@@ -306,6 +310,9 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val ADDINFO_ASSESSMENT_ID = "assessmentId"
   val ASSESSMENT_STATUS_PASS = "PASS"
   val ASSESSMENT_STATUS_HIGH_SCORE = "HIGH_SCORE"
+  // FIRST_LOGIN_MOBILE optional fields - both omitted from addinfo when absent from the event.
+  val ADDINFO_DEVICE_TYPE = "deviceType"
+  val ADDINFO_FIRST_LOGIN = "first_login"
 
   val ADDINFO_CREATED_AT = "createdAt"
   val ADDINFO_TARGET_TOTAL_EARNED = "targetTotalEarned"
