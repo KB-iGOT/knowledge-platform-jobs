@@ -1200,6 +1200,7 @@ content-publish:
     "Curated Program": 5
     "Comprehensive Assessment Program": 5
     "Multilingual Course": 5
+    "Comprehensive Assessment": 6
     }
 
     defaultCompatibilityLevel = 4
@@ -1591,7 +1592,7 @@ karma-points-processor-v2:
     kafka {
       input.topic = {{ env_name }}.karma.points.unified.v2.event
       failed.topic = {{ env_name }}.karma.points.unified.v2.failed
-      groupId = {{ env_name }}.-karma-points-processor-v2-group
+      groupId = {{ env_name }}-karma-points-processor-v2-group
       output.paid.course.enrolment.topic = {{ env_name }}.user.paid.course.enrolment
 
     }
@@ -1639,13 +1640,20 @@ karma-points-processor-v2:
     }
     karmaCoin {
       pointsConversion {
-      monthlyLimit = 300
-      ratio = "1:1"
+        monthlyLimit = 300
+        ratio = "1:1"
+      }
+      pendingEnrolment {
+          ttlSeconds = 5
+      }
+      walletBalance.ttlSeconds = 300
     }
+    
     transactionId {
-    length = 12
-    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+      length = 12
+      alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     }
+    
     redis {
       database {
         relationCache.id = 6
@@ -1658,14 +1666,13 @@ karma-points-processor-v2:
         releaseDedupOnException = true
       }
     }
-    }
+    
     redis {
       database {
         karmaPointCache.id = 0
-        # Dedicated Redis logical DB for the pendingEnrolment_<userId>_<contextId> key only
-        # (RedisUtil.setPendingEnrolmentStatus). Every other Redis operation stays on karmaPointCache.id.
         pendingEnrolmentCache.id = 1
       }
+      
       host = {{ dp_redis_host }}
       port = 6379
       cache.ttl.seconds = 259200

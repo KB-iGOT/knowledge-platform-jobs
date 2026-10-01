@@ -72,6 +72,10 @@ class PointsConversionHandler(config: KarmaPointsV2Config, cassandraUtil: Cassan
   private[v2] var lastHandledEvent: Option[UnifiedEvent] = None
 
   override protected def doHandle(event: UnifiedEvent)(implicit metrics: Metrics): Unit = {
+    // As early as possible - before validation, before any Cassandra work - so enrollment-service's
+    // karmaWalletBalance_<userId> TTL is refreshed the moment this job starts actively working on
+    // something for this user, not after. See RedisUtil.refreshKarmaWalletBalanceTtl's doc.
+    redisUtil.refreshKarmaWalletBalanceTtl(event.dataString("userId"))
     // Reset before this event's own claim attempt, so a prior event's key can never leak into
     // this event's exception-cleanup decision (see EventHandler.lastClaimedDedupKey's doc).
     lastClaimedDedupKey = None
@@ -465,6 +469,12 @@ class PointsConversionHandler(config: KarmaPointsV2Config, cassandraUtil: Cassan
 
     redisUtil.setKarmaCoinWallet(request.userId, plan.targetTotalEarned, plan.targetTotalRedeemed,
       plan.targetYearMonth, plan.targetPointsConverted)
+
+    // Credits enrollment-service's karmaWalletBalance_<userId> cache by the exact coins just
+    // confirmed - the one credit path that service has zero visibility into otherwise. Guarded
+    // against double-applying on a crash-and-resume replay of this same plan; see
+    // RedisUtil.creditKarmaWalletBalance's doc.
+    redisUtil.creditKarmaWalletBalance(request.userId, plan.transactionId, calculateCoins(request.pointsToConvert))
 
     // Delete the Redis conversion lock key after successful POINTS_CONVERSION completion
     redisUtil.deleteKarmaCoinConvertLock(request.userId, request.contextId)

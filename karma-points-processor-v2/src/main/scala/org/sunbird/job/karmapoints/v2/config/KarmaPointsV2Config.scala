@@ -67,6 +67,7 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val assessmentQuotaKarmaPoints: Int = config.getInt("karmapoints.assessmentQuotaKarmaPoints")
   val ratingQuotaKarmaPoints: Int = config.getInt("karmapoints.ratingQuotaKarmaPoints")
   val firstLoginQuotaKarmaPoints: Int = config.getInt("karmapoints.firstLoginQuotaKarmaPoints")
+  val firstLoginMobileQuotaKarmaPoints: Int = config.getInt("karmapoints.firstLoginMobileQuotaKarmaPoints")
   val firstEnrolmentQuotaKarmaPoints: Int = config.getInt("karmapoints.firstEnrolmentQuotaKarmaPoints")
   val nonAcbpCourseQuota: Int = config.getInt("karmapoints.nonAcbpCourseQuota")
   val eventQuotaKarmaPoints: Int = config.getInt("karmapoints.eventQuotaKarmaPoints")
@@ -89,6 +90,8 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val EVENT_TYPE_RATING = "RATING"
   val EVENT_TYPE_FIRST_ENROLMENT = "FIRST_ENROLMENT"
   val EVENT_TYPE_FIRST_LOGIN = "FIRST_LOGIN"
+  // Same FirstLoginHandler as FIRST_LOGIN, independently dedup'd/awarded - see its class doc.
+  val EVENT_TYPE_FIRST_LOGIN_MOBILE = "FIRST_LOGIN_MOBILE"
   val EVENT_TYPE_ACBP_CLAIM = "ACBP_CLAIM"
   val EVENT_TYPE_EVENT_ATTENDED = "EVENT_ATTENDED"
   val EVENT_TYPE_UNENROLMENT = "UNENROLMENT"
@@ -102,10 +105,11 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   // Simple one-time-per-user credit-lookup marker (no karma points awarded, no context) - see
   // VerifiedProfileHandler.
   val EVENT_TYPE_VERIFIED_PROFILE = "VERIFIED_PROFILE"
-  // One-time SELF_REGISTRATION karma-points award - see SelfRegistrationHandler. eventType literal
-  // differs from OPERATION_TYPE_SELF_REGISTRATION below by design - only the incoming Kafka
-  // eventType changed, the Cassandra operation_type/business identity stayed SELF_REGISTRATION.
-  val EVENT_TYPE_SELF_REGISTRATION = "SELF_REGISTRATION_KARMA_POINT"
+  // One-time-per-user karma-points award, one of three registration event types all handled by
+  // the same RegistrationHandler - see its class doc.
+  val EVENT_TYPE_SELF_REGISTRATION = "SELF_REGISTRATION"
+  val EVENT_TYPE_CUSTOM_REGISTRATION = "CUSTOM_REGISTRATION"
+  val EVENT_TYPE_BULK_REGISTRATION = "BULK_REGISTRATION"
   // Once-per-user-per-course karma-points award - see SurveySubmissionHandler.
   val EVENT_TYPE_SURVEY_SUBMISSION = "SURVEY_SUBMISSION"
   // Once-per-user-per-course karma-points award - see CourseTimeSpentHandler.
@@ -130,6 +134,24 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
     if (config.hasPath("karmaCoin.redis.requestClaimTtlSeconds")) config.getInt("karmaCoin.redis.requestClaimTtlSeconds") else 14400
 
   val KARMA_COIN_CONVERT_LOCK_PREFIX = "CB_EXT_karmaCoinConvertLock"
+
+  // enrollment-service-owned Redis key (karmaWalletBalance_<userId>, on pendingEnrolmentCacheDbId
+  // to match that service's spring.redis.index) - this job only ever touches its VALUE for
+  // POINTS_CONVERSION credits (the one credit path enrollment-service has zero visibility into;
+  // COINS_REDEMPTION/COINS_REAWARD never touch the value, enrollment-service already applies both
+  // itself) and refreshes its TTL (value untouched) at the start of processing any of the three
+  // event types, so the TTL enrollment-service set at seed time doesn't lapse purely because this
+  // job took a while to pick an event up. Default 300s matches enrollment-service's own default
+  // (karma.wallet.cache.ttl.seconds) - must be kept in sync with that value, not just this default.
+  val karmaWalletBalanceCacheTTLSeconds: Int =
+    if (config.hasPath("karmaCoin.walletBalance.ttlSeconds")) config.getInt("karmaCoin.walletBalance.ttlSeconds") else 300
+  val KARMA_WALLET_BALANCE_PREFIX = "karmaWalletBalance"
+  // Job-internal only (never read by enrollment-service): guards RedisUtil.creditKarmaWalletBalance
+  // against double-incrementing the same confirmed credit if PointsConversionHandler.applyConversionPlan
+  // ever re-runs for an already-frozen plan (crash-and-resume) - unlike every other write in that
+  // method, a bare INCRBY is not naturally idempotent under replay. Reuses karmaCoinRequestClaimTTLSeconds
+  // as its TTL - no new "how long to remember this claim" value needed.
+  val KARMA_WALLET_BALANCE_CREDIT_CLAIM_PREFIX = "karmaWalletBalanceCredited"
 
   val pointsConversionDedupEnabled: Boolean =
     if (config.hasPath("karmaCoin.redis.pointsConversionDedupEnabled"))
@@ -196,12 +218,15 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val PASS = "pass"
   val OPERATION_TYPE_RATING = "RATING"
   val OPERATION_TYPE_FIRST_LOGIN = "FIRST_LOGIN"
+  val OPERATION_TYPE_FIRST_LOGIN_MOBILE = "FIRST_LOGIN_MOBILE"
   val OPERATION_TYPE_ENROLMENT = "FIRST_ENROLMENT"
   val OPERATION_COURSE_COMPLETION = "COURSE_COMPLETION"
   val OPERATION_LEARNING_PATHWAY_COMPLETION = "LEARNING_PATHWAY_COMPLETION"
   val OPERATION_TYPE_EVENT = "EVENT_ATTENDED"
   val OPERATION_TYPE_VERIFIED_PROFILE = "VERIFIED_PROFILE"
   val OPERATION_TYPE_SELF_REGISTRATION = "SELF_REGISTRATION"
+  val OPERATION_TYPE_CUSTOM_REGISTRATION = "CUSTOM_REGISTRATION"
+  val OPERATION_TYPE_BULK_REGISTRATION = "BULK_REGISTRATION"
   val OPERATION_TYPE_SURVEY_SUBMISSION = "SURVEY_SUBMISSION"
   val OPERATION_TYPE_COURSE_TIME_SPENT = "COURSE_TIME_SPENT"
   val OPERATION_TYPE_ENGAGEMENT_STREAK = "ENGAGEMENT_STREAK"
@@ -288,6 +313,10 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val ADDINFO_ASSESSMENT_ID = "assessmentId"
   val ASSESSMENT_STATUS_PASS = "PASS"
   val ASSESSMENT_STATUS_HIGH_SCORE = "HIGH_SCORE"
+  // FIRST_LOGIN_MOBILE optional fields - both omitted from addinfo when absent from the event.
+  val ADDINFO_DEVICE_TYPE = "deviceType"
+  val ADDINFO_FIRST_LOGIN = "first_login"
+  val ADDINFO_REGISTRATION_TYPE = "registrationType"
 
   val ADDINFO_CREATED_AT = "createdAt"
   val ADDINFO_TARGET_TOTAL_EARNED = "targetTotalEarned"

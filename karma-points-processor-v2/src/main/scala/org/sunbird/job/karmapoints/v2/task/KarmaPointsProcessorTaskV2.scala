@@ -76,12 +76,13 @@ class KarmaPointsKeySelector(config: KarmaPointsV2Config) extends KeySelector[Un
   override def getKey(event: UnifiedEvent): String = event.eventType match {
     case config.EVENT_TYPE_RATING | config.EVENT_TYPE_EVENT_ATTENDED => event.dataString("user_id")
     case config.EVENT_TYPE_FIRST_ENROLMENT | config.EVENT_TYPE_ACBP_CLAIM => event.dataEdataString("userId")
-    case config.EVENT_TYPE_FIRST_LOGIN => event.dataEdataString(config.ID)
+    case config.EVENT_TYPE_FIRST_LOGIN | config.EVENT_TYPE_FIRST_LOGIN_MOBILE => event.dataEdataString(config.ID)
     case config.EVENT_TYPE_UNENROLMENT => event.dataEdataString("userIds")
     case config.EVENT_TYPE_COURSE_COMPLETION => event.edataStringArrayFirst("userIds")
     case config.EVENT_TYPE_POINTS_CONVERSION | config.EVENT_TYPE_COINS_REDEMPTION | config.EVENT_TYPE_COINS_REAWARD =>
       event.dataString("userId")
-    case config.EVENT_TYPE_VERIFIED_PROFILE | config.EVENT_TYPE_SELF_REGISTRATION | config.EVENT_TYPE_SURVEY_SUBMISSION |
+    case config.EVENT_TYPE_VERIFIED_PROFILE | config.EVENT_TYPE_SELF_REGISTRATION | config.EVENT_TYPE_CUSTOM_REGISTRATION |
+         config.EVENT_TYPE_BULK_REGISTRATION | config.EVENT_TYPE_SURVEY_SUBMISSION |
          config.EVENT_TYPE_COURSE_TIME_SPENT | config.EVENT_TYPE_ENGAGEMENT_STREAK | config.EVENT_TYPE_ASSESSMENT_PASSED |
          config.EVENT_TYPE_ASSESSMENT_HIGH_SCORE => event.dataEdataString("userId")
     case _ => event.userId
