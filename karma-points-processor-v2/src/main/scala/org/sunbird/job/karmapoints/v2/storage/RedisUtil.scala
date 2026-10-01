@@ -12,8 +12,8 @@ import redis.clients.jedis.exceptions.{JedisConnectionException, JedisException}
  * write-through mirror of the Cassandra summary total, same as V1), Karma Coin's
  * `user:karmaCoins:<userId>` (a write-through mirror of the Cassandra wallet), Karma Coin's
  * request-level dedup claim keyed by `userId|contextType|contextId` (a first-level, best-effort
- * duplicate filter in front of Cassandra), and the `CB_EXT_karmaCoinConvertLock:<userId>:<contextId>`
- * lock all use `dataCache` (DB `config.cacheDbId`). The one exception is
+ * duplicate filter in front of Cassandra), and the `CB_EXT_karmaCoinConvertLock:<userId>` lock hash
+ * (field = `contextId`) all use `dataCache` (DB `config.cacheDbId`). The one exception is
  * `pendingEnrolment_<userId>_<contextId>` (COINS_REDEMPTION failure status), which uses the separate
  * `pendingEnrolmentDataCache` (DB `config.pendingEnrolmentCacheDbId`) exclusively - see
  * [[setPendingEnrolmentStatus]]. Redis is never read for business decisions here (V1 never did
@@ -125,24 +125,25 @@ class RedisUtil(dataCache: DataCache, pendingEnrolmentDataCache: DataCache, conf
     }
   }
 
-  /** `referenceId` is `contextId` - the mandatory, per-request UUID POINTS_CONVERSION events carry
-   * (see PointsConversionHandler's class doc) - so this key matches the one the upstream caller
-   * (whoever sets this lock before publishing the event) derives from the same field. */
-  private def karmaCoinConvertLockKeyFor(userId: String, referenceId: String): String =
-    s"${config.KARMA_COIN_CONVERT_LOCK_PREFIX}:$userId:$referenceId"
+  /** One hash per user, matching the key sunbird-cb-ext derives from `karma.coin.convert.lock.key.pattern`
+   * (`karmaCoinConvertLock:{userId}`, under its `CB_EXT_` namespace). Each in-flight request is a field
+   * of that hash, keyed by the request's `contextId`. */
+  private def karmaCoinConvertLockKeyFor(userId: String): String =
+    s"${config.KARMA_COIN_CONVERT_LOCK_PREFIX}:$userId"
 
   /**
-   * Deletes the external Karma Coin conversion lock key (set by the upstream caller before
-   * publishing a POINTS_CONVERSION event) once that conversion has fully completed - so a
-   * subsequent conversion request for the same user+contextId is no longer blocked by it.
-   * `referenceId` must be the same `contextId` the upstream caller used when setting the lock, or
-   * this deletes nothing (best-effort - no error either way). Best-effort, same fail-safe shape as
-   * every other method in this class. Reuses jobs-core's existing `DataCache.delWithRetry` - no new
-   * Redis primitive.
+   * Deletes this request's field from the external Karma Coin conversion lock hash (set by the
+   * upstream caller via `HSETNX` before publishing a POINTS_CONVERSION event) once that conversion
+   * has reached a terminal state - so a subsequent conversion request for the same user+contextId is
+   * no longer blocked by it. `referenceId` is `contextId` - the mandatory, per-request UUID
+   * POINTS_CONVERSION events carry (see PointsConversionHandler's class doc) - and must be the same
+   * value the upstream caller used as the field, or this deletes nothing (best-effort - no error
+   * either way). Redis drops the hash itself once its last field is removed. Best-effort, same
+   * fail-safe shape as every other method in this class.
    */
   def deleteKarmaCoinConvertLock(userId: String, referenceId: String): Unit = {
     try {
-      dataCache.delWithRetry(karmaCoinConvertLockKeyFor(userId, referenceId))
+      dataCache.hdelWithRetry(karmaCoinConvertLockKeyFor(userId), referenceId)
     } catch {
       case ex@(_: JedisConnectionException | _: JedisException) =>
         logger.error(s"Failed to delete karma coin convert lock in Redis for userId=$userId, " +
