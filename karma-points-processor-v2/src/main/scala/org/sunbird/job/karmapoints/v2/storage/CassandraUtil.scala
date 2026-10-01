@@ -462,29 +462,6 @@ class CassandraUtil(config: KarmaPointsV2Config, cassandraUtil: JobsCoreCassandr
       cassandraUtil.upsert(query.toString)
     }
 
-  /**
-   * SELF_REGISTRATION one-time award: inserts the `user_karma_points` ledger row (context_type=
-   * context_id=SELF_REGISTRATION/userId per the event spec, via the existing [[updatePoints]]) and
-   * the plain-key `user_karma_points_credit_lookup` marker row (`user_karma_points_key = userId`,
-   * `operation_type = 'SELF_REGISTRATION'`) via [[insertCreditLookupByUserId]] above. Caller is
-   * responsible for the dedup check before calling this (see
-   * [[org.sunbird.job.karmapoints.v2.handlers.SelfRegistrationHandler]]) and for the summary/Redis
-   * updates afterward (reuses [[addToKarmaSummary]] / `RedisUtil.setUserKarmaPoints`, unchanged).
-   */
-  def insertSelfRegistrationPoints(userId: String, points: Int, creditDate: Long = System.currentTimeMillis())
-                                   (implicit metrics: Metrics): Unit = {
-    val pointsApplied = updatePoints(userId, config.OPERATION_TYPE_SELF_REGISTRATION,
-      config.OPERATION_TYPE_SELF_REGISTRATION, userId, points, config.EMPTY, creditDate)
-    if (!pointsApplied) {
-      throw CassandraException(s"Database insert was not applied for user_karma_points userId=$userId, operationType=${config.OPERATION_TYPE_SELF_REGISTRATION}")
-    }
-    val lookupApplied = insertCreditLookupByUserId(userId, config.OPERATION_TYPE_SELF_REGISTRATION, creditDate)
-    if (!lookupApplied) {
-      throw CassandraException(s"Database insert was not applied for user_karma_points_credit_lookup userId=$userId, operationType=${config.OPERATION_TYPE_SELF_REGISTRATION}")
-    }
-    metrics.incCounter(config.dbUpdateCount)
-  }
-
   /** Insert a brand-new karma-points credit row (new courses/first-time credits). */
   def insertKarmaPoints(userId: String, contextType: String, operationType: String, contextId: String,
                         points: Int, addInfo: String, creditDate: Long = System.currentTimeMillis())

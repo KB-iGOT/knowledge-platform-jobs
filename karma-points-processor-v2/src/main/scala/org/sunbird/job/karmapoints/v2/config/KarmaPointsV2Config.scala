@@ -105,10 +105,11 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   // Simple one-time-per-user credit-lookup marker (no karma points awarded, no context) - see
   // VerifiedProfileHandler.
   val EVENT_TYPE_VERIFIED_PROFILE = "VERIFIED_PROFILE"
-  // One-time SELF_REGISTRATION karma-points award - see SelfRegistrationHandler. eventType literal
-  // differs from OPERATION_TYPE_SELF_REGISTRATION below by design - only the incoming Kafka
-  // eventType changed, the Cassandra operation_type/business identity stayed SELF_REGISTRATION.
-  val EVENT_TYPE_SELF_REGISTRATION = "SELF_REGISTRATION_KARMA_POINT"
+  // One-time-per-user karma-points award, one of three registration event types all handled by
+  // the same RegistrationHandler - see its class doc.
+  val EVENT_TYPE_SELF_REGISTRATION = "SELF_REGISTRATION"
+  val EVENT_TYPE_CUSTOM_REGISTRATION = "CUSTOM_REGISTRATION"
+  val EVENT_TYPE_BULK_REGISTRATION = "BULK_REGISTRATION"
   // Once-per-user-per-course karma-points award - see SurveySubmissionHandler.
   val EVENT_TYPE_SURVEY_SUBMISSION = "SURVEY_SUBMISSION"
   // Once-per-user-per-course karma-points award - see CourseTimeSpentHandler.
@@ -224,6 +225,8 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val OPERATION_TYPE_EVENT = "EVENT_ATTENDED"
   val OPERATION_TYPE_VERIFIED_PROFILE = "VERIFIED_PROFILE"
   val OPERATION_TYPE_SELF_REGISTRATION = "SELF_REGISTRATION"
+  val OPERATION_TYPE_CUSTOM_REGISTRATION = "CUSTOM_REGISTRATION"
+  val OPERATION_TYPE_BULK_REGISTRATION = "BULK_REGISTRATION"
   val OPERATION_TYPE_SURVEY_SUBMISSION = "SURVEY_SUBMISSION"
   val OPERATION_TYPE_COURSE_TIME_SPENT = "COURSE_TIME_SPENT"
   val OPERATION_TYPE_ENGAGEMENT_STREAK = "ENGAGEMENT_STREAK"
@@ -313,6 +316,7 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   // FIRST_LOGIN_MOBILE optional fields - both omitted from addinfo when absent from the event.
   val ADDINFO_DEVICE_TYPE = "deviceType"
   val ADDINFO_FIRST_LOGIN = "first_login"
+  val ADDINFO_REGISTRATION_TYPE = "registrationType"
 
   val ADDINFO_CREATED_AT = "createdAt"
   val ADDINFO_TARGET_TOTAL_EARNED = "targetTotalEarned"
