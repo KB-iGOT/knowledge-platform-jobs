@@ -70,6 +70,8 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val firstLoginMobileQuotaKarmaPoints: Int = config.getInt("karmapoints.firstLoginMobileQuotaKarmaPoints")
   val firstEnrolmentQuotaKarmaPoints: Int = config.getInt("karmapoints.firstEnrolmentQuotaKarmaPoints")
   val nonAcbpCourseQuota: Int = config.getInt("karmapoints.nonAcbpCourseQuota")
+  val curatedProgramQuotaKarmaPoints: Int = config.getInt("karmapoints.curatedProgramQuotaKarmaPoints")
+  val curatedProgramMonthlyQuota: Int = config.getInt("karmapoints.curatedProgramMonthlyQuota")
   val eventQuotaKarmaPoints: Int = config.getInt("karmapoints.eventQuotaKarmaPoints")
   val selfRegistrationQuotaKarmaPoints: Int = config.getInt("karmapoints.selfRegistrationQuotaKarmaPoints")
   val surveySubmissionQuotaKarmaPoints: Int = config.getInt("karmapoints.surveySubmissionQuotaKarmaPoints")
@@ -299,6 +301,12 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val ADDINFO_DEVICE_TYPE = "deviceType"
   val ADDINFO_FIRST_LOGIN = "first_login"
   val ADDINFO_REGISTRATION_TYPE = "registrationType"
+  val CURATED_PROGRAM = "Curated Program"
+  val OPERATION_TYPE_CURATED_PROGRAM_COMPLETION = "CURATED_PROGRAM_COMPLETION"
+  val CURATED_PROGRAM_MONTHLY_COUNT = "curatedProgramMonthlyCount"
+  val CURATED_PROGRAM_FORMATTED_MONTH = "curatedProgramFormattedMonth"
+  val ADDINFO_PROGRAM_ID = "PROGRAMID"
+  val ADDINFO_PROGRAM_NAME = "PROGRAMNAME"
 
   val ADDINFO_CREATED_AT = "createdAt"
   val ADDINFO_TARGET_TOTAL_EARNED = "targetTotalEarned"

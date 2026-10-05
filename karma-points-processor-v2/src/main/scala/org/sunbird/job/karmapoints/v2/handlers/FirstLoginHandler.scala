@@ -26,15 +26,14 @@ class FirstLoginHandler(config: KarmaPointsV2Config, cassandraUtil: CassandraUti
 
   private def handleFirstLogin(event: UnifiedEvent)(implicit metrics: Metrics): Unit = {
     val userId = event.dataEdataString("id")
-    val selfRegistration = event.dataEdataBoolean("self_registration")
-    // TODO: Remove temporary INFO log after testing.
+   /* val selfRegistration = event.dataEdataBoolean("self_registration")
     logger.info(
       s"Processing FIRST_LOGIN event: userId=$userId, selfRegistration=$selfRegistration"
     )
     if (!selfRegistration) {
       metrics.incCounter(config.skippedEventCount)
       return
-    }
+    }*/
     if (cassandraUtil.doesEntryExist(userId, config.OPERATION_TYPE_FIRST_LOGIN, config.OPERATION_TYPE_FIRST_LOGIN, userId)) {
       logger.info(s"FIRST_LOGIN karma points already awarded for userId=$userId - skipping duplicate")
       metrics.incCounter(config.skippedEventCount)
