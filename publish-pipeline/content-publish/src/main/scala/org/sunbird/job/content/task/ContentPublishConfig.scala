@@ -64,6 +64,16 @@ class ContentPublishConfig(override val config: Config) extends PublishConfig(co
   // Redis Configurations
   val nodeStore: Int = config.getInt("redis.database.contentCache.id")
 
+  // Course categories whose extended-read cache (extended_read_content_<id>) is cleared after publish
+  val extendedReadCacheClearCategories: List[String] =
+    if (config.hasPath("content.extended_read.clear_cache_categories"))
+      config.getStringList("content.extended_read.clear_cache_categories").asScala.toList
+    else List("Comprehensive Assessment")
+  val extendedReadContentKeyPrefix: String =
+    if (config.hasPath("content.extended_read.content_key_prefix"))
+      config.getString("content.extended_read.content_key_prefix")
+    else "extended_read_content_"
+
   // Out Tags
   val contentPublishOutTag: OutputTag[Event] = OutputTag[Event]("content-publish")
   val collectionPublishOutTag: OutputTag[Event] = OutputTag[Event]("collection-publish")

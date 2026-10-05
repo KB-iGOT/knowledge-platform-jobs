@@ -127,6 +127,15 @@ class CollectionPublishFunction(config: ContentPublishConfig, httpUtil: HttpUtil
           pushPostProcessEvent(successObj, context)(metrics)
           metrics.incCounter(config.collectionPublishSuccessEventCount)
           val courseCategory = Option(enrichedObj.metadata.getOrElse("courseCategory", null))
+          if (courseCategory.exists(cat => config.extendedReadCacheClearCategories.exists(_.equalsIgnoreCase(cat.toString)))) {
+            val extendedReadKey = config.extendedReadContentKeyPrefix + data.identifier
+            try {
+              cache.delWithRetry(extendedReadKey)
+              logger.info(s"CollectionPublishFunction:: Invalidated cache key=$extendedReadKey")
+            } catch {
+              case e: Exception => logger.warn(s"CollectionPublishFunction:: Failed to invalidate cache key=$extendedReadKey", e)
+            }
+          }
           logger.info("CollectionPublishFunction:: Collection publishing completed successfully for : " + data.identifier)
           try {
             logger.info("Node metadata is {}", obj.metadata)
