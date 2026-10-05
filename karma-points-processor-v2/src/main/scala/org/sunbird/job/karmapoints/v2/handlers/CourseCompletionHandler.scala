@@ -73,6 +73,16 @@ class CourseCompletionHandler(config: KarmaPointsV2Config, cassandraUtil: Cassan
       config.X_AUTHENTICATED_USER_ORGID -> cassandraUtil.fetchUserRootOrgId(userId),
       config.X_AUTHENTICATED_USER_ID -> userId
     )
+
+    if (config.CURATED_PROGRAM.equals(contextType) && config.CURATED_PROGRAM.equals(courseCategory)) {
+      handleCuratedProgram(userId, courseId, hierarchy)
+      logger.info(
+        s"CURATED_PROGRAM_COMPLETION Karma Points awarded: userId=$userId, " +
+          s"programId=$courseId, points=${config.curatedProgramQuotaKarmaPoints}"
+      )
+      return
+    }
+
     val acbpExpiry = externalServiceClient.acbpExpiryForCourse(courseId, headers)
 
     if (!passesValidation(contextType, courseId, userId, operationType, acbpExpiry)) {
@@ -159,6 +169,30 @@ class CourseCompletionHandler(config: KarmaPointsV2Config, cassandraUtil: Cassan
 
     cassandraUtil.insertKarmaPoints(userId, contextType, operationType, courseId, points, addInfo)
     val newTotal = cassandraUtil.applyKarmaSummaryUpdate(userId, points, nonACBPCount)
+    redisUtil.setUserKarmaPoints(userId, newTotal)
+  }
+
+  private def handleCuratedProgram(userId: String, programId: String, hierarchy: java.util.Map[String, AnyRef])
+                                  (implicit metrics: Metrics): Unit = {
+    val operationType = config.OPERATION_TYPE_CURATED_PROGRAM_COMPLETION
+    val lookupKey = s"$userId${config.PIPE}$operationType${config.PIPE}$programId"
+    if (cassandraUtil.doesEntryExistByKey(lookupKey, operationType)) {
+      logger.info(s"Karma points already awarded for userId=$userId, programId=$programId, operationType=$operationType - skipping duplicate")
+      metrics.incCounter(config.skippedEventCount)
+      return
+    }
+    if (cassandraUtil.hasReachedCuratedProgramMonthlyCutOff(userId)) {
+      logger.info(s"Curated Program monthly limit reached for userId=$userId, programId=$programId - skipping")
+      metrics.incCounter(config.skippedEventCount)
+      return
+    }
+    val points = config.curatedProgramQuotaKarmaPoints
+    val addInfo = cassandraUtil.buildAddInfo(null,
+      operationType -> java.lang.Boolean.TRUE,
+      config.ADDINFO_PROGRAM_ID -> programId,
+      config.ADDINFO_PROGRAM_NAME -> hierarchy.get(config.name))
+    cassandraUtil.insertKarmaPointsWithLookupKey(userId, config.CURATED_PROGRAM, operationType, programId, points, addInfo, lookupKey)
+    val newTotal = cassandraUtil.applyCuratedProgramSummaryUpdate(userId, points)
     redisUtil.setUserKarmaPoints(userId, newTotal)
   }
 }

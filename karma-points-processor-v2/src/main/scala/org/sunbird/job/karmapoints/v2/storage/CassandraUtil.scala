@@ -595,4 +595,26 @@ class CassandraUtil(config: KarmaPointsV2Config, cassandraUtil: JobsCoreCassandr
     val (total, _) = readSummary(userId)
     updateUserKarmaPointsSummary(userId, total + points, addInfo)
   }
+
+  def hasReachedCuratedProgramMonthlyCutOff(userId: String): Boolean = {
+    val (_, infoMap) = readSummary(userId)
+    val currentDateStr = LocalDate.now.format(DateTimeFormatter.ofPattern(config.YYYY_PIPE_MM))
+    var quotaCount = 0
+    if (currentDateStr.equals(infoMap.get(config.CURATED_PROGRAM_FORMATTED_MONTH))) {
+      quotaCount = infoMap.getOrDefault(config.CURATED_PROGRAM_MONTHLY_COUNT, Integer.valueOf(0)).asInstanceOf[Int]
+    }
+    quotaCount >= config.curatedProgramMonthlyQuota
+  }
+
+  def applyCuratedProgramSummaryUpdate(userId: String, points: Int): Int = {
+    val (total, infoMap) = readSummary(userId)
+    val currentDateStr = LocalDate.now.format(DateTimeFormatter.ofPattern(config.YYYY_PIPE_MM))
+    var quotaCount = 0
+    if (currentDateStr.equals(infoMap.get(config.CURATED_PROGRAM_FORMATTED_MONTH))) {
+      quotaCount = infoMap.getOrDefault(config.CURATED_PROGRAM_MONTHLY_COUNT, Integer.valueOf(0)).asInstanceOf[Int]
+    }
+    infoMap.put(config.CURATED_PROGRAM_MONTHLY_COUNT, quotaCount + 1)
+    infoMap.put(config.CURATED_PROGRAM_FORMATTED_MONTH, currentDateStr)
+    updateUserKarmaPointsSummary(userId, total + points, mapper.writeValueAsString(infoMap))
+  }
 }
