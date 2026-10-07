@@ -63,7 +63,7 @@ object KarmaPointsProcessorTaskV2 {
 }
 
 /**
- * RATING's and EVENT_ATTENDED's V1 payloads carry userId at data.user_id,
+ * RATING's, EVENT_ATTENDED's and KARMA_POINTS_ADJUSTMENT's payloads carry userId at data.user_id,
  * FIRST_ENROLMENT's and ACBP_CLAIM's at data.edata.userId, FIRST_LOGIN's at data.edata.id,
  * UNENROLMENT's at data.edata.userIds, COURSE_COMPLETION's at edata.userIds[0] (unwrapped,
  * a JSON array) - none of them have the top-level `userId` field every other event type uses.
@@ -74,7 +74,7 @@ object KarmaPointsProcessorTaskV2 {
  */
 class KarmaPointsKeySelector(config: KarmaPointsV2Config) extends KeySelector[UnifiedEvent, String] {
   override def getKey(event: UnifiedEvent): String = event.eventType match {
-    case config.EVENT_TYPE_RATING | config.EVENT_TYPE_EVENT_ATTENDED => event.dataString("user_id")
+    case config.EVENT_TYPE_RATING | config.EVENT_TYPE_EVENT_ATTENDED | config.EVENT_TYPE_KARMA_POINTS_ADJUSTMENT => event.dataString("user_id")
     case config.EVENT_TYPE_FIRST_ENROLMENT | config.EVENT_TYPE_ACBP_CLAIM => event.dataEdataString("userId")
     case config.EVENT_TYPE_FIRST_LOGIN => event.dataEdataString(config.ID)
     case config.EVENT_TYPE_UNENROLMENT => event.dataEdataString("userIds")
