@@ -67,9 +67,21 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val assessmentQuotaKarmaPoints: Int = config.getInt("karmapoints.assessmentQuotaKarmaPoints")
   val ratingQuotaKarmaPoints: Int = config.getInt("karmapoints.ratingQuotaKarmaPoints")
   val firstLoginQuotaKarmaPoints: Int = config.getInt("karmapoints.firstLoginQuotaKarmaPoints")
+  val firstLoginMobileQuotaKarmaPoints: Int = config.getInt("karmapoints.firstLoginMobileQuotaKarmaPoints")
   val firstEnrolmentQuotaKarmaPoints: Int = config.getInt("karmapoints.firstEnrolmentQuotaKarmaPoints")
   val nonAcbpCourseQuota: Int = config.getInt("karmapoints.nonAcbpCourseQuota")
+  val curatedProgramQuotaKarmaPoints: Int = config.getInt("karmapoints.curatedProgramQuotaKarmaPoints")
+  val curatedProgramMonthlyQuota: Int = config.getInt("karmapoints.curatedProgramMonthlyQuota")
   val eventQuotaKarmaPoints: Int = config.getInt("karmapoints.eventQuotaKarmaPoints")
+  val selfRegistrationQuotaKarmaPoints: Int = config.getInt("karmapoints.selfRegistrationQuotaKarmaPoints")
+  val surveySubmissionQuotaKarmaPoints: Int = config.getInt("karmapoints.surveySubmissionQuotaKarmaPoints")
+  val courseTimeSpentQuotaKarmaPoints: Int = config.getInt("karmapoints.courseTimeSpentQuotaKarmaPoints")
+  val verifiedProfileQuotaKarmaPoints: Int = config.getInt("karmapoints.verifiedProfileQuotaKarmaPoints")
+  val engagementStreakQuotaKarmaPoints: Int = config.getInt("karmapoints.engagementStreakQuotaKarmaPoints")
+  val assessmentPassedQuotaKarmaPoints: Int = config.getInt("karmapoints.assessmentPassedQuotaKarmaPoints")
+  val assessmentHighScoreQuotaKarmaPoints: Int = config.getInt("karmapoints.assessmentHighScoreQuotaKarmaPoints")
+  val assessmentHighScoreThreshold: Double =
+    if (config.hasPath("karmapoints.assessmentHighScoreThreshold")) config.getDouble("karmapoints.assessmentHighScoreThreshold") else 75.0
   val enableKarmaPointsCapping: Boolean = if (config.hasPath("karmapoints.enableCapping")) config.getBoolean("karmapoints.enableCapping") else true
 
   // Metrics enablement
@@ -80,6 +92,8 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val EVENT_TYPE_RATING = "RATING"
   val EVENT_TYPE_FIRST_ENROLMENT = "FIRST_ENROLMENT"
   val EVENT_TYPE_FIRST_LOGIN = "FIRST_LOGIN"
+  // Same FirstLoginHandler as FIRST_LOGIN, independently dedup'd/awarded - see its class doc.
+  val EVENT_TYPE_FIRST_LOGIN_MOBILE = "FIRST_LOGIN_MOBILE"
   val EVENT_TYPE_ACBP_CLAIM = "ACBP_CLAIM"
   val EVENT_TYPE_EVENT_ATTENDED = "EVENT_ATTENDED"
   val EVENT_TYPE_UNENROLMENT = "UNENROLMENT"
@@ -91,6 +105,23 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   // Also COINS_REAWARD's required actionType literal and its Cassandra operation_type value -
   // same one-constant-for-all-three-roles reuse as EVENT_TYPE_POINTS_CONVERSION above.
   val EVENT_TYPE_COINS_REAWARD = "COINS_REAWARD"
+  // Simple one-time-per-user credit-lookup marker (no karma points awarded, no context) - see
+  // VerifiedProfileHandler.
+  val EVENT_TYPE_VERIFIED_PROFILE = "VERIFIED_PROFILE"
+  // One-time-per-user karma-points award, one of three registration event types all handled by
+  // the same RegistrationHandler - see its class doc.
+  val EVENT_TYPE_SELF_REGISTRATION = "SELF_REGISTRATION"
+  val EVENT_TYPE_CUSTOM_REGISTRATION = "CUSTOM_REGISTRATION"
+  val EVENT_TYPE_BULK_REGISTRATION = "BULK_REGISTRATION"
+  // Once-per-user-per-course karma-points award - see SurveySubmissionHandler.
+  val EVENT_TYPE_SURVEY_SUBMISSION = "SURVEY_SUBMISSION"
+  // Once-per-user-per-course karma-points award - see CourseTimeSpentHandler.
+  val EVENT_TYPE_COURSE_TIME_SPENT = "COURSE_TIME_SPENT"
+  // Once-per-user karma-points award - see EngagementStreakHandler.
+  val EVENT_TYPE_ENGAGEMENT_STREAK = "ENGAGEMENT_STREAK"
+  // Both handled by the same AssessmentHandler, independently dedup'd/awarded - see its class doc.
+  val EVENT_TYPE_ASSESSMENT_PASSED = "ASSESSMENT_PASSED"
+  val EVENT_TYPE_ASSESSMENT_HIGH_SCORE = "ASSESSMENT_HIGH_SCORE"
 
   val OPERATION_CREDIT = "CREDIT"
   val OPERATION_DEBIT = "DEBIT"
@@ -190,10 +221,20 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val PASS = "pass"
   val OPERATION_TYPE_RATING = "RATING"
   val OPERATION_TYPE_FIRST_LOGIN = "FIRST_LOGIN"
+  val OPERATION_TYPE_FIRST_LOGIN_MOBILE = "FIRST_LOGIN_MOBILE"
   val OPERATION_TYPE_ENROLMENT = "FIRST_ENROLMENT"
   val OPERATION_COURSE_COMPLETION = "COURSE_COMPLETION"
   val OPERATION_LEARNING_PATHWAY_COMPLETION = "LEARNING_PATHWAY_COMPLETION"
   val OPERATION_TYPE_EVENT = "EVENT_ATTENDED"
+  val OPERATION_TYPE_VERIFIED_PROFILE = "VERIFIED_PROFILE"
+  val OPERATION_TYPE_SELF_REGISTRATION = "SELF_REGISTRATION"
+  val OPERATION_TYPE_CUSTOM_REGISTRATION = "CUSTOM_REGISTRATION"
+  val OPERATION_TYPE_BULK_REGISTRATION = "BULK_REGISTRATION"
+  val OPERATION_TYPE_SURVEY_SUBMISSION = "SURVEY_SUBMISSION"
+  val OPERATION_TYPE_COURSE_TIME_SPENT = "COURSE_TIME_SPENT"
+  val OPERATION_TYPE_ENGAGEMENT_STREAK = "ENGAGEMENT_STREAK"
+  val OPERATION_TYPE_ASSESSMENT_PASSED = "ASSESSMENT_PASSED"
+  val OPERATION_TYPE_ASSESSMENT_HIGH_SCORE = "ASSESSMENT_HIGH_SCORE"
   val CONTEXT_TYPE_EVENT = "EVENT"
   val ADDINFO_ASSESSMENT = "ASSESSMENT"
   val ADDINFO_ACBP = "ACBP"
@@ -266,6 +307,25 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
 
   val ADDINFO_COURSE_NAME = "courseName"
   val ADDINFO_PROVIDER_NAME = "providerName"
+  val ADDINFO_BATCH_ID = "batchId"
+  val ADDINFO_SURVEY_ID = "surveyId"
+  val ADDINFO_START_DATE = "startDate"
+  val ADDINFO_END_DATE = "endDate"
+  val ADDINFO_ASSESSMENT_STATUS = "assessment"
+  val ADDINFO_SCORE = "score"
+  val ADDINFO_ASSESSMENT_ID = "assessmentId"
+  val ASSESSMENT_STATUS_PASS = "PASS"
+  val ASSESSMENT_STATUS_HIGH_SCORE = "HIGH_SCORE"
+  // FIRST_LOGIN_MOBILE optional fields - both omitted from addinfo when absent from the event.
+  val ADDINFO_DEVICE_TYPE = "deviceType"
+  val ADDINFO_FIRST_LOGIN = "first_login"
+  val ADDINFO_REGISTRATION_TYPE = "registrationType"
+  val CURATED_PROGRAM = "Curated Program"
+  val OPERATION_TYPE_CURATED_PROGRAM_COMPLETION = "CURATED_PROGRAM_COMPLETION"
+  val CURATED_PROGRAM_MONTHLY_COUNT = "curatedProgramMonthlyCount"
+  val CURATED_PROGRAM_FORMATTED_MONTH = "curatedProgramFormattedMonth"
+  val ADDINFO_PROGRAM_ID = "PROGRAMID"
+  val ADDINFO_PROGRAM_NAME = "PROGRAMNAME"
 
   val ADDINFO_CREATED_AT = "createdAt"
   val ADDINFO_TARGET_TOTAL_EARNED = "targetTotalEarned"
