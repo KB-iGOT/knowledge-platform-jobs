@@ -81,6 +81,8 @@ class ProgramCertPreProcessorConfig(override val config: Config) extends BaseJob
   val issuedCertificates: String = "issued_certificates"
   val primaryCategory: String = "primaryCategory"
   val leafNodes: String = "leafNodes"
+  val contextCategory: String = "contextCategory"
+  val optionalPreAssessment: String = "Optional Pre Assessment"
   val contentStatus: String = "contentstatus"
   val progress: String = "progress"
   val allowedPrimaryCategoryForProgram = List[String]("Course")

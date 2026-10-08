@@ -183,6 +183,40 @@ class RedisUtil(dataCache: DataCache, pendingEnrolmentDataCache: DataCache, conf
     }
   }
 
+  private def karmaWalletBalanceKeyFor(userId: String): String = s"${config.KARMA_WALLET_BALANCE_PREFIX}_$userId"
+
+  private def karmaWalletBalanceCreditClaimKeyFor(transactionId: String): String =
+    s"${config.KARMA_WALLET_BALANCE_CREDIT_CLAIM_PREFIX}:$transactionId"
+
+  def creditKarmaWalletBalance(userId: String, transactionId: String, coins: Long): Unit = {
+    try {
+      val claimKey = karmaWalletBalanceCreditClaimKeyFor(transactionId)
+      if (!pendingEnrolmentDataCache.setIfAbsentWithTTL(claimKey, "1", config.karmaCoinRequestClaimTTLSeconds)) {
+        logger.info(s"karmaWalletBalance credit already applied for transactionId=$transactionId, skipping duplicate")
+      } else {
+        pendingEnrolmentDataCache.incrByIfExistsWithRetry(karmaWalletBalanceKeyFor(userId), coins)
+      }
+    } catch {
+      case ex@(_: JedisConnectionException | _: JedisException) =>
+        logger.error(s"Failed to credit karmaWalletBalance cache for userId=$userId, " +
+          s"transactionId=$transactionId (best-effort, not fatal)", ex)
+      case ex: Exception =>
+        logger.error(s"Unexpected error crediting karmaWalletBalance cache for userId=$userId, " +
+          s"transactionId=$transactionId (best-effort, not fatal)", ex)
+    }
+  }
+
+  def refreshKarmaWalletBalanceTtl(userId: String): Unit = {
+    try {
+      pendingEnrolmentDataCache.expireIfExistsWithRetry(karmaWalletBalanceKeyFor(userId), config.karmaWalletBalanceCacheTTLSeconds)
+    } catch {
+      case ex@(_: JedisConnectionException | _: JedisException) =>
+        logger.error(s"Failed to refresh karmaWalletBalance TTL for userId=$userId (best-effort, not fatal)", ex)
+      case ex: Exception =>
+        logger.error(s"Unexpected error refreshing karmaWalletBalance TTL for userId=$userId (best-effort, not fatal)", ex)
+    }
+  }
+
   def close(): Unit = {
     dataCache.close()
     pendingEnrolmentDataCache.close()

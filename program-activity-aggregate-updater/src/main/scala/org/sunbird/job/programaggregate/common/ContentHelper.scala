@@ -3,6 +3,7 @@ package org.sunbird.job.programaggregate.common
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
+import org.apache.commons.lang3.StringUtils
 import org.slf4j.LoggerFactory
 import org.sunbird.job.Metrics
 import org.sunbird.job.cache.DataCache
@@ -74,6 +75,8 @@ trait ContentHelper {
       val language = response
         .getOrElse("language", List.empty[String])
         .asInstanceOf[List[String]]
+      val contextCategory = StringContext
+        .processEscapes(response.getOrElse(config.contextCategory, "").asInstanceOf[String]).filter(_ >= ' ')
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
       courseInfoMap.put("courseId", courseId)
@@ -82,6 +85,7 @@ trait ContentHelper {
       courseInfoMap.put("primaryCategory", primaryCategory)
       courseInfoMap.put("versionKey", versionKey)
       courseInfoMap.put("courseCategory", courseCateogry)
+      courseInfoMap.put(config.contextCategory, contextCategory)
       val languageMapV1 = response.getOrElse("languageMapV1", Map.empty[String, AnyRef])
       courseInfoMap.put("languageMapV1", languageMapV1.asInstanceOf[AnyRef])
       courseInfoMap.put("leafNodes", leafNodes)
@@ -126,6 +130,8 @@ trait ContentHelper {
       val language = courseMetadata
         .getOrElse("language", new java.util.ArrayList())
         .asInstanceOf[java.util.ArrayList[String]]
+      val contextCategory = StringContext
+        .processEscapes(courseMetadata.getOrElse(config.contextCategory.toLowerCase, "").asInstanceOf[String]).filter(_ >= ' ')
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
       val preliminaryAssessment = StringContext
@@ -139,6 +145,7 @@ trait ContentHelper {
       courseInfoMap.put("primaryCategory", primaryCategory)
       courseInfoMap.put("versionKey", versionKey)
       courseInfoMap.put("courseCategory", courseCateogry)
+      courseInfoMap.put(config.contextCategory, contextCategory)
       courseInfoMap.put(config.preliminaryAssessment, preliminaryAssessment)
       val languageMapV1: Map[String, Map[String, AnyRef]] =
         toScalaNestedMap(courseMetadata.getOrElse("languagemapv1", new java.util.HashMap[String, Object]()))
@@ -190,6 +197,64 @@ trait ContentHelper {
         s"Error from get API : ${url}, with response: ${response}"
       )
     }
+  }
+
+  val excludedContextCategoryCache = new java.util.concurrent.ConcurrentHashMap[String, (Set[String], Long)]()
+
+  /**
+   * Returns the identifiers of every leaf node of the course whose OWN contextCategory is
+   * "Optional Pre Assessment" - these must be excluded from the leafNodes set used for
+   * completedCount/completion-percentage/certificate-eligibility comparisons, since completing
+   * them is not required.
+   *
+   * content/v3/read/{courseId} does NOT return a nested "children" tree (confirmed against a real
+   * response - it only carries "leafNodes"/"childNodes" as flat id lists), so contextCategory can't
+   * be read from the course-level payload. Instead, do a content/v3/read/{leafId} for each id in
+   * the course's own leafNodes list and read contextCategory off that leaf's own top-level
+   * response. Cached per courseId (same TTL as course info) since the leaf set only changes on
+   * republish.
+   */
+  def getExcludedOptionalAssessmentIds(courseId: String)(
+    metrics: Metrics,
+    config: ProgramActivityAggregateUpdaterConfig,
+    contentCache: DataCache,
+    httpUtil: HttpUtil
+  ): Set[String] = {
+    val currentTime = System.currentTimeMillis()
+    val cacheEntry = excludedContextCategoryCache.get(courseId)
+    if (cacheEntry != null && cacheEntry._2 > currentTime) {
+      return cacheEntry._1
+    }
+    // Reuse the shared, Redis + in-memory cached getCourseInfo for both the course-level and
+    // per-leaf lookups, instead of raw/uncached HTTP calls, so contextCategory benefits from the
+    // same caching as every other field this job reads.
+    val courseContent = getCourseInfo(courseId)(metrics, config, contentCache, httpUtil)
+    val leafIds = courseContent.getOrDefault("leafNodes", new java.util.ArrayList[String]()) match {
+      case jl: java.util.List[_] => jl.asScala.toList.map(_.toString)
+      case sl: Seq[_] => sl.toList.map(_.toString)
+      case _ => List.empty[String]
+    }
+    logger.info(s"getExcludedOptionalAssessmentIds: courseId=$courseId leafNodes from course content=${leafIds.mkString(", ")} (count=${leafIds.size})")
+
+    val excludedIds = scala.collection.mutable.Set.empty[String]
+    leafIds.foreach { leafId =>
+      try {
+        val leafContent = getCourseInfo(leafId)(metrics, config, contentCache, httpUtil)
+        val contextCategory = leafContent.getOrDefault(config.contextCategory, "").asInstanceOf[String]
+        logger.info(s"getExcludedOptionalAssessmentIds: courseId=$courseId leafId=$leafId contextCategory=$contextCategory")
+        if (config.optionalPreAssessment.equalsIgnoreCase(contextCategory)) {
+          logger.info(s"getExcludedOptionalAssessmentIds: courseId=$courseId MATCHED Optional Pre Assessment, excluding leafId=$leafId")
+          excludedIds += leafId
+        }
+      } catch {
+        case ex: Exception =>
+          logger.error(s"getExcludedOptionalAssessmentIds: failed to read leaf content for courseId=$courseId leafId=$leafId", ex)
+      }
+    }
+    val result = excludedIds.toSet
+    logger.info(s"getExcludedOptionalAssessmentIds: courseId=$courseId excludedIds=${result.mkString(", ")} (count=${result.size})")
+    excludedContextCategoryCache.put(courseId, (result, currentTime + config.courseInMemoryCacheExpiry))
+    result
   }
 
   def toScalaNestedMap(obj: Any): Map[String, Map[String, AnyRef]] = obj match {

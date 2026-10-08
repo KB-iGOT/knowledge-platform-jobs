@@ -222,7 +222,10 @@ class ProgramActivityAggregatesEnrolUpdateFunction(config: ProgramActivityAggreg
     val userId = userConsumption.userId
     val contextId = "cb:" + userConsumption.batchId
     val key = s"$courseId:$courseId:${config.leafNodes}"
-    val leafNodes = readFromCache(courseId, key, metrics).distinct
+    val rawLeafNodes = readFromCache(courseId, key, metrics).distinct
+    val excludedIds = getExcludedOptionalAssessmentIds(courseId)(metrics, config, contentCache, httpUtil)
+    val leafNodes = rawLeafNodes.filterNot(excludedIds.contains)
+    logger.info(s"programEnrolConsumption: courseId=$courseId userId=$userId rawLeafNodesCount=${rawLeafNodes.size} excludedIdsCount=${excludedIds.size} filteredLeafNodesCount=${leafNodes.size}")
     if (leafNodes.isEmpty) {
       logger.error(s"leaf nodes are not available for: $key")
       //context.output(config.failedEventOutputTag, gson.toJson(userConsumption))

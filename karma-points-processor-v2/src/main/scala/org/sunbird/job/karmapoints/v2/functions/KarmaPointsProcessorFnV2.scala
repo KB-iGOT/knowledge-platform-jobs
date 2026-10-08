@@ -55,6 +55,7 @@ class KarmaPointsProcessorFnV2(config: KarmaPointsV2Config, httpUtil: HttpUtil)
   @transient private var courseTimeSpentHandler: CourseTimeSpentHandler = _
   @transient private var engagementStreakHandler: EngagementStreakHandler = _
   @transient private var assessmentHandler: AssessmentHandler = _
+  @transient private var karmaPointsAdjustmentHandler: KarmaPointsAdjustmentHandler = _
 
   override def open(parameters: Configuration): Unit = {
     super.open(parameters)
@@ -88,6 +89,7 @@ class KarmaPointsProcessorFnV2(config: KarmaPointsV2Config, httpUtil: HttpUtil)
     pointsConversionHandler = new PointsConversionHandler(config, cassandraUtil, redisUtil)
     coinsRedemptionHandler = new CoinsRedemptionHandler(config, cassandraUtil, redisUtil, paidCourseEnrolmentProducer)
     coinsReawardHandler = new CoinsReawardHandler(config, cassandraUtil, redisUtil)
+    karmaPointsAdjustmentHandler = new KarmaPointsAdjustmentHandler(config, cassandraUtil, redisUtil)
     verifiedProfileHandler = new VerifiedProfileHandler(config, cassandraUtil, redisUtil)
     registrationHandler = new RegistrationHandler(config, cassandraUtil, redisUtil)
     surveySubmissionHandler = new SurveySubmissionHandler(config, cassandraUtil, redisUtil)
@@ -192,15 +194,15 @@ class KarmaPointsProcessorFnV2(config: KarmaPointsV2Config, httpUtil: HttpUtil)
   }
 
   /**
-   * Used only for log messages - not for validation or routing. RATING's and EVENT_ATTENDED's V1
-   * payloads key their user id as data.user_id, FIRST_ENROLMENT's and ACBP_CLAIM's as
+   * Used only for log messages - not for validation or routing. RATING's, EVENT_ATTENDED's and
+   * KARMA_POINTS_ADJUSTMENT's payloads key their user id as data.user_id, FIRST_ENROLMENT's and ACBP_CLAIM's as
    * data.edata.userId, FIRST_LOGIN's as data.edata.id, UNENROLMENT's as data.edata.userIds,
    * COURSE_COMPLETION's as edata.userIds[0] (a JSON array, unwrapped - no `data` nesting for this
    * type); every other/unknown event type keeps the original top-level-userId-then-edata.userId
    * fallback (defensive - keyBy/extractUserId run before validateEvent, so eventType may be empty).
    */
   private def extractUserId(event: UnifiedEvent): String = event.eventType match {
-    case config.EVENT_TYPE_RATING | config.EVENT_TYPE_EVENT_ATTENDED => event.dataString("user_id")
+    case config.EVENT_TYPE_RATING | config.EVENT_TYPE_EVENT_ATTENDED | config.EVENT_TYPE_KARMA_POINTS_ADJUSTMENT => event.dataString("user_id")
     case config.EVENT_TYPE_FIRST_ENROLMENT | config.EVENT_TYPE_ACBP_CLAIM => event.dataEdataString("userId")
     case config.EVENT_TYPE_FIRST_LOGIN | config.EVENT_TYPE_FIRST_LOGIN_MOBILE => event.dataEdataString("id")
     case config.EVENT_TYPE_UNENROLMENT => event.dataEdataString("userIds")
@@ -239,6 +241,7 @@ class KarmaPointsProcessorFnV2(config: KarmaPointsV2Config, httpUtil: HttpUtil)
       case config.EVENT_TYPE_POINTS_CONVERSION => pointsConversionHandler.handle(event)
       case config.EVENT_TYPE_COINS_REDEMPTION => coinsRedemptionHandler.handle(event)
       case config.EVENT_TYPE_COINS_REAWARD => coinsReawardHandler.handle(event)
+      case config.EVENT_TYPE_KARMA_POINTS_ADJUSTMENT => karmaPointsAdjustmentHandler.handle(event)
       case config.EVENT_TYPE_VERIFIED_PROFILE => verifiedProfileHandler.handle(event)
       case config.EVENT_TYPE_SELF_REGISTRATION | config.EVENT_TYPE_CUSTOM_REGISTRATION | config.EVENT_TYPE_BULK_REGISTRATION =>
         registrationHandler.handle(event)
@@ -277,6 +280,7 @@ class KarmaPointsProcessorFnV2(config: KarmaPointsV2Config, httpUtil: HttpUtil)
     this.pointsConversionHandler = new PointsConversionHandler(config, cassandraUtil, redisUtil)
     this.coinsRedemptionHandler = new CoinsRedemptionHandler(config, cassandraUtil, redisUtil, paidCourseEnrolmentProducer)
     this.coinsReawardHandler = new CoinsReawardHandler(config, cassandraUtil, redisUtil)
+    this.karmaPointsAdjustmentHandler = new KarmaPointsAdjustmentHandler(config, cassandraUtil, redisUtil)
     this.verifiedProfileHandler = new VerifiedProfileHandler(config, cassandraUtil, redisUtil)
     this.registrationHandler = new RegistrationHandler(config, cassandraUtil, redisUtil)
     this.surveySubmissionHandler = new SurveySubmissionHandler(config, cassandraUtil, redisUtil)
