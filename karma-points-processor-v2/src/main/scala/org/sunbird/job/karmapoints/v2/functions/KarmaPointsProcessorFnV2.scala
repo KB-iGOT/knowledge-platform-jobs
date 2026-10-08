@@ -50,7 +50,7 @@ class KarmaPointsProcessorFnV2(config: KarmaPointsV2Config, httpUtil: HttpUtil)
   @transient private var coinsRedemptionHandler: CoinsRedemptionHandler = _
   @transient private var coinsReawardHandler: CoinsReawardHandler = _
   @transient private var verifiedProfileHandler: VerifiedProfileHandler = _
-  @transient private var selfRegistrationHandler: SelfRegistrationHandler = _
+  @transient private var registrationHandler: RegistrationHandler = _
   @transient private var surveySubmissionHandler: SurveySubmissionHandler = _
   @transient private var courseTimeSpentHandler: CourseTimeSpentHandler = _
   @transient private var engagementStreakHandler: EngagementStreakHandler = _
@@ -89,7 +89,7 @@ class KarmaPointsProcessorFnV2(config: KarmaPointsV2Config, httpUtil: HttpUtil)
     coinsRedemptionHandler = new CoinsRedemptionHandler(config, cassandraUtil, redisUtil, paidCourseEnrolmentProducer)
     coinsReawardHandler = new CoinsReawardHandler(config, cassandraUtil, redisUtil)
     verifiedProfileHandler = new VerifiedProfileHandler(config, cassandraUtil, redisUtil)
-    selfRegistrationHandler = new SelfRegistrationHandler(config, cassandraUtil, redisUtil)
+    registrationHandler = new RegistrationHandler(config, cassandraUtil, redisUtil)
     surveySubmissionHandler = new SurveySubmissionHandler(config, cassandraUtil, redisUtil)
     courseTimeSpentHandler = new CourseTimeSpentHandler(config, cassandraUtil, redisUtil)
     engagementStreakHandler = new EngagementStreakHandler(config, cassandraUtil, redisUtil)
@@ -202,12 +202,13 @@ class KarmaPointsProcessorFnV2(config: KarmaPointsV2Config, httpUtil: HttpUtil)
   private def extractUserId(event: UnifiedEvent): String = event.eventType match {
     case config.EVENT_TYPE_RATING | config.EVENT_TYPE_EVENT_ATTENDED => event.dataString("user_id")
     case config.EVENT_TYPE_FIRST_ENROLMENT | config.EVENT_TYPE_ACBP_CLAIM => event.dataEdataString("userId")
-    case config.EVENT_TYPE_FIRST_LOGIN => event.dataEdataString("id")
+    case config.EVENT_TYPE_FIRST_LOGIN | config.EVENT_TYPE_FIRST_LOGIN_MOBILE => event.dataEdataString("id")
     case config.EVENT_TYPE_UNENROLMENT => event.dataEdataString("userIds")
     case config.EVENT_TYPE_COURSE_COMPLETION => event.edataStringArrayFirst("userIds")
     case config.EVENT_TYPE_POINTS_CONVERSION | config.EVENT_TYPE_COINS_REDEMPTION | config.EVENT_TYPE_COINS_REAWARD =>
       event.dataString("userId")
-    case config.EVENT_TYPE_VERIFIED_PROFILE | config.EVENT_TYPE_SELF_REGISTRATION | config.EVENT_TYPE_SURVEY_SUBMISSION |
+    case config.EVENT_TYPE_VERIFIED_PROFILE | config.EVENT_TYPE_SELF_REGISTRATION | config.EVENT_TYPE_CUSTOM_REGISTRATION |
+         config.EVENT_TYPE_BULK_REGISTRATION | config.EVENT_TYPE_SURVEY_SUBMISSION |
          config.EVENT_TYPE_COURSE_TIME_SPENT | config.EVENT_TYPE_ENGAGEMENT_STREAK | config.EVENT_TYPE_ASSESSMENT_PASSED |
          config.EVENT_TYPE_ASSESSMENT_HIGH_SCORE => event.dataEdataString("userId")
     case _ =>
@@ -231,7 +232,7 @@ class KarmaPointsProcessorFnV2(config: KarmaPointsV2Config, httpUtil: HttpUtil)
       case config.EVENT_TYPE_COURSE_COMPLETION => courseCompletionHandler.handle(event)
       case config.EVENT_TYPE_RATING => ratingHandler.handle(event)
       case config.EVENT_TYPE_FIRST_ENROLMENT => firstEnrolmentHandler.handle(event)
-      case config.EVENT_TYPE_FIRST_LOGIN => firstLoginHandler.handle(event)
+      case config.EVENT_TYPE_FIRST_LOGIN | config.EVENT_TYPE_FIRST_LOGIN_MOBILE => firstLoginHandler.handle(event)
       case config.EVENT_TYPE_ACBP_CLAIM => acbpClaimHandler.handle(event)
       case config.EVENT_TYPE_EVENT_ATTENDED => eventAttendedHandler.handle(event)
       case config.EVENT_TYPE_UNENROLMENT => unenrolmentHandler.handle(event)
@@ -239,7 +240,8 @@ class KarmaPointsProcessorFnV2(config: KarmaPointsV2Config, httpUtil: HttpUtil)
       case config.EVENT_TYPE_COINS_REDEMPTION => coinsRedemptionHandler.handle(event)
       case config.EVENT_TYPE_COINS_REAWARD => coinsReawardHandler.handle(event)
       case config.EVENT_TYPE_VERIFIED_PROFILE => verifiedProfileHandler.handle(event)
-      case config.EVENT_TYPE_SELF_REGISTRATION => selfRegistrationHandler.handle(event)
+      case config.EVENT_TYPE_SELF_REGISTRATION | config.EVENT_TYPE_CUSTOM_REGISTRATION | config.EVENT_TYPE_BULK_REGISTRATION =>
+        registrationHandler.handle(event)
       case config.EVENT_TYPE_SURVEY_SUBMISSION => surveySubmissionHandler.handle(event)
       case config.EVENT_TYPE_COURSE_TIME_SPENT => courseTimeSpentHandler.handle(event)
       case config.EVENT_TYPE_ENGAGEMENT_STREAK => engagementStreakHandler.handle(event)
@@ -276,7 +278,7 @@ class KarmaPointsProcessorFnV2(config: KarmaPointsV2Config, httpUtil: HttpUtil)
     this.coinsRedemptionHandler = new CoinsRedemptionHandler(config, cassandraUtil, redisUtil, paidCourseEnrolmentProducer)
     this.coinsReawardHandler = new CoinsReawardHandler(config, cassandraUtil, redisUtil)
     this.verifiedProfileHandler = new VerifiedProfileHandler(config, cassandraUtil, redisUtil)
-    this.selfRegistrationHandler = new SelfRegistrationHandler(config, cassandraUtil, redisUtil)
+    this.registrationHandler = new RegistrationHandler(config, cassandraUtil, redisUtil)
     this.surveySubmissionHandler = new SurveySubmissionHandler(config, cassandraUtil, redisUtil)
     this.courseTimeSpentHandler = new CourseTimeSpentHandler(config, cassandraUtil, redisUtil)
     this.engagementStreakHandler = new EngagementStreakHandler(config, cassandraUtil, redisUtil)
