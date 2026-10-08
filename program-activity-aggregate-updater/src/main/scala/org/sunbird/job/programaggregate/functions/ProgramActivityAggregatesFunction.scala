@@ -147,8 +147,8 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
     val userId = userConsumption.userId
     val contextId = "cb:" + userConsumption.batchId
     val key = s"$courseId:$courseId:${config.leafNodes}"
-    val leafNodes = readFromCache(courseId, key, metrics).distinct
-    if (leafNodes.isEmpty) {
+    val rawLeafNodes = readFromCache(courseId, key, metrics).distinct
+    if (rawLeafNodes.isEmpty) {
       logger.error(s"leaf nodes are not available for: $key")
       context.output(config.failedEventOutputTag, gson.toJson(userConsumption))
       val status = getCollectionStatus(courseId)
@@ -164,7 +164,11 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
         throw new Exception(message)
       }
     } else {
+      val excludedIds = getExcludedOptionalAssessmentIds(courseId)(metrics, config, contentCache, httpUtil)
+      val leafNodes = rawLeafNodes.filterNot(excludedIds.contains)
+      logger.info(s"courseActivityAgg: courseId=$courseId userId=$userId rawLeafNodesCount=${rawLeafNodes.size} excludedIdsCount=${excludedIds.size} filteredLeafNodesCount=${leafNodes.size}")
       val completedCount = leafNodes.intersect(userConsumption.contents.filter(cc => cc._2.status == 2).map(cc => cc._2.contentId).toList.distinct).size
+      logger.info(s"courseActivityAgg: courseId=$courseId userId=$userId completedCount=$completedCount leafNodesSize=${leafNodes.size} willBeMarkedComplete=${completedCount >= leafNodes.size}")
       val contentStatus = userConsumption.contents.map(cc => (cc._2.contentId, cc._2.status)).toMap
       val inputContents = userConsumption.contents.filter(cc => cc._2.fromInput).keys.toList
       val collectionProgress = if (completedCount >= leafNodes.size) {
@@ -193,8 +197,13 @@ class ProgramActivityAggregatesFunction(config: ProgramActivityAggregateUpdaterC
     }).values.flatten.filter(a => !StringUtils.equals(a, courseId)).toList.distinct
 
     // LeafNodes of the identified child collections - for this user.
+    val excludedIds = getExcludedOptionalAssessmentIds(courseId)(metrics, config, contentCache, httpUtil)
+    logger.info(s"courseChildrenActivityAgg: courseId=$courseId userId=$userId excludedIdsCount=${excludedIds.size} excludedIds=${excludedIds.mkString(", ")}")
     val collectionsWithLeafNodes = ancestors.map(unitId => {
-      (unitId, readFromCacheForAncestorsAndUnitValue(key = s"$courseId:$unitId:${config.leafNodes}", metrics).distinct)
+      val rawUnitLeafNodes = readFromCacheForAncestorsAndUnitValue(key = s"$courseId:$unitId:${config.leafNodes}", metrics).distinct
+      val filteredUnitLeafNodes = rawUnitLeafNodes.filterNot(excludedIds.contains)
+      logger.info(s"courseChildrenActivityAgg: courseId=$courseId unitId=$unitId rawLeafNodesCount=${rawUnitLeafNodes.size} filteredLeafNodesCount=${filteredUnitLeafNodes.size}")
+      (unitId, filteredUnitLeafNodes)
     }).toMap
 
     // Content completed - By this user.

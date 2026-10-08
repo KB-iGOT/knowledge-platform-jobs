@@ -163,9 +163,11 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
               var progressCount: Integer = Option(programEnrollmentRow.get.getInt(config.progress)).head
               logger.info("The progressCount from DB before update:" + progressCount)
               val keyForLeafNodesForProgram = s"$courseParentId:$courseParentId:${config.leafNodesKey}"
-              val leafNodesForProgram = readFromRelationCache(keyForLeafNodesForProgram, metrics).distinct
+              val rawLeafNodesForProgram = readFromRelationCache(keyForLeafNodesForProgram, metrics).distinct
+              val excludedIds = getExcludedOptionalAssessmentIds(rawLeafNodesForProgram)(metrics)
+              val leafNodesForProgram = rawLeafNodesForProgram.filterNot(excludedIds.contains)
 
-              logger.info("The keyForLeafNodesForProgram from Redish:" + leafNodesForProgram)
+              logger.info("The keyForLeafNodesForProgram from Redish:" + rawLeafNodesForProgram + " excludedIds:" + excludedIds + " filteredLeafNodesForProgram:" + leafNodesForProgram)
               for ((key, value) <- leafNodeMap) {
                 // Check if the key is present in leafNodeMap
                 if (leafNodesForProgram.contains(key)) {
@@ -512,7 +514,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
     val courseMetadata = cache.getWithRetry(courseId)
     if (null == courseMetadata || courseMetadata.isEmpty) {
       val url =
-        config.contentReadURL + courseId + "?fields=identifier,primaryCategory,leafNodes,language,languageMapV1,badgeDetails_v1"
+        config.contentReadURL + courseId + "?fields=identifier,primaryCategory,leafNodes,language,languageMapV1,badgeDetails_v1,contextCategory"
       val response = getAPICall(url, "content")(config, httpUtil, metrics)
       val primaryCategory = StringContext
         .processEscapes(
@@ -525,6 +527,11 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
         .getOrElse(config.language, List.empty[String]).asInstanceOf[List[String]]
       val badgeDetailsV1 = response
         .getOrElse(config.badgeDetailsV1, new java.util.ArrayList())
+      val contextCategory = StringContext
+        .processEscapes(
+          response.getOrElse(config.contextCategory, "").asInstanceOf[String]
+        )
+        .filter(_ >= ' ')
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
       courseInfoMap.put("courseId", courseId)
@@ -532,6 +539,7 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
       courseInfoMap.put(config.leafNodes, leafNodes.asJava)
       courseInfoMap.put(config.language, language.asJava)
       courseInfoMap.put(config.badgeDetailsV1, badgeDetailsV1)
+      courseInfoMap.put(config.contextCategory, contextCategory)
       courseInfoMap
     } else {
       val primaryCategory = StringContext
@@ -547,6 +555,13 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
         .getOrElse(config.language, new java.util.ArrayList()).asInstanceOf[java.util.List[String]]
       val badgeDetailsV1 = courseMetadata
         .getOrElse("badgedetailsv1", new java.util.ArrayList())
+      val contextCategory = StringContext
+        .processEscapes(
+          courseMetadata
+            .getOrElse(config.contextCategory.toLowerCase, "")
+            .asInstanceOf[String]
+        )
+        .filter(_ >= ' ')
       val courseInfoMap: java.util.Map[String, AnyRef] =
         new java.util.HashMap[String, AnyRef]()
       courseInfoMap.put("courseId", courseId)
@@ -554,9 +569,18 @@ class ProgramCertPreProcessorFn(config: ProgramCertPreProcessorConfig, httpUtil:
       courseInfoMap.put(config.leafNodes, leafNodes)
       courseInfoMap.put(config.language, language)
       courseInfoMap.put(config.badgeDetailsV1, badgeDetailsV1)
+      courseInfoMap.put(config.contextCategory, contextCategory)
       courseInfoMap
     }
 
+  }
+
+  def getExcludedOptionalAssessmentIds(leafNodeIds: List[String])(metrics: Metrics): Set[String] = {
+    leafNodeIds.filter { leafId =>
+      val leafContent = getCourseInfo(leafId)(metrics, config, contentCache, httpUtil)
+      val contextCategory = leafContent.getOrDefault(config.contextCategory, "").asInstanceOf[String]
+      config.optionalPreAssessment.equalsIgnoreCase(contextCategory)
+    }.toSet
   }
 
   def generateFailedEvent(userId: String, batchId: String, courseParentId: String): String = {
