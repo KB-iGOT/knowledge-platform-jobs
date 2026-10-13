@@ -95,7 +95,7 @@ class KarmaPointsProcessorFnV2(config: KarmaPointsV2Config, httpUtil: HttpUtil)
     surveySubmissionHandler = new SurveySubmissionHandler(config, cassandraUtil, redisUtil)
     courseTimeSpentHandler = new CourseTimeSpentHandler(config, cassandraUtil, redisUtil)
     engagementStreakHandler = new EngagementStreakHandler(config, cassandraUtil, redisUtil)
-    assessmentHandler = new AssessmentHandler(config, cassandraUtil, redisUtil)
+    assessmentHandler = new AssessmentHandler(config, cassandraUtil, redisUtil, externalServiceClient)
   }
 
   override def close(): Unit = {
@@ -286,7 +286,7 @@ class KarmaPointsProcessorFnV2(config: KarmaPointsV2Config, httpUtil: HttpUtil)
     this.surveySubmissionHandler = new SurveySubmissionHandler(config, cassandraUtil, redisUtil)
     this.courseTimeSpentHandler = new CourseTimeSpentHandler(config, cassandraUtil, redisUtil)
     this.engagementStreakHandler = new EngagementStreakHandler(config, cassandraUtil, redisUtil)
-    this.assessmentHandler = new AssessmentHandler(config, cassandraUtil, redisUtil)
+    this.assessmentHandler = new AssessmentHandler(config, cassandraUtil, redisUtil, externalServiceClient)
   }
 
   /**

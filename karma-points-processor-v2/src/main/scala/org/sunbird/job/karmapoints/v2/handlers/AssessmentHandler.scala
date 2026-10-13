@@ -7,6 +7,7 @@ import org.sunbird.job.karmapoints.v2.config.KarmaPointsV2Config
 import org.sunbird.job.karmapoints.v2.domain.UnifiedEvent
 import org.sunbird.job.karmapoints.v2.exceptions.{InvalidPayloadException, MissingPayloadException}
 import org.sunbird.job.karmapoints.v2.storage.{CassandraUtil, RedisUtil}
+import org.sunbird.job.karmapoints.v2.utils.ExternalServiceClient
 
 /**
  * Handles both ASSESSMENT_PASSED and ASSESSMENT_HIGH_SCORE events:
@@ -27,7 +28,8 @@ import org.sunbird.job.karmapoints.v2.storage.{CassandraUtil, RedisUtil}
  * `Course`/`courseId` for both - `assessmentId`/`batchId`/`score` are carried only in `addinfo`,
  * never as `context_id`. `addToKarmaSummary`/`RedisUtil.setUserKarmaPoints` are reused unchanged.
  */
-class AssessmentHandler(config: KarmaPointsV2Config, cassandraUtil: CassandraUtil, redisUtil: RedisUtil) extends EventHandler {
+class AssessmentHandler(config: KarmaPointsV2Config, cassandraUtil: CassandraUtil, redisUtil: RedisUtil,
+                        externalServiceClient: ExternalServiceClient) extends EventHandler {
   private[this] val logger = LoggerFactory.getLogger(classOf[AssessmentHandler])
 
   override protected def doHandle(event: UnifiedEvent)(implicit metrics: Metrics): Unit = {
@@ -74,13 +76,24 @@ class AssessmentHandler(config: KarmaPointsV2Config, cassandraUtil: CassandraUti
       return
     }
 
+    val isAcbp = isAcbpCourse(userId, courseId)
+    if (!isAcbp && cassandraUtil.hasReachedMonthlyCountCutOff(userId, config.ASSESSMENT_PASSED_MONTHLY_COUNT,
+      config.ASSESSMENT_PASSED_FORMATTED_MONTH, config.assessmentMonthlyQuota)) {
+      logger.info(s"ASSESSMENT_PASSED monthly limit reached for non-ACBP course: userId=$userId, courseId=$courseId, assessmentId=$assessmentId - not awarding")
+      metrics.incCounter(config.skippedEventCount)
+      return
+    }
+
     val points = config.assessmentPassedQuotaKarmaPoints
     val addInfo = cassandraUtil.buildAddInfo(null, config.ADDINFO_ASSESSMENT_STATUS -> config.ASSESSMENT_STATUS_PASS,
-      config.ADDINFO_SCORE -> score, config.ADDINFO_ASSESSMENT_ID -> assessmentId, config.ADDINFO_BATCH_ID -> batchId)
+      config.ADDINFO_SCORE -> score, config.ADDINFO_ASSESSMENT_ID -> assessmentId, config.ADDINFO_BATCH_ID -> batchId,
+      config.ADDINFO_IS_ACBP -> isAcbp)
     cassandraUtil.insertKarmaPointsWithLookupKey(userId, config.COURSE, config.OPERATION_TYPE_ASSESSMENT_PASSED,
       courseId, points, addInfo, lookupKey)
     logger.info(s"ASSESSMENT_PASSED Karma Points awarded: userId=$userId, courseId=$courseId, assessmentId=$assessmentId, points=$points, score=$score")
-    val newTotal = cassandraUtil.addToKarmaSummary(userId, points)
+    val newTotal = if (isAcbp) cassandraUtil.addToKarmaSummary(userId, points)
+    else cassandraUtil.applyMonthlyCountSummaryUpdate(userId, points, config.ASSESSMENT_PASSED_MONTHLY_COUNT,
+      config.ASSESSMENT_PASSED_FORMATTED_MONTH)
     redisUtil.setUserKarmaPoints(userId, newTotal)
   }
 
@@ -99,13 +112,33 @@ class AssessmentHandler(config: KarmaPointsV2Config, cassandraUtil: CassandraUti
       return
     }
 
+    val isAcbp = isAcbpCourse(userId, courseId)
+    if (!isAcbp && cassandraUtil.hasReachedMonthlyCountCutOff(userId, config.ASSESSMENT_HIGH_SCORE_MONTHLY_COUNT,
+      config.ASSESSMENT_HIGH_SCORE_FORMATTED_MONTH, config.assessmentMonthlyQuota)) {
+      logger.info(s"ASSESSMENT_HIGH_SCORE monthly limit reached for non-ACBP course: userId=$userId, courseId=$courseId, assessmentId=$assessmentId - not awarding")
+      metrics.incCounter(config.skippedEventCount)
+      return
+    }
+
     val points = config.assessmentHighScoreQuotaKarmaPoints
     val addInfo = cassandraUtil.buildAddInfo(null, config.ADDINFO_ASSESSMENT_STATUS -> config.ASSESSMENT_STATUS_HIGH_SCORE,
-      config.ADDINFO_SCORE -> score, config.ADDINFO_ASSESSMENT_ID -> assessmentId, config.ADDINFO_BATCH_ID -> batchId)
+      config.ADDINFO_SCORE -> score, config.ADDINFO_ASSESSMENT_ID -> assessmentId, config.ADDINFO_BATCH_ID -> batchId,
+      config.ADDINFO_IS_ACBP -> isAcbp)
     cassandraUtil.insertKarmaPointsWithLookupKey(userId, config.COURSE, config.OPERATION_TYPE_ASSESSMENT_HIGH_SCORE,
       courseId, points, addInfo, lookupKey)
     logger.info(s"ASSESSMENT_HIGH_SCORE Karma Points awarded: userId=$userId, courseId=$courseId, assessmentId=$assessmentId, points=$points, score=$score")
-    val newTotal = cassandraUtil.addToKarmaSummary(userId, points)
+    val newTotal = if (isAcbp) cassandraUtil.addToKarmaSummary(userId, points)
+    else cassandraUtil.applyMonthlyCountSummaryUpdate(userId, points, config.ASSESSMENT_HIGH_SCORE_MONTHLY_COUNT,
+      config.ASSESSMENT_HIGH_SCORE_FORMATTED_MONTH)
     redisUtil.setUserKarmaPoints(userId, newTotal)
+  }
+
+  private def isAcbpCourse(userId: String, courseId: String)(implicit metrics: Metrics): Boolean = {
+    val headers = Map(
+      config.HEADER_CONTENT_TYPE_KEY -> config.HEADER_CONTENT_TYPE_JSON,
+      config.X_AUTHENTICATED_USER_ORGID -> cassandraUtil.fetchUserRootOrgId(userId),
+      config.X_AUTHENTICATED_USER_ID -> userId
+    )
+    externalServiceClient.isCourseOnACBPPlan(courseId, headers)
   }
 }

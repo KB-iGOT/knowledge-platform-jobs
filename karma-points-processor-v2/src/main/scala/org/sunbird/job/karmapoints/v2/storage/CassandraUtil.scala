@@ -617,4 +617,26 @@ class CassandraUtil(config: KarmaPointsV2Config, cassandraUtil: JobsCoreCassandr
     infoMap.put(config.CURATED_PROGRAM_FORMATTED_MONTH, currentDateStr)
     updateUserKarmaPointsSummary(userId, total + points, mapper.writeValueAsString(infoMap))
   }
+
+  def hasReachedMonthlyCountCutOff(userId: String, countKey: String, monthKey: String, limit: Int): Boolean = {
+    val (_, infoMap) = readSummary(userId)
+    val currentDateStr = LocalDate.now.format(DateTimeFormatter.ofPattern(config.YYYY_PIPE_MM))
+    var quotaCount = 0
+    if (currentDateStr.equals(infoMap.get(monthKey))) {
+      quotaCount = infoMap.getOrDefault(countKey, Integer.valueOf(0)).asInstanceOf[Int]
+    }
+    quotaCount >= limit
+  }
+
+  def applyMonthlyCountSummaryUpdate(userId: String, points: Int, countKey: String, monthKey: String): Int = {
+    val (total, infoMap) = readSummary(userId)
+    val currentDateStr = LocalDate.now.format(DateTimeFormatter.ofPattern(config.YYYY_PIPE_MM))
+    var quotaCount = 0
+    if (currentDateStr.equals(infoMap.get(monthKey))) {
+      quotaCount = infoMap.getOrDefault(countKey, Integer.valueOf(0)).asInstanceOf[Int]
+    }
+    infoMap.put(countKey, quotaCount + 1)
+    infoMap.put(monthKey, currentDateStr)
+    updateUserKarmaPointsSummary(userId, total + points, mapper.writeValueAsString(infoMap))
+  }
 }
