@@ -72,6 +72,7 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val nonAcbpCourseQuota: Int = config.getInt("karmapoints.nonAcbpCourseQuota")
   val curatedProgramQuotaKarmaPoints: Int = config.getInt("karmapoints.curatedProgramQuotaKarmaPoints")
   val curatedProgramMonthlyQuota: Int = config.getInt("karmapoints.curatedProgramMonthlyQuota")
+  val assessmentMonthlyQuota: Int = config.getInt("karmapoints.assessmentMonthlyQuota")
   val eventQuotaKarmaPoints: Int = config.getInt("karmapoints.eventQuotaKarmaPoints")
   val selfRegistrationQuotaKarmaPoints: Int = config.getInt("karmapoints.selfRegistrationQuotaKarmaPoints")
   val surveySubmissionQuotaKarmaPoints: Int = config.getInt("karmapoints.surveySubmissionQuotaKarmaPoints")
@@ -238,6 +239,7 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val CONTEXT_TYPE_EVENT = "EVENT"
   val ADDINFO_ASSESSMENT = "ASSESSMENT"
   val ADDINFO_ACBP = "ACBP"
+  val ADDINFO_IS_ACBP = "isAcbp"
   val ADDINFO_COURSENAME = "COURSENAME"
   val ADDINFO_ASSESSMENT_PASS = "ASSESSMENT_PASS"
   val ADDINFO_EVENTNAME = "EVENTNAME"
@@ -326,6 +328,10 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val CURATED_PROGRAM_FORMATTED_MONTH = "curatedProgramFormattedMonth"
   val ADDINFO_PROGRAM_ID = "PROGRAMID"
   val ADDINFO_PROGRAM_NAME = "PROGRAMNAME"
+  val ASSESSMENT_PASSED_MONTHLY_COUNT = "assessmentPassedMonthlyCount"
+  val ASSESSMENT_PASSED_FORMATTED_MONTH = "assessmentPassedFormattedMonth"
+  val ASSESSMENT_HIGH_SCORE_MONTHLY_COUNT = "assessmentHighScoreMonthlyCount"
+  val ASSESSMENT_HIGH_SCORE_FORMATTED_MONTH = "assessmentHighScoreFormattedMonth"
 
   val ADDINFO_CREATED_AT = "createdAt"
   val ADDINFO_TARGET_TOTAL_EARNED = "targetTotalEarned"
