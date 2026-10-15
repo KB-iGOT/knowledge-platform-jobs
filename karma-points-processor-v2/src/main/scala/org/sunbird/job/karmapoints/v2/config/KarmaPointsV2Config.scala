@@ -56,7 +56,8 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
 
   // External services
   val cbPlanV2Base: String = config.getString("service.cbplan.v2.basePath")
-  val cbPlanV2ReadUser: String = cbPlanV2Base + "cbplan/v2/user/lookup"
+  val cbPlanV2ReadUser: String = cbPlanV2Base +
+    (if (config.hasPath("service.cbplan.v2.userLookupPath")) config.getString("service.cbplan.v2.userLookupPath") else "cbplan/v2/user/lookup")
   val cbEventReadUrl: String = config.getString("service.event.read")
   val userAccBlockedErrCode = "UOS_USRRED0006"
 
@@ -73,6 +74,8 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val curatedProgramQuotaKarmaPoints: Int = config.getInt("karmapoints.curatedProgramQuotaKarmaPoints")
   val curatedProgramMonthlyQuota: Int = config.getInt("karmapoints.curatedProgramMonthlyQuota")
   val assessmentMonthlyQuota: Int = config.getInt("karmapoints.assessmentMonthlyQuota")
+  val eventMonthlyQuota: Int = config.getInt("karmapoints.eventMonthlyQuota")
+  val eventEnableCapping: Boolean = if (config.hasPath("karmapoints.eventEnableCapping")) config.getBoolean("karmapoints.eventEnableCapping") else true
   val eventQuotaKarmaPoints: Int = config.getInt("karmapoints.eventQuotaKarmaPoints")
   val selfRegistrationQuotaKarmaPoints: Int = config.getInt("karmapoints.selfRegistrationQuotaKarmaPoints")
   val surveySubmissionQuotaKarmaPoints: Int = config.getInt("karmapoints.surveySubmissionQuotaKarmaPoints")
@@ -332,6 +335,8 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val ASSESSMENT_PASSED_FORMATTED_MONTH = "assessmentPassedFormattedMonth"
   val ASSESSMENT_HIGH_SCORE_MONTHLY_COUNT = "assessmentHighScoreMonthlyCount"
   val ASSESSMENT_HIGH_SCORE_FORMATTED_MONTH = "assessmentHighScoreFormattedMonth"
+  val EVENT_ATTENDED_MONTHLY_COUNT = "eventAttendedMonthlyCount"
+  val EVENT_ATTENDED_FORMATTED_MONTH = "eventAttendedFormattedMonth"
 
   val ADDINFO_CREATED_AT = "createdAt"
   val ADDINFO_TARGET_TOTAL_EARNED = "targetTotalEarned"
