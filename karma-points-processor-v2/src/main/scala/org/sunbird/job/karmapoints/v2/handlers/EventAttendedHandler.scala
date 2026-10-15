@@ -48,6 +48,13 @@ class EventAttendedHandler(config: KarmaPointsV2Config, cassandraUtil: Cassandra
       return
     }
 
+    if (config.eventEnableCapping && cassandraUtil.hasReachedMonthlyCountCutOff(userId, config.EVENT_ATTENDED_MONTHLY_COUNT,
+      config.EVENT_ATTENDED_FORMATTED_MONTH, config.eventMonthlyQuota)) {
+      logger.info(s"EVENT_ATTENDED monthly limit reached: userId=$userId, eventId=$eventId - not awarding")
+      metrics.incCounter(config.skippedEventCount)
+      return
+    }
+
     val points = config.eventQuotaKarmaPoints
     val addInfoMap = new util.HashMap[String, AnyRef]()
     addInfoMap.put(config.ADDINFO_EVENTNAME, eventName)
@@ -58,7 +65,8 @@ class EventAttendedHandler(config: KarmaPointsV2Config, cassandraUtil: Cassandra
     logger.info(
       s"EVENT_ATTENDED points awarded: userId=$userId, eventId=$eventId, points=$points"
     )
-    val newTotal = cassandraUtil.addToKarmaSummary(userId, points)
+    val newTotal = cassandraUtil.applyMonthlyCountSummaryUpdate(userId, points, config.EVENT_ATTENDED_MONTHLY_COUNT,
+      config.EVENT_ATTENDED_FORMATTED_MONTH)
     redisUtil.setUserKarmaPoints(userId, newTotal)
   }
 }

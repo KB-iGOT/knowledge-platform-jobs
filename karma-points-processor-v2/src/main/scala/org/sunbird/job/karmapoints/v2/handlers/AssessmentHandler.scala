@@ -99,8 +99,8 @@ class AssessmentHandler(config: KarmaPointsV2Config, cassandraUtil: CassandraUti
 
   private def handleHighScore(userId: String, courseId: String, batchId: String, assessmentId: String, score: Double)
                               (implicit metrics: Metrics): Unit = {
-    if (score <= config.assessmentHighScoreThreshold) {
-      logger.info(s"ASSESSMENT_HIGH_SCORE score=$score does not exceed threshold=${config.assessmentHighScoreThreshold}: userId=$userId, courseId=$courseId, assessmentId=$assessmentId - not awarding")
+    if (score < config.assessmentHighScoreThreshold) {
+      logger.info(s"ASSESSMENT_HIGH_SCORE score=$score is below threshold=${config.assessmentHighScoreThreshold}: userId=$userId, courseId=$courseId, assessmentId=$assessmentId - not awarding")
       metrics.incCounter(config.skippedEventCount)
       return
     }
