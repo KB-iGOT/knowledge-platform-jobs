@@ -1624,6 +1624,7 @@ karma-points-processor-v2:
       cbplan.basePath = "{{ cb_ext_service_base_url }}"
       cbplan.v2.basePath = "{{ cb_ext_course_service_base_url }}"
       event.read = "{{ core_content_service_base_url }}event/v4/read/"
+      cbplan.v2.userLookupPath = "cbplan/v2/user/lookup"
     }
     karmapoints {
       acbpQuotaKarmaPoints = 5
@@ -1649,27 +1650,24 @@ karma-points-processor-v2:
       assessmentHighScoreQuotaKarmaPoints = 5
       assessmentHighScoreThreshold = 75
       assessmentMonthlyQuota = 4
+      eventMonthlyQuota = 4
+      eventEnableCapping = true
     }
     karmaCoin {
       pointsConversion {
         monthlyLimit = 300
         ratio = "1:1"
       }
+      transactionId {
+        length = 12
+        alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+      }
       pendingEnrolment {
           ttlSeconds = 5
       }
       walletBalance.ttlSeconds = 300
-    }
-    
-    transactionId {
-      length = 12
-      alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    }
-    
-    redis {
-      database {
-        relationCache.id = 6
-        contentCache.id = 7
+      
+      redis {
         cacheTtlSeconds = 3600
         requestClaimTtlSeconds = 60
         pointsConversionDedupEnabled = true
@@ -1677,17 +1675,19 @@ karma-points-processor-v2:
         coinsReawardDedupEnabled = true
         releaseDedupOnException = true
       }
-    }
+    }    
     
     redis {
-      database {
-        karmaPointCache.id = 0
-        pendingEnrolmentCache.id = 1
-      }
-      
       host = {{ dp_redis_host }}
       port = 6379
       cache.ttl.seconds = 259200
+      
+      database {
+        relationCache.id = 6
+        contentCache.id = 7
+        karmaPointCache.id = 0
+        pendingEnrolmentCache.id = 1
+      }
     }
     metrics {
       enabled = true
