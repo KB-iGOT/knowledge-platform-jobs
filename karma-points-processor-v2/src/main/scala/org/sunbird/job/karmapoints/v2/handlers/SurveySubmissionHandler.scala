@@ -58,12 +58,20 @@ class SurveySubmissionHandler(config: KarmaPointsV2Config, cassandraUtil: Cassan
       return
     }
 
+    val hierarchy = cassandraUtil.fetchContentHierarchy(courseId)
+    if (hierarchy == null || hierarchy.isEmpty) {
+      logger.info(s"No content hierarchy for courseId=$courseId - skipping SURVEY_SUBMISSION, userId=$userId")
+      metrics.incCounter(config.skippedEventCount)
+      return
+    }
+
     val points = config.surveySubmissionQuotaKarmaPoints
-    val addInfo = cassandraUtil.buildAddInfo(null, config.ADDINFO_SURVEY_ID -> surveyId)
+    val addInfo = cassandraUtil.buildAddInfo(null, config.ADDINFO_SURVEY_ID -> surveyId,
+      config.ADDINFO_COURSENAME -> hierarchy.get(config.name))
     cassandraUtil.insertKarmaPointsWithLookupKey(userId, config.COURSE, config.OPERATION_TYPE_SURVEY_SUBMISSION,
       courseId, points, addInfo, lookupKey)
     // TODO: Remove temporary INFO log after testing.
-    logger.info(s"SURVEY_SUBMISSION points awarded: userId=$userId, courseId=$courseId, surveyId=$surveyId, points=$points")
+    logger.info(s"SURVEY_SUBMISSION points awarded: userId=$userId, courseId=$courseId, courseName=${hierarchy.get(config.name)}, surveyId=$surveyId, points=$points")
     val newTotal = cassandraUtil.addToKarmaSummary(userId, points)
     redisUtil.setUserKarmaPoints(userId, newTotal)
   }

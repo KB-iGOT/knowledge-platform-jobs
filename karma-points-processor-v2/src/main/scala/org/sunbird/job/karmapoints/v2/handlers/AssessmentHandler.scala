@@ -61,6 +61,8 @@ class AssessmentHandler(config: KarmaPointsV2Config, cassandraUtil: CassandraUti
         throw InvalidPayloadException(s"${event.eventType} event has a non-numeric score='$scoreStr' for userId=$userId")
     }
 
+    logger.info(s"Processing ${event.eventType} event: userId=$userId, courseId=$courseId, batchId=$batchId, assessmentId=$assessmentId, score=$score")
+
     event.eventType match {
       case config.EVENT_TYPE_ASSESSMENT_PASSED => handlePassed(userId, courseId, batchId, assessmentId, score)
       case config.EVENT_TYPE_ASSESSMENT_HIGH_SCORE => handleHighScore(userId, courseId, batchId, assessmentId, score)
@@ -76,7 +78,11 @@ class AssessmentHandler(config: KarmaPointsV2Config, cassandraUtil: CassandraUti
       return
     }
 
+    val hierarchy = courseHierarchy(config.EVENT_TYPE_ASSESSMENT_PASSED, userId, courseId)
+    if (hierarchy.isEmpty) return
+
     val isAcbp = isAcbpCourse(userId, courseId)
+    logger.info(s"ASSESSMENT_PASSED ACBP check: userId=$userId, courseId=$courseId, assessmentId=$assessmentId, isAcbp=$isAcbp")
     if (!isAcbp && cassandraUtil.hasReachedMonthlyCountCutOff(userId, config.ASSESSMENT_PASSED_MONTHLY_COUNT,
       config.ASSESSMENT_PASSED_FORMATTED_MONTH, config.assessmentMonthlyQuota)) {
       logger.info(s"ASSESSMENT_PASSED monthly limit reached for non-ACBP course: userId=$userId, courseId=$courseId, assessmentId=$assessmentId - not awarding")
@@ -87,10 +93,11 @@ class AssessmentHandler(config: KarmaPointsV2Config, cassandraUtil: CassandraUti
     val points = config.assessmentPassedQuotaKarmaPoints
     val addInfo = cassandraUtil.buildAddInfo(null, config.ADDINFO_ASSESSMENT_STATUS -> config.ASSESSMENT_STATUS_PASS,
       config.ADDINFO_SCORE -> score, config.ADDINFO_ASSESSMENT_ID -> assessmentId, config.ADDINFO_BATCH_ID -> batchId,
-      config.ADDINFO_IS_ACBP -> isAcbp)
+      config.ADDINFO_IS_ACBP -> isAcbp,
+      config.ADDINFO_COURSENAME -> hierarchy.get.get(config.name))
     cassandraUtil.insertKarmaPointsWithLookupKey(userId, config.COURSE, config.OPERATION_TYPE_ASSESSMENT_PASSED,
       courseId, points, addInfo, lookupKey)
-    logger.info(s"ASSESSMENT_PASSED Karma Points awarded: userId=$userId, courseId=$courseId, assessmentId=$assessmentId, points=$points, score=$score")
+    logger.info(s"ASSESSMENT_PASSED Karma Points awarded: userId=$userId, courseId=$courseId, courseName=${hierarchy.get.get(config.name)}, assessmentId=$assessmentId, points=$points, score=$score, isAcbp=$isAcbp")
     val newTotal = if (isAcbp) cassandraUtil.addToKarmaSummary(userId, points)
     else cassandraUtil.applyMonthlyCountSummaryUpdate(userId, points, config.ASSESSMENT_PASSED_MONTHLY_COUNT,
       config.ASSESSMENT_PASSED_FORMATTED_MONTH)
@@ -112,7 +119,11 @@ class AssessmentHandler(config: KarmaPointsV2Config, cassandraUtil: CassandraUti
       return
     }
 
+    val hierarchy = courseHierarchy(config.EVENT_TYPE_ASSESSMENT_HIGH_SCORE, userId, courseId)
+    if (hierarchy.isEmpty) return
+
     val isAcbp = isAcbpCourse(userId, courseId)
+    logger.info(s"ASSESSMENT_HIGH_SCORE ACBP check: userId=$userId, courseId=$courseId, assessmentId=$assessmentId, isAcbp=$isAcbp")
     if (!isAcbp && cassandraUtil.hasReachedMonthlyCountCutOff(userId, config.ASSESSMENT_HIGH_SCORE_MONTHLY_COUNT,
       config.ASSESSMENT_HIGH_SCORE_FORMATTED_MONTH, config.assessmentMonthlyQuota)) {
       logger.info(s"ASSESSMENT_HIGH_SCORE monthly limit reached for non-ACBP course: userId=$userId, courseId=$courseId, assessmentId=$assessmentId - not awarding")
@@ -123,10 +134,11 @@ class AssessmentHandler(config: KarmaPointsV2Config, cassandraUtil: CassandraUti
     val points = config.assessmentHighScoreQuotaKarmaPoints
     val addInfo = cassandraUtil.buildAddInfo(null, config.ADDINFO_ASSESSMENT_STATUS -> config.ASSESSMENT_STATUS_HIGH_SCORE,
       config.ADDINFO_SCORE -> score, config.ADDINFO_ASSESSMENT_ID -> assessmentId, config.ADDINFO_BATCH_ID -> batchId,
-      config.ADDINFO_IS_ACBP -> isAcbp)
+      config.ADDINFO_IS_ACBP -> isAcbp,
+      config.ADDINFO_COURSENAME -> hierarchy.get.get(config.name))
     cassandraUtil.insertKarmaPointsWithLookupKey(userId, config.COURSE, config.OPERATION_TYPE_ASSESSMENT_HIGH_SCORE,
       courseId, points, addInfo, lookupKey)
-    logger.info(s"ASSESSMENT_HIGH_SCORE Karma Points awarded: userId=$userId, courseId=$courseId, assessmentId=$assessmentId, points=$points, score=$score")
+    logger.info(s"ASSESSMENT_HIGH_SCORE Karma Points awarded: userId=$userId, courseId=$courseId, courseName=${hierarchy.get.get(config.name)}, assessmentId=$assessmentId, points=$points, score=$score, isAcbp=$isAcbp")
     val newTotal = if (isAcbp) cassandraUtil.addToKarmaSummary(userId, points)
     else cassandraUtil.applyMonthlyCountSummaryUpdate(userId, points, config.ASSESSMENT_HIGH_SCORE_MONTHLY_COUNT,
       config.ASSESSMENT_HIGH_SCORE_FORMATTED_MONTH)
@@ -140,5 +152,15 @@ class AssessmentHandler(config: KarmaPointsV2Config, cassandraUtil: CassandraUti
       config.X_AUTHENTICATED_USER_ID -> userId
     )
     externalServiceClient.isCourseOnACBPPlan(courseId, headers)
+  }
+
+  private def courseHierarchy(eventType: String, userId: String, courseId: String)
+                             (implicit metrics: Metrics): Option[java.util.HashMap[String, AnyRef]] = {
+    val hierarchy = cassandraUtil.fetchContentHierarchy(courseId)
+    if (hierarchy == null || hierarchy.isEmpty) {
+      logger.info(s"No content hierarchy for courseId=$courseId - skipping $eventType, userId=$userId")
+      metrics.incCounter(config.skippedEventCount)
+      None
+    } else Some(hierarchy)
   }
 }
