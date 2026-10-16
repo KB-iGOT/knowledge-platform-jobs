@@ -57,7 +57,7 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   // External services
   val cbPlanV2Base: String = config.getString("service.cbplan.v2.basePath")
   val cbPlanV2ReadUser: String = cbPlanV2Base +
-    (if (config.hasPath("service.cbplan.v2.userLookupPath")) config.getString("service.cbplan.v2.userLookupPath") else "cbplan/v2/user/lookup")
+    (if (config.hasPath("service.cbplan.userLookupPath")) config.getString("service.cbplan.userLookupPath") else "cbplan/v4/user/lookup")
   val cbEventReadUrl: String = config.getString("service.event.read")
   val userAccBlockedErrCode = "UOS_USRRED0006"
 
