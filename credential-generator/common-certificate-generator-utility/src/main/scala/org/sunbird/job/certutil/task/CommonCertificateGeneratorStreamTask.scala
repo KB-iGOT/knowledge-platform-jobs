@@ -48,6 +48,11 @@ class CommonCertificateGeneratorStreamTask(config: CertificateGeneratorConfig, k
       .name(config.certificateGeneratorCompetencyMappingProducer)
       .uid(config.certificateGeneratorCompetencyMappingProducer)
 
+    processStreamTask.getSideOutput(config.userBadgeAwardOutputTag)
+      .addSink(kafkaConnector.kafkaStringSink(config.kafkaBadgeAwardTopic))
+      .name(config.certificateGeneratorBadgeAwardProducer)
+      .uid(config.certificateGeneratorBadgeAwardProducer)
+
     processStreamTask.getSideOutput(config.notifierOutputTag)
       .process(new NotifierFunction(config, httpUtil))
       .name("notifier")
@@ -59,11 +64,6 @@ class CommonCertificateGeneratorStreamTask(config: CertificateGeneratorConfig, k
       .name("user-feed")
       .uid("user-feed")
       .setParallelism(config.userFeedParallelism)
-
-    processStreamTask.getSideOutput(config.userBadgeAwardOutputTag)
-      .addSink(kafkaConnector.kafkaStringSink(config.kafkaBadgeAwardTopic))
-      .name(config.certificateGeneratorBadgeAwardProducer)
-      .uid(config.certificateGeneratorBadgeAwardProducer)
 
     env.execute(config.jobName)
   }
