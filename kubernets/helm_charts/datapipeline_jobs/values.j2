@@ -723,6 +723,10 @@ collection-cert-pre-processor:
     {% endif %}
       port = 6379
     }
+
+    cert {
+      issuedDate.timezone = "Asia/Kolkata"
+    }
     assessment.metrics.supported.contenttype = ["SelfAssess"]
     allowed.course.category.certificate.processor = ["Course","Moderated Course","Invite-Only Program","Moderated Program","Blended Program","Standalone Assessment","Moderated Assessment","Invite-Only Assessment","External Redirect","Comprehensive Assessment Program","Multilingual Course","Pre Enrolment Assessment"]
   
@@ -841,6 +845,10 @@ collection-certificate-generator:
         port= {{data_redis_port}}
       }
     }
+
+    cert {
+      issuedDate.timezone = "Asia/Kolkata"
+    }
     enable.suppress.exception = {{ collection_certificate_generator_enable_suppress_exception | lower }}
     enable.rc.certificate = false
     allowed.course.category.certificate.processor = []
@@ -916,6 +924,10 @@ event-cert-generator:
         host= {{data_redis_host}}
         port= {{data_redis_port}}
       }
+    }
+
+    cert {
+      issuedDate.timezone = "Asia/Kolkata"
     }
     
     enable.suppress.exception = {{ event_cert_generator_enable_suppress_exception | lower }}
@@ -1522,6 +1534,10 @@ common-certificate-generator-utility:
       rc.basePath = "{{ cert_rc_base_url }}"
       rc.entity = "{{ cert_rc_entity }}"
     }
+
+    cert {
+      issuedDate.timezone = "Asia/Kolkata"
+    }
     enable.suppress.exception = {{ common_certificate_generator_utility_enable_suppress_exception | lower }}
     enable.rc.certificate = false
 
@@ -1573,6 +1589,10 @@ assessment-public-certificate-generator:
       enc.basePath = "{{ enc_service_base_url }}"
       rc.basePath = "{{ cert_rc_base_url }}"
       rc.entity = "{{ cert_rc_entity }}"
+    }
+
+    cert {
+      issuedDate.timezone = "Asia/Kolkata"
     }
     enable.suppress.exception = {{ assessment_public_certificate_generator_enable_suppress_exception | lower }}
     enable.rc.certificate = false
