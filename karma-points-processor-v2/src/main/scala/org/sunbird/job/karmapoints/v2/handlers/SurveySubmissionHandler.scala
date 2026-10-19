@@ -26,10 +26,9 @@ import org.sunbird.job.karmapoints.v2.storage.{CassandraUtil, RedisUtil}
  * points, addInfo, lookupKey)` instead, with ledger `context_type=config.COURSE`/`context_id=courseId`
  * and `addinfo={"surveyId":...}` via the existing `buildAddInfo`.
  *
- * No monthly quota is enforced - none exists in this codebase for SURVEY_SUBMISSION (the only
- * monthly counter, `nonAcbpCourseQuota`, is hard-wired to non-ACBP course completion and reusing it
- * would require changing its behavior) - confirmed with the requester; same one-time-per-key shape
- * as FirstLoginHandler/VerifiedProfileHandler/SelfRegistrationHandler.
+ * A user can receive at most `config.surveySubmissionMonthlyQuota` survey awards per calendar month,
+ * tracked via `CassandraUtil.hasReachedMonthlyCountCutOff` / `applyMonthlyCountSummaryUpdate`. Duplicates
+ * and over-limit submissions do not consume a slot.
  */
 class SurveySubmissionHandler(config: KarmaPointsV2Config, cassandraUtil: CassandraUtil, redisUtil: RedisUtil) extends EventHandler {
   private[this] val logger = LoggerFactory.getLogger(classOf[SurveySubmissionHandler])
@@ -65,6 +64,13 @@ class SurveySubmissionHandler(config: KarmaPointsV2Config, cassandraUtil: Cassan
       return
     }
 
+    if (cassandraUtil.hasReachedMonthlyCountCutOff(userId, config.SURVEY_SUBMISSION_MONTHLY_COUNT,
+      config.SURVEY_SUBMISSION_FORMATTED_MONTH, config.surveySubmissionMonthlyQuota)) {
+      logger.info(s"SURVEY_SUBMISSION monthly limit reached: userId=$userId, courseId=$courseId, surveyId=$surveyId - not awarding")
+      metrics.incCounter(config.skippedEventCount)
+      return
+    }
+
     val points = config.surveySubmissionQuotaKarmaPoints
     val addInfo = cassandraUtil.buildAddInfo(null, config.ADDINFO_SURVEY_ID -> surveyId,
       config.ADDINFO_COURSENAME -> hierarchy.get(config.name))
@@ -72,7 +78,8 @@ class SurveySubmissionHandler(config: KarmaPointsV2Config, cassandraUtil: Cassan
       courseId, points, addInfo, lookupKey)
     // TODO: Remove temporary INFO log after testing.
     logger.info(s"SURVEY_SUBMISSION points awarded: userId=$userId, courseId=$courseId, courseName=${hierarchy.get(config.name)}, surveyId=$surveyId, points=$points")
-    val newTotal = cassandraUtil.addToKarmaSummary(userId, points)
+    val newTotal = cassandraUtil.applyMonthlyCountSummaryUpdate(userId, points, config.SURVEY_SUBMISSION_MONTHLY_COUNT,
+      config.SURVEY_SUBMISSION_FORMATTED_MONTH)
     redisUtil.setUserKarmaPoints(userId, newTotal)
   }
 }

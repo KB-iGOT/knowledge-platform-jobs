@@ -75,6 +75,7 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val curatedProgramMonthlyQuota: Int = config.getInt("karmapoints.curatedProgramMonthlyQuota")
   val assessmentMonthlyQuota: Int = config.getInt("karmapoints.assessmentMonthlyQuota")
   val eventMonthlyQuota: Int = config.getInt("karmapoints.eventMonthlyQuota")
+  val surveySubmissionMonthlyQuota: Int = config.getInt("karmapoints.surveySubmissionMonthlyQuota")
   val eventEnableCapping: Boolean = if (config.hasPath("karmapoints.eventEnableCapping")) config.getBoolean("karmapoints.eventEnableCapping") else true
   val eventQuotaKarmaPoints: Int = config.getInt("karmapoints.eventQuotaKarmaPoints")
   val selfRegistrationQuotaKarmaPoints: Int = config.getInt("karmapoints.selfRegistrationQuotaKarmaPoints")
@@ -337,6 +338,8 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val ASSESSMENT_HIGH_SCORE_FORMATTED_MONTH = "assessmentHighScoreFormattedMonth"
   val EVENT_ATTENDED_MONTHLY_COUNT = "eventAttendedMonthlyCount"
   val EVENT_ATTENDED_FORMATTED_MONTH = "eventAttendedFormattedMonth"
+  val SURVEY_SUBMISSION_MONTHLY_COUNT = "surveySubmissionMonthlyCount"
+  val SURVEY_SUBMISSION_FORMATTED_MONTH = "surveySubmissionFormattedMonth"
 
   val ADDINFO_CREATED_AT = "createdAt"
   val ADDINFO_TARGET_TOTAL_EARNED = "targetTotalEarned"
