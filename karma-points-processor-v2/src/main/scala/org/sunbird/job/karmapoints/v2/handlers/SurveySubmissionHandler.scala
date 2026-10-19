@@ -7,6 +7,7 @@ import org.sunbird.job.karmapoints.v2.config.KarmaPointsV2Config
 import org.sunbird.job.karmapoints.v2.domain.UnifiedEvent
 import org.sunbird.job.karmapoints.v2.exceptions.MissingPayloadException
 import org.sunbird.job.karmapoints.v2.storage.{CassandraUtil, RedisUtil}
+import org.sunbird.job.karmapoints.v2.utils.ExternalServiceClient
 
 /**
  * Handles SURVEY_SUBMISSION events:
@@ -26,12 +27,13 @@ import org.sunbird.job.karmapoints.v2.storage.{CassandraUtil, RedisUtil}
  * points, addInfo, lookupKey)` instead, with ledger `context_type=config.COURSE`/`context_id=courseId`
  * and `addinfo={"surveyId":...}` via the existing `buildAddInfo`.
  *
- * No monthly quota is enforced - none exists in this codebase for SURVEY_SUBMISSION (the only
- * monthly counter, `nonAcbpCourseQuota`, is hard-wired to non-ACBP course completion and reusing it
- * would require changing its behavior) - confirmed with the requester; same one-time-per-key shape
- * as FirstLoginHandler/VerifiedProfileHandler/SelfRegistrationHandler.
+ * For non-ACBP/APAR courses a user can receive at most `config.surveySubmissionMonthlyQuota` survey awards
+ * per calendar month, tracked via `CassandraUtil.hasReachedMonthlyCountCutOff` / `applyMonthlyCountSummaryUpdate`.
+ * Surveys of ACBP/APAR courses are unlimited and do not use a slot. Duplicates and over-limit submissions
+ * do not consume a slot.
  */
-class SurveySubmissionHandler(config: KarmaPointsV2Config, cassandraUtil: CassandraUtil, redisUtil: RedisUtil) extends EventHandler {
+class SurveySubmissionHandler(config: KarmaPointsV2Config, cassandraUtil: CassandraUtil, redisUtil: RedisUtil,
+                              externalServiceClient: ExternalServiceClient) extends EventHandler {
   private[this] val logger = LoggerFactory.getLogger(classOf[SurveySubmissionHandler])
 
   override protected def doHandle(event: UnifiedEvent)(implicit metrics: Metrics): Unit = {
@@ -65,6 +67,15 @@ class SurveySubmissionHandler(config: KarmaPointsV2Config, cassandraUtil: Cassan
       return
     }
 
+    val isAcbp = isAcbpCourse(userId, courseId)
+    logger.info(s"SURVEY_SUBMISSION ACBP check: userId=$userId, courseId=$courseId, surveyId=$surveyId, isAcbp=$isAcbp")
+    if (!isAcbp && cassandraUtil.hasReachedMonthlyCountCutOff(userId, config.SURVEY_SUBMISSION_MONTHLY_COUNT,
+      config.SURVEY_SUBMISSION_FORMATTED_MONTH, config.surveySubmissionMonthlyQuota)) {
+      logger.info(s"SURVEY_SUBMISSION monthly limit reached for non-ACBP course: userId=$userId, courseId=$courseId, surveyId=$surveyId - not awarding")
+      metrics.incCounter(config.skippedEventCount)
+      return
+    }
+
     val points = config.surveySubmissionQuotaKarmaPoints
     val addInfo = cassandraUtil.buildAddInfo(null, config.ADDINFO_SURVEY_ID -> surveyId,
       config.ADDINFO_COURSENAME -> hierarchy.get(config.name))
@@ -72,7 +83,18 @@ class SurveySubmissionHandler(config: KarmaPointsV2Config, cassandraUtil: Cassan
       courseId, points, addInfo, lookupKey)
     // TODO: Remove temporary INFO log after testing.
     logger.info(s"SURVEY_SUBMISSION points awarded: userId=$userId, courseId=$courseId, courseName=${hierarchy.get(config.name)}, surveyId=$surveyId, points=$points")
-    val newTotal = cassandraUtil.addToKarmaSummary(userId, points)
+    val newTotal = if (isAcbp) cassandraUtil.addToKarmaSummary(userId, points)
+    else cassandraUtil.applyMonthlyCountSummaryUpdate(userId, points, config.SURVEY_SUBMISSION_MONTHLY_COUNT,
+      config.SURVEY_SUBMISSION_FORMATTED_MONTH)
     redisUtil.setUserKarmaPoints(userId, newTotal)
+  }
+
+  private def isAcbpCourse(userId: String, courseId: String)(implicit metrics: Metrics): Boolean = {
+    val headers = Map(
+      config.HEADER_CONTENT_TYPE_KEY -> config.HEADER_CONTENT_TYPE_JSON,
+      config.X_AUTHENTICATED_USER_ORGID -> cassandraUtil.fetchUserRootOrgId(userId),
+      config.X_AUTHENTICATED_USER_ID -> userId
+    )
+    externalServiceClient.isCourseOnACBPPlan(courseId, headers)
   }
 }
