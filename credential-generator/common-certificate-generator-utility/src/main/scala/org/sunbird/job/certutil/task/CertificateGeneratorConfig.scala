@@ -199,4 +199,6 @@ class CertificateGeneratorConfig(override val config: Config) extends BaseJobCon
   val eventType = "eventType"
   val competencyAcquired = "COMPETENCY_ACQUIRED"
   val extCourses = "extCourses"
+
+  val issuedDateTimeZone: String = if (config.hasPath("cert.issuedDate.timezone")) config.getString("cert.issuedDate.timezone") else "Asia/Kolkata"
 }

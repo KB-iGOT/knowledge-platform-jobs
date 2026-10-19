@@ -192,4 +192,6 @@ class CertificateGeneratorConfig(override val config: Config) extends BaseJobCon
   val encryptionKey: String = config.getString("encryption.key")
   val eventIssueName = "eventIssueName"
   val specialEventCertificateName: String = if(config.hasPath("specialEventCertificateName")) config.getString("specialEventCertificateName") else ""
+
+  val issuedDateTimeZone: String = if (config.hasPath("cert.issuedDate.timezone")) config.getString("cert.issuedDate.timezone") else "Asia/Kolkata"
 }

@@ -26,6 +26,7 @@ class NotifierFunction(config: CertificateGeneratorConfig, httpUtil: HttpUtil, @
   extends BaseProcessFunction[NotificationMetaData, String](config) {
 
   private val dateFormatter = new SimpleDateFormat("yyyy-MM-dd")
+  dateFormatter.setTimeZone(java.util.TimeZone.getTimeZone(config.issuedDateTimeZone))
 
   private[this] val logger = LoggerFactory.getLogger(classOf[NotifierFunction])
 
