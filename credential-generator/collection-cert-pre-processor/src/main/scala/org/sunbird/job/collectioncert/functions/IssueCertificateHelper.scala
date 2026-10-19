@@ -237,6 +237,7 @@ trait IssueCertificateHelper {
             courseName = languageCourseInfo.getOrDefault("courseName", "").asInstanceOf[String]
         }
         val dateFormatter = new SimpleDateFormat("yyyy-MM-dd")
+        dateFormatter.setTimeZone(java.util.TimeZone.getTimeZone(config.issuedDateTimeZone))
         val related = getRelatedData(event, enrolledUser, assessedUser, userDetails, additionalProps, certName, courseName)(config)
         val parentCollections: List[String] = Option(courseInfo.get(config.parentCollections))
             .collect {

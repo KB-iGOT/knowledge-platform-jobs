@@ -211,4 +211,6 @@ class EventCertificateGeneratorConfig(override val config: Config) extends BaseJ
   val competencyAcquired = "COMPETENCY_ACQUIRED"
   val externalTraining = "externalTraining"
   val competencyMappingOutputTag: OutputTag[String] = OutputTag[String]("competency-mapping")
+
+  val issuedDateTimeZone: String = if (config.hasPath("cert.issuedDate.timezone")) config.getString("cert.issuedDate.timezone") else "Asia/Kolkata"
 }

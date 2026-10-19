@@ -208,6 +208,7 @@ trait IssueEventCertificateHelper {
     val courseInfo: java.util.Map[String, AnyRef] = getEventInfo(event.eventId)(metrics, config, cache, httpUtil)
     val courseName = courseInfo.getOrDefault("courseName", "").asInstanceOf[String]
     val dateFormatter = new SimpleDateFormat("yyyy-MM-dd")
+    dateFormatter.setTimeZone(java.util.TimeZone.getTimeZone(config.issuedDateTimeZone))
     val related = getRelatedDataForEvent(event, enrolledUser, assessedUser, userDetails, additionalProps, certName, courseName)(config)
     val parentCollections: List[String] = Option(courseInfo.get(config.parentCollections))
       .collect {

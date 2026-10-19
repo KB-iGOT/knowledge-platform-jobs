@@ -3,7 +3,7 @@ package org.sunbird.incredible.processor.views
 import java.io.UnsupportedEncodingException
 import java.net.{URI, URISyntaxException, URLEncoder}
 import java.text.{DateFormat, ParseException, SimpleDateFormat}
-import java.util.{Date, Locale}
+import java.util.{Date, Locale, TimeZone}
 
 import org.apache.commons.lang.StringUtils
 import org.slf4j.{Logger, LoggerFactory}
@@ -42,6 +42,7 @@ class VarResolver(certificateExtension: CertificateExtension) {
     try {
       val parsedIssuedDate: Date = simpleDateFormat.parse(certificateExtension.issuedOn)
       val format: DateFormat = new SimpleDateFormat("dd MMMM yyy", Locale.getDefault)
+      format.setTimeZone(TimeZone.getTimeZone(Option(System.getenv("cert_issued_date_timezone")).getOrElse("Asia/Kolkata")))
       dateInFormat = format.format(parsedIssuedDate)
     } catch {
       case e: ParseException =>
