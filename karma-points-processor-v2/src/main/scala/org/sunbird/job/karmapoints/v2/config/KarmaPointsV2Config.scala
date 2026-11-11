@@ -80,6 +80,15 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val eventQuotaKarmaPoints: Int = config.getInt("karmapoints.eventQuotaKarmaPoints")
   val selfRegistrationQuotaKarmaPoints: Int = config.getInt("karmapoints.selfRegistrationQuotaKarmaPoints")
   val surveySubmissionQuotaKarmaPoints: Int = config.getInt("karmapoints.surveySubmissionQuotaKarmaPoints")
+  val sankalpEventKarmaPoints: Int = config.getInt("karmapoints.sankalpEventKarmaPoints")
+  val eventName: String = config.getString("karmapoints.eventName")
+  val sankalpEventOperationType: String = config.getString("karmapoints.sankalpEventOperationType")
+  val sankalpEventContextType: String = config.getString("karmapoints.sankalpEventContextType")
+  val sankalpEventStartDate: String = config.getString("karmapoints.sankalpEventStartDate")
+  val sankalpEventStartTime: String = config.getString("karmapoints.sankalpEventStartTime")
+  val sankalpEventStopDate: String = config.getString("karmapoints.sankalpEventStopDate")
+  val sankalpEventStopTime: String = config.getString("karmapoints.sankalpEventStopTime")
+  val sankalpEventTimezone: String = config.getString("karmapoints.sankalpEventTimezone")
   val courseTimeSpentQuotaKarmaPoints: Int = config.getInt("karmapoints.courseTimeSpentQuotaKarmaPoints")
   val verifiedProfileQuotaKarmaPoints: Int = config.getInt("karmapoints.verifiedProfileQuotaKarmaPoints")
   val engagementStreakQuotaKarmaPoints: Int = config.getInt("karmapoints.engagementStreakQuotaKarmaPoints")
@@ -120,6 +129,7 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val EVENT_TYPE_BULK_REGISTRATION = "BULK_REGISTRATION"
   // Once-per-user-per-course karma-points award - see SurveySubmissionHandler.
   val EVENT_TYPE_SURVEY_SUBMISSION = "SURVEY_SUBMISSION"
+  val EVENT_TYPE_SANKALP_EVENT = "SANKALP_EVENT"
   // Once-per-user-per-course karma-points award - see CourseTimeSpentHandler.
   val EVENT_TYPE_COURSE_TIME_SPENT = "COURSE_TIME_SPENT"
   // Once-per-user karma-points award - see EngagementStreakHandler.
@@ -315,6 +325,8 @@ class KarmaPointsV2Config(override val config: Config) extends BaseJobConfig(con
   val ADDINFO_PROVIDER_NAME = "providerName"
   val ADDINFO_BATCH_ID = "batchId"
   val ADDINFO_SURVEY_ID = "surveyId"
+  val ADDINFO_DATE_TIME = "date_time"
+  val ADDINFO_EVENT_NAME = "eventName"
   val ADDINFO_START_DATE = "startDate"
   val ADDINFO_END_DATE = "endDate"
   val ADDINFO_ASSESSMENT_STATUS = "assessment"
