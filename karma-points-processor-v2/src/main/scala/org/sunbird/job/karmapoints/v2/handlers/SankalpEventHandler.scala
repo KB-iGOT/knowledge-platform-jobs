@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory
 import org.sunbird.job.Metrics
 import org.sunbird.job.karmapoints.v2.config.KarmaPointsV2Config
 import org.sunbird.job.karmapoints.v2.domain.UnifiedEvent
-import org.sunbird.job.karmapoints.v2.exceptions.MissingPayloadException
+import org.sunbird.job.karmapoints.v2.exceptions.{InvalidPayloadException, MissingPayloadException}
 import org.sunbird.job.karmapoints.v2.storage.{CassandraUtil, RedisUtil}
 
 import scala.util.Try
@@ -35,6 +35,7 @@ import scala.util.Try
 class SankalpEventHandler(config: KarmaPointsV2Config, cassandraUtil: CassandraUtil, redisUtil: RedisUtil) extends EventHandler {
   private[this] val logger = LoggerFactory.getLogger(classOf[SankalpEventHandler])
   private[this] val minEpochMillis = 100000000000L
+  private[this] val mandatoryStringFields = Seq("userId", "courseId", "surveyId", "eventName")
   private[this] val operationType = config.sankalpEventOperationType
   private[this] val contextType = config.sankalpEventContextType
 
@@ -58,6 +59,8 @@ class SankalpEventHandler(config: KarmaPointsV2Config, cassandraUtil: CassandraU
     val surveyId = event.dataEdataString("surveyId")
     val eventName = event.dataEdataString("eventName")
 
+    mandatoryStringFields.foreach(field => requireStringValue(event, field))
+
     if (StringUtils.isBlank(userId)) {
       throw MissingPayloadException(s"Event validation failed: userId is missing (data.edata.userId), ${context(event, userId, courseId, surveyId, eventName)}")
     }
@@ -74,16 +77,14 @@ class SankalpEventHandler(config: KarmaPointsV2Config, cassandraUtil: CassandraU
     val dateTimeMs = parseDateTime(event) match {
       case Some(ms) => ms
       case None =>
-        logger.warn(s"Event skipped because date_time is missing or invalid: ${context(event, userId, courseId, surveyId, eventName)}, date_time=${event.dataEdata.get("date_time")}")
-        metrics.incCounter(config.skippedEventCount)
-        return
+        throw InvalidPayloadException(s"Event validation failed: date_time (data.edata.date_time) is invalid: ${invalidDateTimeReason(event)}, " +
+          s"${context(event, userId, courseId, surveyId, eventName)}")
     }
 
     val receivedAt = Try(Instant.ofEpochMilli(dateTimeMs).atZone(timezone)).toOption.orNull
     if (receivedAt == null) {
-      logger.warn(s"Event skipped because date_time is out of the supported range: ${context(event, userId, courseId, surveyId, eventName)}, date_time=$dateTimeMs")
-      metrics.incCounter(config.skippedEventCount)
-      return
+      throw InvalidPayloadException(s"Event validation failed: date_time (data.edata.date_time) is out of the supported range: date_time=$dateTimeMs, " +
+        s"${context(event, userId, courseId, surveyId, eventName)}")
     }
     val outsideReason = campaignSkipReason(receivedAt)
     if (outsideReason.isDefined) {
@@ -143,4 +144,37 @@ class SankalpEventHandler(config: KarmaPointsV2Config, cassandraUtil: CassandraU
 
   private def context(event: UnifiedEvent, userId: String, courseId: String, surveyId: String, eventName: String): String =
     s"eventType=${event.eventType}, eventName=$eventName, userId=$userId, courseId=$courseId, surveyId=$surveyId"
+
+  private def requireStringValue(event: UnifiedEvent, field: String): Unit = event.dataEdata.get(field) match {
+    case Some(value) if value != null && !value.isInstanceOf[String] =>
+      throw InvalidPayloadException(s"Event validation failed: $field must be a string (data.edata.$field) but was ${jsonTypeName(value)}, " +
+        context(event, event.dataEdataString("userId"), event.dataEdataString("courseId"), event.dataEdataString("surveyId"), event.dataEdataString("eventName")))
+    case _ =>
+  }
+
+  private def invalidDateTimeReason(event: UnifiedEvent): String = event.dataEdata.get(config.ADDINFO_DATE_TIME) match {
+    case None | Some(null) => "value is missing or null"
+    case Some(n: Long) => epochMillisReason(n)
+    case Some(n: Int) => epochMillisReason(n.toLong)
+    case Some(d: Double) if d.isNaN || d.isInfinite || d != Math.rint(d) => s"value must be a whole number of epoch milliseconds but is fractional or not finite ($d)"
+    case Some(d: Double) if Math.abs(d) < 9.0e18 => epochMillisReason(d.toLong)
+    case Some(s: String) if s.nonEmpty && s.forall(c => c >= '0' && c <= '9') =>
+      Try(s.toLong).toOption.map(v => epochMillisReason(v)).getOrElse(s"value '$s' is too large to be epoch milliseconds")
+    case Some(s: String) => s"value '$s' is not a digit-only epoch milliseconds string"
+    case Some(other) => s"value must be a number or digit-only string but was ${jsonTypeName(other)} ($other)"
+  }
+
+  private def epochMillisReason(value: Long): String =
+    if (value < 0) s"value $value is negative"
+    else s"value $value is below the minimum epoch milliseconds $minEpochMillis (epoch seconds are not accepted)"
+
+  private def jsonTypeName(value: Any): String = value match {
+    case null => "null"
+    case _: String => "string"
+    case _: Boolean => "boolean"
+    case _: Number => "number"
+    case _: java.util.Map[_, _] | _: scala.collection.Map[_, _] => "object"
+    case _: java.util.List[_] | _: scala.collection.Seq[_] | _: Array[_] => "array"
+    case other => other.getClass.getSimpleName
+  }
 }
