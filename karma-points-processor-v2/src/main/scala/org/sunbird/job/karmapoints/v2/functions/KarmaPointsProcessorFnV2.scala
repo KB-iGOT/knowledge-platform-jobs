@@ -52,6 +52,7 @@ class KarmaPointsProcessorFnV2(config: KarmaPointsV2Config, httpUtil: HttpUtil)
   @transient private var verifiedProfileHandler: VerifiedProfileHandler = _
   @transient private var registrationHandler: RegistrationHandler = _
   @transient private var surveySubmissionHandler: SurveySubmissionHandler = _
+  @transient private var sankalpEventHandler: SankalpEventHandler = _
   @transient private var courseTimeSpentHandler: CourseTimeSpentHandler = _
   @transient private var engagementStreakHandler: EngagementStreakHandler = _
   @transient private var assessmentHandler: AssessmentHandler = _
@@ -93,6 +94,7 @@ class KarmaPointsProcessorFnV2(config: KarmaPointsV2Config, httpUtil: HttpUtil)
     verifiedProfileHandler = new VerifiedProfileHandler(config, cassandraUtil, redisUtil)
     registrationHandler = new RegistrationHandler(config, cassandraUtil, redisUtil)
     surveySubmissionHandler = new SurveySubmissionHandler(config, cassandraUtil, redisUtil, externalServiceClient)
+    sankalpEventHandler = new SankalpEventHandler(config, cassandraUtil, redisUtil)
     courseTimeSpentHandler = new CourseTimeSpentHandler(config, cassandraUtil, redisUtil)
     engagementStreakHandler = new EngagementStreakHandler(config, cassandraUtil, redisUtil)
     assessmentHandler = new AssessmentHandler(config, cassandraUtil, redisUtil, externalServiceClient)
@@ -210,7 +212,7 @@ class KarmaPointsProcessorFnV2(config: KarmaPointsV2Config, httpUtil: HttpUtil)
     case config.EVENT_TYPE_POINTS_CONVERSION | config.EVENT_TYPE_COINS_REDEMPTION | config.EVENT_TYPE_COINS_REAWARD =>
       event.dataString("userId")
     case config.EVENT_TYPE_VERIFIED_PROFILE | config.EVENT_TYPE_SELF_REGISTRATION | config.EVENT_TYPE_CUSTOM_REGISTRATION |
-         config.EVENT_TYPE_BULK_REGISTRATION | config.EVENT_TYPE_SURVEY_SUBMISSION |
+         config.EVENT_TYPE_BULK_REGISTRATION | config.EVENT_TYPE_SURVEY_SUBMISSION | config.EVENT_TYPE_SANKALP_EVENT |
          config.EVENT_TYPE_COURSE_TIME_SPENT | config.EVENT_TYPE_ENGAGEMENT_STREAK | config.EVENT_TYPE_ASSESSMENT_PASSED |
          config.EVENT_TYPE_ASSESSMENT_HIGH_SCORE => event.dataEdataString("userId")
     case _ =>
@@ -246,6 +248,7 @@ class KarmaPointsProcessorFnV2(config: KarmaPointsV2Config, httpUtil: HttpUtil)
       case config.EVENT_TYPE_SELF_REGISTRATION | config.EVENT_TYPE_CUSTOM_REGISTRATION | config.EVENT_TYPE_BULK_REGISTRATION =>
         registrationHandler.handle(event)
       case config.EVENT_TYPE_SURVEY_SUBMISSION => surveySubmissionHandler.handle(event)
+      case config.EVENT_TYPE_SANKALP_EVENT => sankalpEventHandler.handle(event)
       case config.EVENT_TYPE_COURSE_TIME_SPENT => courseTimeSpentHandler.handle(event)
       case config.EVENT_TYPE_ENGAGEMENT_STREAK => engagementStreakHandler.handle(event)
       case config.EVENT_TYPE_ASSESSMENT_PASSED | config.EVENT_TYPE_ASSESSMENT_HIGH_SCORE => assessmentHandler.handle(event)
@@ -284,6 +287,7 @@ class KarmaPointsProcessorFnV2(config: KarmaPointsV2Config, httpUtil: HttpUtil)
     this.verifiedProfileHandler = new VerifiedProfileHandler(config, cassandraUtil, redisUtil)
     this.registrationHandler = new RegistrationHandler(config, cassandraUtil, redisUtil)
     this.surveySubmissionHandler = new SurveySubmissionHandler(config, cassandraUtil, redisUtil, externalServiceClient)
+    this.sankalpEventHandler = new SankalpEventHandler(config, cassandraUtil, redisUtil)
     this.courseTimeSpentHandler = new CourseTimeSpentHandler(config, cassandraUtil, redisUtil)
     this.engagementStreakHandler = new EngagementStreakHandler(config, cassandraUtil, redisUtil)
     this.assessmentHandler = new AssessmentHandler(config, cassandraUtil, redisUtil, externalServiceClient)
