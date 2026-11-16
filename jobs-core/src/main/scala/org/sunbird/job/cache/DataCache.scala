@@ -445,6 +445,18 @@ class DataCache(val config: BaseJobConfig, val redisConnect: RedisConnect, val d
   private def expireIfExists(key: String, ttlSeconds: Int): Boolean = {
     redisConnection.expire(key, ttlSeconds) == 1L
   }
+
+  def hdelWithRetry(key: String, field: String): Unit = {
+    try {
+      redisConnection.hdel(key, field)
+    } catch {
+      case ex: JedisException =>
+        logger.error("Exception when deleting hash field from redis cache", ex)
+        close()
+        this.redisConnection = redisConnect.getConnection(dbIndex)
+        redisConnection.hdel(key, field)
+    }
+  }
 }
 
 // $COVERAGE-ON$
