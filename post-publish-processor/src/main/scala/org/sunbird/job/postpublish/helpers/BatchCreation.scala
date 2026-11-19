@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 trait BatchCreation {
 
   private[this] val logger = LoggerFactory.getLogger(classOf[BatchCreation])
+  private val certificateRequired = "certificateRequired"
 
   def createBatch(eData: java.util.Map[String, AnyRef], startDate: String)(implicit config: PostPublishProcessorConfig, httpUtil: HttpUtil, cassandraUtil: CassandraUtil) = {
     val request = new java.util.HashMap[String, AnyRef]() {
@@ -227,6 +228,8 @@ trait BatchCreation {
           put("resourceType", metadata.get("resourceType"))
           put("duration", metadata.get("duration"))
           put("description", metadata.get("description"))
+          if (metadata.containsKey(certificateRequired))
+            put(certificateRequired, metadata.get(certificateRequired))
           if (StringUtils.isNotEmpty(metadata.get(config.resourseType).asInstanceOf[String]))
             put(config.resourseType, metadata.get(config.resourseType))
           val resourceTypeDetails = metadata.get(config.resourceTypeDetails)
@@ -321,7 +324,9 @@ trait BatchCreation {
       }
       logger.info("Batch created successfully with Id : " + batchId)
       if (batchId != "") {
-        addCertTemplateToBatch(eData, batchId, "Event")
+        if (!"No".equals(eData.get(certificateRequired))) {
+          addCertTemplateToBatch(eData, batchId, "Event")
+        }
       } else {
         logger.error("Failed to process batch create response and read BatchId value.")
       }
