@@ -18,6 +18,7 @@ trait BatchCreation {
 
   private[this] val logger = LoggerFactory.getLogger(classOf[BatchCreation])
   private val certificateRequired = "certificateRequired"
+  private val certificateNotRequired: String = "No"
 
   def createBatch(eData: java.util.Map[String, AnyRef], startDate: String)(implicit config: PostPublishProcessorConfig, httpUtil: HttpUtil, cassandraUtil: CassandraUtil) = {
     val request = new java.util.HashMap[String, AnyRef]() {
@@ -324,7 +325,7 @@ trait BatchCreation {
       }
       logger.info("Batch created successfully with Id : " + batchId)
       if (batchId != "") {
-        if (!"No".equals(eData.get(certificateRequired))) {
+        if (!certificateNotRequired.equals(eData.get(certificateRequired))) {
           addCertTemplateToBatch(eData, batchId, "Event")
         }
       } else {
