@@ -26,7 +26,8 @@ class PaidCourseEnrolmentProducer(config: KarmaPointsV2Config) extends Serializa
   }
 
   def send(userId: String, contextType: String, contextId: String, coinsRedeemed: Long,
-           transactionId: String, createdAt: Long, courseName: String, providerName: String): Unit = {
+           transactionId: String, createdAt: Long, courseName: String, providerName: String,
+           partnerId: String): Unit = {
     try {
       val data = new java.util.HashMap[String, Any]()
       data.put("reqId", UUID.randomUUID().toString)
@@ -42,18 +43,19 @@ class PaidCourseEnrolmentProducer(config: KarmaPointsV2Config) extends Serializa
       data.put("createdAt", createdAt)
       data.put("courseName", courseName)
       data.put("providerName", providerName)
+      if (partnerId != null && partnerId.nonEmpty) data.put("partnerId", partnerId)
 
       val eventPayload = new java.util.HashMap[String, Any]()
       eventPayload.put("eventType", config.EVENT_TYPE_EXT_COURSE_ENROLLMENT)
       eventPayload.put("data", data)
 
       val json = JSONUtil.serialize(eventPayload)
-      val key = if (userId != null && userId.nonEmpty) userId else "unknown"
+      val key = PaidCourseEnrolmentProducer.recordKey(partnerId, userId)
       // Asynchronous, fire-and-forget publish - does not wait for the Kafka broker
       // acknowledgement. Only a synchronous failure from producer.send(record) itself (e.g. a
       // serialization error, or the send buffer being full) is caught and rethrown below;
       // ack/timeout failures reported later via the returned Future are not observed here since
-      // the Future is intentionally not blocked on. Same topic, key and event structure as before.
+      // the Future is intentionally not blocked on. Same topic and event structure as before.
       producer.send(new ProducerRecord[String, String](config.kafkaPaidCourseEnrolmentTopic, key, json))
     } catch {
       case ex: Exception =>
@@ -69,5 +71,19 @@ class PaidCourseEnrolmentProducer(config: KarmaPointsV2Config) extends Serializa
     } catch {
       case ex: Exception => logger.warn("Error closing PaidCourseEnrolmentProducer", ex)
     }
+  }
+}
+
+object PaidCourseEnrolmentProducer {
+
+  /**
+   * Partition key for `user.paid.course.enrolment`: the provider (partnerId), so every enrolment
+   * for one provider is consumed in order. Falls back to userId for redemption events published
+   * before partnerId was added to the COINS_REDEMPTION payload.
+   */
+  def recordKey(partnerId: String, userId: String): String = {
+    if (partnerId != null && partnerId.nonEmpty) partnerId
+    else if (userId != null && userId.nonEmpty) userId
+    else "unknown"
   }
 }

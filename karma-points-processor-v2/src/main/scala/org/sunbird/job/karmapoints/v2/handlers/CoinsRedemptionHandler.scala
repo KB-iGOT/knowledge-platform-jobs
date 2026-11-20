@@ -14,12 +14,12 @@ import java.time.{LocalDate, ZoneId}
 import java.time.format.DateTimeFormatter
 
 /** Fields extracted once validation passes, so `doHandle` never re-parses `event.data`.
- * `courseName`/`providerName` are optional passthrough fields (not validated) reused for both the
+ * `courseName`/`providerName`/`partnerId` are optional passthrough fields (not validated) reused for both the
  * transaction addinfo and the paid-course-enrolment Kafka payload, so both read the same frozen
  * value instead of each re-parsing `event.data` independently. */
 private[v2] case class CoinsRedemptionRequest(userId: String, operation: String, actionType: String,
                                               coinsToRedeem: Long, contextType: String, contextId: String,
-                                              courseName: String, providerName: String)
+                                              courseName: String, providerName: String, partnerId: String)
 
 /** Business calculation result, reused to build the frozen plan below. No monthly-cap fields
  * (unlike [[PointsConversionHandler.PointsConversionCalculation]]) - DEBIT has no monthly cap and
@@ -180,7 +180,9 @@ class CoinsRedemptionHandler(config: KarmaPointsV2Config, cassandraUtil: Cassand
     }
     val courseName = event.dataString("courseName")
     val providerName = event.dataString("providerName")
-    CoinsRedemptionRequest(userId, operation, actionType, coinsToRedeem, contextType, contextId, courseName, providerName)
+    val partnerId = event.dataString("partnerId")
+    CoinsRedemptionRequest(userId, operation, actionType, coinsToRedeem, contextType, contextId, courseName, providerName,
+      partnerId)
   }
 
   /** `userId|contextType|contextId` - the Redis dedup key and the Cassandra lookup's
@@ -358,7 +360,8 @@ class CoinsRedemptionHandler(config: KarmaPointsV2Config, cassandraUtil: Cassand
         s"amount=${request.coinsToRedeem}, balanceAfter=$balanceAfter"
     )
     paidCourseEnrolmentProducer.send(request.userId, request.contextType, request.contextId,
-      request.coinsToRedeem, plan.transactionId, plan.createdAt, request.courseName, request.providerName)
+      request.coinsToRedeem, plan.transactionId, plan.createdAt, request.courseName, request.providerName,
+      request.partnerId)
 
     // updateLookupStatus always starts from an empty addinfo map, so listing only
     updateLookupStatus(request, plan.createdAt, config.STATUS_SUCCESS,
